@@ -6,7 +6,7 @@ import { env } from '../../config/env.js';
 import { Session } from '../../models/Session.js';
 import { Case } from '../../models/Case.js';
 import { INTERVIEWER_SYSTEM_PROMPT } from '../../ai/prompts.js';
-import { appendTranscript } from '../sessions/session.service.js';
+import { appendTranscript, settleSession } from '../sessions/session.service.js';
 import { CaseType } from '../../models/Case.js';
 
 // gpt-4o-realtime-preview-* were all shut down 2026-05-07; GA model is gpt-realtime.
@@ -106,6 +106,20 @@ async function handleConnection(clientWs: WebSocket, req: IncomingMessage): Prom
     });
 
     let openaiReady = false;
+
+    // HARD STOP (non-negotiable guardrail): kill the session when it reaches the
+    // minutes reserved for it (bounded by the plan's per-interview cap). This is
+    // server-side and never trusts the client — it's what stops a runaway voice
+    // session from burning unbounded API cost.
+    const capMinutes = session.reservedMinutes && session.reservedMinutes > 0
+      ? session.reservedMinutes
+      : (session.config.durationMinutes || 30);
+    const capTimer = setTimeout(() => {
+      sendToClient(clientWs, { type: 'error', message: `Time limit reached (${capMinutes} min). Wrapping up your session.` });
+      sendToClient(clientWs, { type: 'session_ended' });
+      try { openaiWs.close(); } catch { /* noop */ }
+      try { clientWs.close(4008, 'Time cap reached'); } catch { /* noop */ }
+    }, capMinutes * 60 * 1000);
 
     // Fix 3: timeout if OpenAI never responds
     const openaiTimeout = setTimeout(() => {
@@ -249,6 +263,7 @@ async function handleConnection(clientWs: WebSocket, req: IncomingMessage): Prom
     });
 
     openaiWs.on('close', (code, reason) => {
+      clearTimeout(capTimer);
       console.error('OpenAI WS closed:', code, reason?.toString?.() ?? reason);
       sendToClient(clientWs, { type: 'error', message: `AI connection closed (code=${code}): ${reason?.toString?.() ?? ''}` });
       sendToClient(clientWs, { type: 'session_ended' });
@@ -298,13 +313,18 @@ async function handleConnection(clientWs: WebSocket, req: IncomingMessage): Prom
     });
 
     clientWs.on('close', () => {
+      clearTimeout(capTimer);
       if (openaiWs.readyState === WebSocketNode.OPEN) {
         openaiWs.close();
       }
+      // Settle credits even if the candidate abandoned without "Stop & Submit".
+      // Idempotent — a later endSession call won't double-charge.
+      settleSession(sessionId).catch((e) => console.error('settleSession (ws close) failed:', e));
     });
 
     clientWs.on('error', (err) => {
       console.error('Client WS error:', err.message);
+      clearTimeout(capTimer);
       openaiWs.close();
     });
 }

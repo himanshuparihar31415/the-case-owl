@@ -24,6 +24,10 @@ export interface ISession extends Document {
   transcript: TranscriptEntry[];
   // Candidate's private working notes, submitted when the session ends.
   scratchpad?: string;
+  // Credits (minutes) held for this session at start; settled (consumed +
+  // released) exactly once when the session ends or is abandoned.
+  reservedMinutes?: number;
+  settled?: boolean;
   startedAt: Date;
   endedAt?: Date;
   durationSeconds?: number;
@@ -53,6 +57,8 @@ const SessionSchema = new Schema<ISession>(
       },
     ],
     scratchpad: { type: String },
+    reservedMinutes: { type: Number, default: 0 },
+    settled: { type: Boolean, default: false },
     startedAt: { type: Date, default: Date.now },
     endedAt: { type: Date },
     durationSeconds: { type: Number },

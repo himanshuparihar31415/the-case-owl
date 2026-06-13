@@ -9,6 +9,10 @@ const envSchema = z.object({
   OPENAI_API_KEY: z.string().optional(),
   APP_URL: z.string().default('http://localhost:5050'),
   FRONTEND_URL: z.string().default('http://localhost:5173'),
+  // Razorpay — set in local .env (untracked) and Railway dashboard vars. Never commit.
+  RAZORPAY_KEY_ID: z.string().optional(),
+  RAZORPAY_KEY_SECRET: z.string().optional(),
+  RAZORPAY_WEBHOOK_SECRET: z.string().optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);

@@ -208,7 +208,7 @@ export default function Landing({ onOpenAuth }: LandingProps) {
             <div className="pc">
               <div className="tier">Starter</div>
               <div className="sub">Find your gaps before committing a season.</div>
-              <div className="pp">$19<span className="per">/mo</span></div>
+              <div className="pp">₹1,499<span className="per">/mo + GST</span></div>
               <ul><li><span className="ck">✓</span> 5 scored interviews / month</li><li><span className="ck">✓</span> Core case types</li><li><span className="ck">✓</span> Full report + transcript</li></ul>
               <button className="btn btn-out-light" onClick={onOpenAuth}>Choose Starter</button>
             </div>
@@ -216,14 +216,14 @@ export default function Landing({ onOpenAuth }: LandingProps) {
               <div className="badge">Most reps</div>
               <div className="tier">Pro</div>
               <div className="sub">Unlimited reps for an active interview season.</div>
-              <div className="pp">$49<span className="per">/mo</span></div>
+              <div className="pp">₹3,999<span className="per">/mo + GST</span></div>
               <ul><li><span className="ck">✓</span> Unlimited interviews</li><li><span className="ck">✓</span> All firm styles + exhibits</li><li><span className="ck">✓</span> Full dashboard + trends</li><li><span className="ck">✓</span> Weak-spot targeting</li></ul>
               <button className="btn btn-cyan" onClick={onOpenAuth}>Choose Pro</button>
             </div>
             <div className="pc">
               <div className="tier">Sprint</div>
               <div className="sub">Two intense weeks before interview day.</div>
-              <div className="pp">$79<span className="per">/2wk</span></div>
+              <div className="pp">₹6,499<span className="per">/2wk + GST</span></div>
               <ul><li><span className="ck">✓</span> Everything in Pro</li><li><span className="ck">✓</span> Daily targeted plan</li><li><span className="ck">✓</span> Full mock-day loop</li></ul>
               <button className="btn btn-out-light" onClick={onOpenAuth}>Choose Sprint</button>
             </div>

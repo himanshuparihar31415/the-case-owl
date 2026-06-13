@@ -21,6 +21,10 @@ import caseRoutes from './server/modules/cases/case.routes.js';
 import sessionRoutes from './server/modules/sessions/session.routes.js';
 import reportRoutes from './server/modules/reports/report.routes.js';
 import analyticsRoutes from './server/modules/analytics/analytics.routes.js';
+import billingRoutes from './server/modules/billing/billing.routes.js';
+import adminRoutes from './server/modules/admin/admin.routes.js';
+import { webhook as razorpayWebhook } from './server/modules/billing/billing.controller.js';
+import { seedPlans } from './server/modules/billing/plans.service.js';
 import { setupVoiceWebSocket } from './server/modules/voice/voice.ws.js';
 
 const app = express();
@@ -30,6 +34,11 @@ const httpServer = createServer(app);
 app.set('trust proxy', 1);
 
 app.use(cors({ origin: true, credentials: true }));
+
+// Razorpay webhook MUST read the raw body to verify the HMAC signature, so it
+// is mounted BEFORE the JSON parser.
+app.post('/api/billing/webhook', express.raw({ type: 'application/json' }), razorpayWebhook);
+
 app.use(express.json({ limit: '2mb' }));
 app.use(generalLimiter);
 app.use((req, _res, next) => {
@@ -48,6 +57,8 @@ app.use('/api/cases', caseRoutes);
 app.use('/api/sessions', sessionRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/analytics', analyticsRoutes);
+app.use('/api/billing', billingRoutes);
+app.use('/api/admin', adminRoutes);
 
 app.use(errorHandler);
 
@@ -78,7 +89,9 @@ httpServer.on('upgrade', (req, socket, head) => {
 const PORT = Number(env.PORT);
 httpServer.listen(PORT, '0.0.0.0', () => {
   console.log(`server listening on ${PORT}`);
-  connectDB().catch((err) => {
-    console.error('MongoDB connection failed (server stays up):', err.message);
-  });
+  connectDB()
+    .then(() => seedPlans().catch((e) => console.error('seedPlans failed:', e)))
+    .catch((err) => {
+      console.error('MongoDB connection failed (server stays up):', err.message);
+    });
 });
