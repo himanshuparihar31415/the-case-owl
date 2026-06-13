@@ -9,7 +9,8 @@ import { INTERVIEWER_SYSTEM_PROMPT } from '../../ai/prompts.js';
 import { appendTranscript } from '../sessions/session.service.js';
 import { CaseType } from '../../models/Case.js';
 
-const OPENAI_REALTIME_URL = 'wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-12-17';
+// gpt-4o-realtime-preview-* were all shut down 2026-05-07; GA model is gpt-realtime.
+const OPENAI_REALTIME_URL = 'wss://api.openai.com/v1/realtime?model=gpt-realtime';
 
 function extractToken(req: IncomingMessage): string | null {
   const url = new URL(req.url ?? '', `http://${req.headers.host}`);
@@ -100,7 +101,7 @@ async function handleConnection(clientWs: WebSocket, req: IncomingMessage): Prom
     const openaiWs = new WebSocketNode(OPENAI_REALTIME_URL, {
       headers: {
         Authorization: `Bearer ${env.OPENAI_API_KEY}`,
-        'OpenAI-Beta': 'realtime=v1',
+        // GA Realtime interface no longer uses the OpenAI-Beta header.
       },
     });
 
@@ -119,21 +120,29 @@ async function handleConnection(clientWs: WebSocket, req: IncomingMessage): Prom
       clearTimeout(openaiTimeout);
       openaiReady = true;
 
-      // Configure the session
+      // Configure the session — GA Realtime schema: nested audio config,
+      // output_modalities instead of modalities.
       const sessionUpdate = {
         type: 'session.update',
         session: {
-          modalities: ['text', 'audio'],
+          type: 'realtime',
           instructions: systemPrompt,
-          voice: 'alloy',
-          input_audio_format: 'pcm16',
-          output_audio_format: 'pcm16',
-          input_audio_transcription: { model: 'whisper-1' },
-          turn_detection: {
-            type: 'server_vad',
-            threshold: 0.5,
-            prefix_padding_ms: 300,
-            silence_duration_ms: 800,
+          output_modalities: ['audio'],
+          audio: {
+            input: {
+              format: { type: 'audio/pcm', rate: 24000 },
+              transcription: { model: 'whisper-1' },
+              turn_detection: {
+                type: 'server_vad',
+                threshold: 0.5,
+                prefix_padding_ms: 300,
+                silence_duration_ms: 800,
+              },
+            },
+            output: {
+              format: { type: 'audio/pcm', rate: 24000 },
+              voice: 'alloy',
+            },
           },
         },
       };
@@ -152,6 +161,9 @@ async function handleConnection(clientWs: WebSocket, req: IncomingMessage): Prom
             openaiWs.send(JSON.stringify({ type: 'response.create' }));
             sendToClient(clientWs, { type: 'session_ready' });
             break;
+          // GA emits response.output_audio.delta; some snapshots still emit
+          // the legacy response.audio.delta — accept both.
+          case 'response.output_audio.delta':
           case 'response.audio.delta':
             // Stream AI audio chunk to client
             sendToClient(clientWs, {
@@ -160,6 +172,7 @@ async function handleConnection(clientWs: WebSocket, req: IncomingMessage): Prom
             });
             break;
 
+          case 'response.output_audio_transcript.delta':
           case 'response.audio_transcript.delta':
             // Partial AI transcript — forward for live display
             sendToClient(clientWs, {
@@ -169,6 +182,7 @@ async function handleConnection(clientWs: WebSocket, req: IncomingMessage): Prom
             });
             break;
 
+          case 'response.output_audio_transcript.done':
           case 'response.audio_transcript.done':
             // Final AI transcript turn — save to DB
             if (event.transcript) {
@@ -216,13 +230,20 @@ async function handleConnection(clientWs: WebSocket, req: IncomingMessage): Prom
     });
 
     openaiWs.on('error', (err) => {
-      console.error('OpenAI WS error:', err.message);
-      sendToClient(clientWs, { type: 'error', message: 'Voice service connection error' });
+      console.error('OpenAI WS error:', err);
+      sendToClient(clientWs, { type: 'error', message: `Voice service connection error: ${String(err?.message ?? err)}` });
     });
 
-    openaiWs.on('close', () => {
+    openaiWs.on('close', (code, reason) => {
+      console.error('OpenAI WS closed:', code, reason?.toString?.() ?? reason);
+      sendToClient(clientWs, { type: 'error', message: `AI connection closed (code=${code}): ${reason?.toString?.() ?? ''}` });
       sendToClient(clientWs, { type: 'session_ended' });
-      clientWs.close();
+      // Close the client WS if it's still open
+      try {
+        clientWs.close();
+      } catch (e) {
+        console.error('Error closing client WS after OpenAI close:', e);
+      }
     });
 
     // Handle messages from the client (browser)
