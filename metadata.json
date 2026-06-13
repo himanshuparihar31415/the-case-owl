@@ -1,6 +1,6 @@
 {
-  "name": "case coach ai",
-  "description": "AI-powered MBA case interview preparation platform for high-stakes case coach ai.",
+  "name": "The Case Owl",
+  "description": "The Case Owl — AI-powered MBA case interview preparation platform for high-stakes case interviews.",
   "requestFramePermissions": [
     "microphone"
   ]

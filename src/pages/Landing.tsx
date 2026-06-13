@@ -26,7 +26,7 @@ export default function Landing({ onOpenAuth }: LandingProps) {
             <span className="label-blueprint mb-6 block">The Future of Case Preparation</span>
             <h1 className="power-gap-h1 text-primary mb-8">
               Master the Art of <br />
-              <span className="text-on-tertiary-container">Case Coach AI</span>
+              <span className="text-on-tertiary-container">The Case Owl</span>
             </h1>
             <p className="font-body text-xl text-secondary mb-12 max-w-2xl mx-auto leading-relaxed">
               Architectural Authority AI provides the most advanced simulation environment for aspiring consultants and executives. Train with precision, receive real-time feedback, and dominate your next interview.

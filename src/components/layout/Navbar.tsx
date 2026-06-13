@@ -30,7 +30,7 @@ export default function Navbar({
     <header className="fixed top-0 z-50 w-full glass-nav border-b border-outline-variant/15">
       <div className="flex justify-between items-center w-full px-8 py-4 max-w-7xl mx-auto">
         <Link to={isAuthenticated ? "/dashboard" : "/"} className="text-2xl font-headline font-extrabold tracking-tighter text-primary">
-          Case Coach AI
+          The Case Owl
         </Link>
         
         {isAuthenticated && (
