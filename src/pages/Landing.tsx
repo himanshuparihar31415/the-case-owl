@@ -29,7 +29,7 @@ export default function Landing({ onOpenAuth }: LandingProps) {
               <span className="text-on-tertiary-container">The Case Owl</span>
             </h1>
             <p className="font-body text-xl text-secondary mb-12 max-w-2xl mx-auto leading-relaxed">
-              Architectural Authority AI provides the most advanced simulation environment for aspiring consultants and executives. Train with precision, receive real-time feedback, and dominate your next interview.
+              The Case Owl provides the most advanced simulation environment for aspiring consultants and executives. Train with precision, receive real-time feedback, and dominate your next interview.
             </p>
           </motion.div>
 
