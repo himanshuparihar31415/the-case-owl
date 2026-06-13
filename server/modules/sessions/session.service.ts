@@ -53,7 +53,7 @@ export async function getSessionById(id: string, userId: string): Promise<ISessi
   return session;
 }
 
-export async function endSession(id: string, userId: string): Promise<ISession> {
+export async function endSession(id: string, userId: string, scratchpad?: string): Promise<ISession> {
   const session = await Session.findOne({ _id: id, userId });
   if (!session) throw new AppError(404, 'Session not found');
   if (session.status !== 'active') throw new AppError(400, 'Session is already ended');
@@ -64,6 +64,7 @@ export async function endSession(id: string, userId: string): Promise<ISession> 
   session.status = 'completed';
   session.endedAt = now;
   session.durationSeconds = durationSeconds;
+  if (typeof scratchpad === 'string') session.scratchpad = scratchpad;
   await session.save();
 
   return session;

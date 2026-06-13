@@ -339,7 +339,7 @@ export default function Session() {
     playbackCtxRef.current?.close();
     playbackCtxRef.current = null;
     try {
-      await api.patch(`/sessions/${sessionId}/end`);
+      await api.patch(`/sessions/${sessionId}/end`, { scratchpad });
     } catch {
       // ignore — navigate anyway
     }

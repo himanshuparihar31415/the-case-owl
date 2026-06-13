@@ -44,7 +44,8 @@ export async function getSessionById(req: AuthRequest, res: Response, next: Next
 
 export async function endSession(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
   try {
-    const session = await sessionService.endSession(req.params.id, req.userId!);
+    const { scratchpad } = (req.body ?? {}) as { scratchpad?: string };
+    const session = await sessionService.endSession(req.params.id, req.userId!, scratchpad);
     res.json({ session });
   } catch (err) {
     next(err);

@@ -89,6 +89,127 @@ Scoring rubric:
 Grade thresholds: STRONG_PASS ≥ 80, PASS 65-79, BORDERLINE 50-64, FAIL < 50`;
 }
 
+export interface EvaluationContext {
+  timestampedTranscript: string;
+  caseTitle: string;
+  caseType: string;
+  difficultyLabel: string;
+  durationLabel: string;
+  hintsUsed: number;
+  // Deterministic metrics computed in code (the model must NOT invent these).
+  fluencyMetrics: {
+    wordsPerMinute: number;
+    fillerWordTotal: number;
+    fillerWords: Array<{ word: string; count: number }>;
+    repeatedPhrases: number;
+    conciseAnswerRate: number;
+    longestResponseWords: number;
+    avgWordsPerResponse: number;
+    longPauses: number;
+  };
+}
+
+export function EVALUATION_PROMPT(ctx: EvaluationContext): string {
+  const fillerList = ctx.fluencyMetrics.fillerWords.length
+    ? ctx.fluencyMetrics.fillerWords.map((f) => `"${f.word}" — ${f.count}`).join(', ')
+    : 'none detected';
+
+  return `You are a demanding, evidence-driven McKinsey case interview evaluator writing a post-interview report for the CANDIDATE. Your job is to be HONEST and SPECIFIC, not encouraging. Never inflate scores. Never use vague praise like "good communication" without quoting evidence. Every judgement must be backed by a timestamp from the transcript.
+
+CASE: "${ctx.caseTitle}" (${ctx.caseType})
+DIFFICULTY: ${ctx.difficultyLabel}
+DURATION: ${ctx.durationLabel}
+HINTS THE CANDIDATE REQUESTED: ${ctx.hintsUsed}
+
+TIMESTAMPED TRANSCRIPT (each line is "[mm:ss] ROLE: text"; lines marked [HINT] are coaching hints the candidate received — treat heavy hint reliance as a negative signal):
+${ctx.timestampedTranscript}
+
+PRE-COMPUTED COMMUNICATION METRICS (these are measured from the transcript — USE them, do not contradict or re-estimate them):
+- Approx words per minute: ${ctx.fluencyMetrics.wordsPerMinute}
+- Filler words total: ${ctx.fluencyMetrics.fillerWordTotal} (${fillerList})
+- Repeated phrases: ${ctx.fluencyMetrics.repeatedPhrases}
+- Concise-answer rate: ${ctx.fluencyMetrics.conciseAnswerRate}%
+- Longest response: ~${ctx.fluencyMetrics.longestResponseWords} words
+- Average response length: ${ctx.fluencyMetrics.avgWordsPerResponse} words
+- Long pauses (>3s before answering): ${ctx.fluencyMetrics.longPauses}
+
+Return ONLY valid JSON matching this exact schema. All scores are on a 0–10 scale. Cite real timestamps that appear in the transcript ("mm:ss"). If the candidate barely engaged, score low (2–4) and say why.
+
+{
+  "overall": {
+    "score": number,                          // 0-10, one decimal allowed
+    "readiness": "Not ready" | "Needs practice" | "Interview ready" | "Strong candidate",
+    "decision": "Strong Hire" | "Hire" | "Borderline" | "No Hire",
+    "confidence": "High" | "Medium" | "Low",   // your confidence in this assessment given transcript length
+    "summary": "string — 2-4 sentences, honest executive summary. Name concrete weaknesses.",
+    "primaryStrengths": ["string", "string"],
+    "criticalGaps": ["string", "string"],
+    "hintDependencyNote": "string — one line on how reliant they were on hints"
+  },
+  "competencies": [
+    // EXACTLY these 8 keys, in this order:
+    // problemUnderstanding, structuring, quantitative, businessJudgment, hypothesis, communication, synthesis, executivePresence
+    {
+      "key": "problemUnderstanding",
+      "label": "Problem Understanding",
+      "score": number,                         // 0-10
+      "assessment": "string — direct, specific",
+      "evidence": [ { "timestamp": "mm:ss", "note": "what happened at this moment" } ]  // 1-3 items, at least 1
+    }
+    // ... 7 more
+  ],
+  "communication": {
+    "grammar": {
+      "score": number,                         // 0-10
+      "summary": "string — what the recurring grammar issues were",
+      "issues": [
+        { "timestamp": "mm:ss", "statement": "candidate's actual words", "issue": "the grammar/clarity problem", "better": "a corrected version" }
+      ]                                          // 2-5 real examples pulled from the transcript
+    },
+    "fluency": {
+      "summary": "string — interpret the pre-computed metrics honestly",
+      "observations": [ { "timestamp": "mm:ss", "note": "fluency observation (pause, repetition, or a strong fluent moment)" } ]  // 2-4
+    },
+    "vocabulary": {
+      "assessment": "string — was business vocabulary precise or generic?",
+      "weakExample": "string — a weak/generic phrase the candidate used",
+      "betterExample": "string — a sharper, more specific rewrite"
+    }
+  },
+  "transcript": [
+    // The KEY candidate turns only (6-12 of them), as an evidence layer. Do NOT include every turn.
+    {
+      "timestamp": "mm:ss",
+      "role": "candidate" | "interviewer",
+      "text": "the turn text (may be trimmed to the relevant part)",
+      "markers": [ { "type": "strength" | "issue", "note": "string" } ],
+      "tags": ["Structuring", "HypothesisDrivenThinking", "Communication", "Quantitative", "BusinessJudgment", "Synthesis", "Grammar", "MissedOpportunity"]  // pick the relevant ones
+    }
+  ],
+  "missedOpportunities": [
+    { "timestamp": "mm:ss", "situation": "what was being discussed", "candidateResponse": "what they said/did", "missed": "what they missed", "better": "the stronger approach" }
+  ],                                             // 3-5
+  "idealAnswers": [
+    { "question": "a major question the interviewer asked", "candidateAnswer": "summary of what the candidate said", "assessment": "honest critique", "strongerAnswer": "a model answer" }
+  ],                                             // 2-3 for the biggest questions
+  "timeManagement": [
+    { "stage": "Understanding the problem", "timeSpent": "m:ss", "recommended": "2-3 min", "assessment": "Too short" | "Appropriate" | "Too long" | "Insufficient depth" | "Too brief" | "Too limited" }
+    // Estimate stage boundaries from the timestamps. Stages: Understanding the problem, Structuring, Analysis, Risk assessment, Final recommendation.
+  ],
+  "hintDependency": {
+    "assessment": "string — what their hint usage reveals about their gaps",
+    "independentRate": number                    // 0-100, your estimate of % of progress made without prompting
+  },
+  "doneWell": ["string", "string", "string"],    // concrete, with implicit or explicit timestamp references
+  "needsImprovement": ["string", "string", "string"],
+  "priorityPlan": [
+    { "priority": "P0" | "P1" | "P2", "action": "what to fix", "practiceMethod": "a concrete drill" }
+  ]                                              // 4-6, ordered by priority
+}
+
+Scoring guidance (0-10): 0-3 = poor/failed, 4-5 = below bar, 6-7 = borderline/acceptable, 8-9 = strong, 10 = exceptional. Decision mapping: Strong Hire ≥ 8, Hire 6.5–7.9, Borderline 5–6.4, No Hire < 5. If a strong answer only emerged AFTER hints, lower the relevant competency score and note it. Be the evaluator a candidate needs, not the one they want.`;
+}
+
 export function INTERVIEWER_SYSTEM_PROMPT(
   caseTitle: string,
   scenario: string,

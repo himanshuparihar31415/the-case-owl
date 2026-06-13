@@ -22,6 +22,8 @@ export interface ISession extends Document {
   };
   status: SessionStatus;
   transcript: TranscriptEntry[];
+  // Candidate's private working notes, submitted when the session ends.
+  scratchpad?: string;
   startedAt: Date;
   endedAt?: Date;
   durationSeconds?: number;
@@ -50,6 +52,7 @@ const SessionSchema = new Schema<ISession>(
         timestamp: { type: Date, default: Date.now },
       },
     ],
+    scratchpad: { type: String },
     startedAt: { type: Date, default: Date.now },
     endedAt: { type: Date },
     durationSeconds: { type: Number },

@@ -28,6 +28,13 @@ export interface IReport extends Document {
     keyHypotheses: string[];
   };
   executiveSummary: string;
+  // Rich, evidence-based evaluator report (see EVALUATION_PROMPT). Stored as a
+  // flexible sub-document so the detailed shape can evolve without migrations.
+  analysis?: Record<string, unknown>;
+  // Per-session communication metrics computed deterministically in code.
+  metrics?: Record<string, unknown>;
+  // Trend across the user's prior reports, snapshotted at generation time.
+  progress?: Array<Record<string, unknown>>;
   generatedAt: Date;
 }
 
@@ -59,6 +66,9 @@ const ReportSchema = new Schema<IReport>(
       keyHypotheses: [String],
     },
     executiveSummary: { type: String, required: true },
+    analysis: { type: Schema.Types.Mixed },
+    metrics: { type: Schema.Types.Mixed },
+    progress: { type: Schema.Types.Mixed },
     generatedAt: { type: Date, default: Date.now },
   },
   { timestamps: true }

@@ -2,7 +2,7 @@ import OpenAI from 'openai';
 import { env } from '../config/env.js';
 import { CaseType, Industry } from '../models/Case.js';
 import { TranscriptEntry } from '../models/Session.js';
-import { CASE_GENERATION_PROMPT, HINT_PROMPT, SCORING_PROMPT } from './prompts.js';
+import { CASE_GENERATION_PROMPT, HINT_PROMPT, SCORING_PROMPT, EVALUATION_PROMPT, EvaluationContext } from './prompts.js';
 
 export const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
 
@@ -56,6 +56,24 @@ export async function generateHintWithAI(transcript: TranscriptEntry[]): Promise
     'You are a senior McKinsey partner coaching a candidate. Be concise and coaching.',
     HINT_PROMPT(transcriptText)
   );
+}
+
+// Rich, evidence-based evaluation. Larger output + lower temperature for
+// consistency. Returns the parsed JSON object (loosely typed — the report
+// service maps it into the stored shape).
+export async function generateEvaluationWithAI(ctx: EvaluationContext): Promise<Record<string, unknown>> {
+  const response = await openai.chat.completions.create({
+    model: TEXT_MODEL,
+    messages: [
+      { role: 'system', content: 'You are an expert, honest McKinsey case interview evaluator. Return only valid JSON.' },
+      { role: 'user', content: EVALUATION_PROMPT(ctx) },
+    ],
+    response_format: { type: 'json_object' },
+    temperature: 0.4,
+    max_tokens: 8000,
+  });
+  const text = response.choices[0]?.message?.content ?? '{}';
+  return JSON.parse(text) as Record<string, unknown>;
 }
 
 export async function generateScoringWithAI(
