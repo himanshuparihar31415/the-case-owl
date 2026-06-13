@@ -50,6 +50,9 @@ export default function Session() {
   const micStreamRef = useRef<MediaStream | null>(null);
   const processorRef = useRef<ScriptProcessorNode | null>(null);
   const nextPlayTimeRef = useRef(0);
+  // Scheduled-but-not-yet-finished AI audio chunks, so we can cut them off
+  // instantly when the candidate starts speaking (barge-in).
+  const activeSourcesRef = useRef<AudioBufferSourceNode[]>([]);
   const transcriptEndRef = useRef<HTMLDivElement | null>(null);
   const micMutedRef = useRef(false);
 
@@ -78,7 +81,9 @@ export default function Session() {
       src.start(nextPlayTimeRef.current);
       nextPlayTimeRef.current += buffer.duration;
       setIsAiSpeaking(true);
+      activeSourcesRef.current.push(src);
       src.onended = () => {
+        activeSourcesRef.current = activeSourcesRef.current.filter((s) => s !== src);
         if (nextPlayTimeRef.current <= ctx.currentTime + 0.05) {
           setIsAiSpeaking(false);
         }
@@ -86,6 +91,23 @@ export default function Session() {
     } catch {
       // ignore decode errors
     }
+  }, []);
+
+  // Stop all queued AI audio at once — used for barge-in when the candidate
+  // starts speaking so the AI doesn't keep talking over them.
+  const flushPlayback = useCallback(() => {
+    const ctx = playbackCtxRef.current;
+    for (const src of activeSourcesRef.current) {
+      try {
+        src.onended = null;
+        src.stop();
+      } catch {
+        // already stopped
+      }
+    }
+    activeSourcesRef.current = [];
+    nextPlayTimeRef.current = ctx ? ctx.currentTime : 0;
+    setIsAiSpeaking(false);
   }, []);
 
   const stopMic = useCallback(() => {
@@ -103,11 +125,15 @@ export default function Session() {
 
     navigator.mediaDevices.getUserMedia({ audio: true, video: false }).then((stream: MediaStream) => {
       micStreamRef.current = stream;
-      const captureCtx = new AudioContext({ sampleRate: 16000 });
+      // Must match the input rate the server declares to OpenAI (24kHz). A
+      // mismatch makes the candidate's speech sound sped-up/garbled to the
+      // model, so it can't understand them and its VAD misfires.
+      const captureCtx = new AudioContext({ sampleRate: 24000 });
       captureCtxRef.current = captureCtx;
       const source = captureCtx.createMediaStreamSource(stream);
+      // Smaller buffer = lower capture latency (~85ms at 24kHz).
       // eslint-disable-next-line @typescript-eslint/no-deprecated
-      const processor = captureCtx.createScriptProcessor(4096, 1, 1);
+      const processor = captureCtx.createScriptProcessor(2048, 1, 1);
       processorRef.current = processor;
       source.connect(processor);
       processor.connect(captureCtx.destination);
@@ -162,6 +188,10 @@ export default function Session() {
           case 'audio_chunk':
             playPcm16Chunk(msg.data as string);
             break;
+          case 'speech_started':
+            // Candidate started talking — cut off any buffered AI audio.
+            flushPlayback();
+            break;
           case 'transcript_delta':
             setLiveText((prev) => prev + (msg.text as string));
             break;
@@ -208,7 +238,7 @@ export default function Session() {
       playbackCtxRef.current?.close();
       playbackCtxRef.current = null;
     };
-  }, [sessionId, playPcm16Chunk, startMicCapture, stopMic]);
+  }, [sessionId, playPcm16Chunk, startMicCapture, stopMic, flushPlayback]);
 
   const handleStopAndSubmit = async () => {
     setSubmitting(true);

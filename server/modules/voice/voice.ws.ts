@@ -136,7 +136,15 @@ async function handleConnection(clientWs: WebSocket, req: IncomingMessage): Prom
                 type: 'server_vad',
                 threshold: 0.5,
                 prefix_padding_ms: 300,
-                silence_duration_ms: 800,
+                // Wait ~550ms of silence before the AI takes its turn — long
+                // enough to not cut the candidate off mid-thought, short enough
+                // to feel like a real conversation.
+                silence_duration_ms: 550,
+                // Auto-generate a reply when the candidate stops speaking, and
+                // auto-cancel the AI's current reply the moment the candidate
+                // starts talking again (barge-in).
+                create_response: true,
+                interrupt_response: true,
               },
             },
             output: {
@@ -160,6 +168,12 @@ async function handleConnection(clientWs: WebSocket, req: IncomingMessage): Prom
             // Session is configured — trigger AI greeting and tell client we're ready
             openaiWs.send(JSON.stringify({ type: 'response.create' }));
             sendToClient(clientWs, { type: 'session_ready' });
+            break;
+
+          case 'input_audio_buffer.speech_started':
+            // Candidate started talking — tell the client to stop playing any
+            // buffered AI audio immediately so the AI doesn't talk over them.
+            sendToClient(clientWs, { type: 'speech_started' });
             break;
           // GA emits response.output_audio.delta; some snapshots still emit
           // the legacy response.audio.delta — accept both.
