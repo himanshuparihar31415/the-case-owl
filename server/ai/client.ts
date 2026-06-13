@@ -2,7 +2,7 @@ import OpenAI from 'openai';
 import { env } from '../config/env.js';
 import { CaseType, Industry } from '../models/Case.js';
 import { TranscriptEntry } from '../models/Session.js';
-import { CASE_GENERATION_PROMPT, HINT_PROMPT, SCORING_PROMPT, EVALUATION_PROMPT, EvaluationContext } from './prompts.js';
+import { CASE_GENERATION_PROMPT, HINT_PROMPT, SCORING_PROMPT, EVALUATION_PROMPT, EvaluationContext, PROGRESS_INSIGHT_PROMPT, ProgressInsightContext } from './prompts.js';
 
 export const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
 
@@ -74,6 +74,21 @@ export async function generateEvaluationWithAI(ctx: EvaluationContext): Promise<
   });
   const text = response.choices[0]?.message?.content ?? '{}';
   return JSON.parse(text) as Record<string, unknown>;
+}
+
+// Cross-session narrative for the dashboard. Cached by the caller.
+export async function generateProgressInsight(ctx: ProgressInsightContext): Promise<Record<string, unknown>> {
+  const response = await openai.chat.completions.create({
+    model: TEXT_MODEL,
+    messages: [
+      { role: 'system', content: 'You are a sharp, honest head case-interview coach. Return only valid JSON.' },
+      { role: 'user', content: PROGRESS_INSIGHT_PROMPT(ctx) },
+    ],
+    response_format: { type: 'json_object' },
+    temperature: 0.6,
+    max_tokens: 1500,
+  });
+  return JSON.parse(response.choices[0]?.message?.content ?? '{}') as Record<string, unknown>;
 }
 
 export async function generateScoringWithAI(

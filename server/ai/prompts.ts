@@ -187,7 +187,16 @@ Return ONLY valid JSON matching this exact schema. All scores are on a 0–10 sc
     }
   ],
   "missedOpportunities": [
-    { "timestamp": "mm:ss", "situation": "what was being discussed", "candidateResponse": "what they said/did", "missed": "what they missed", "better": "the stronger approach" }
+    {
+      "timestamp": "mm:ss", "situation": "what was being discussed", "candidateResponse": "what they said/did",
+      "missed": "what they missed", "better": "the stronger approach",
+      "habitTag": "rush_structuring" | "invent_number" | "skip_validation" | "clarity" | "no_hypothesis" | "shallow_risk" | "weak_synthesis"
+      // Categorise the underlying behaviour so it can be tracked across sessions:
+      // rush_structuring = jumped to specifics before framing; invent_number = stated a figure/assumption with no basis;
+      // skip_validation = didn't sanity-check/validate a number; clarity = unclear/fragmented communication;
+      // no_hypothesis = answered without forming/testing a hypothesis; shallow_risk = named risks without sizing them;
+      // weak_synthesis = recommendation/close lacked a clear decision + support.
+    }
   ],                                             // 3-5
   "idealAnswers": [
     { "question": "a major question the interviewer asked", "candidateAnswer": "summary of what the candidate said", "assessment": "honest critique", "strongerAnswer": "a model answer" }
@@ -208,6 +217,50 @@ Return ONLY valid JSON matching this exact schema. All scores are on a 0–10 sc
 }
 
 Scoring guidance (0-10): 0-3 = poor/failed, 4-5 = below bar, 6-7 = borderline/acceptable, 8-9 = strong, 10 = exceptional. Decision mapping: Strong Hire ≥ 8, Hire 6.5–7.9, Borderline 5–6.4, No Hire < 5. If a strong answer only emerged AFTER hints, lower the relevant competency score and note it. Be the evaluator a candidate needs, not the one they want.`;
+}
+
+export interface ProgressInsightContext {
+  sessionCount: number;
+  weeksSpan: number;
+  latestOverall: number;       // 0-10
+  delta3: number;              // change over last 3 sessions, 0-10 scale
+  trajectory: number[];        // overall scores 0-10, oldest -> newest
+  competencyTrends: Array<{ skill: string; latest: number; trend: 'up' | 'flat' | 'down' }>;
+  habits: Array<{ tag: string; label: string; count: number; total: number }>;
+  bestCaseType: string | null;
+  untestedCaseTypes: string[];
+}
+
+export function PROGRESS_INSIGHT_PROMPT(ctx: ProgressInsightContext): string {
+  return `You are a head case-interview coach reviewing a candidate's progress ACROSS many practice sessions (not a single one). Write a sharp, motivating-but-honest narrative that helps them knock their next real interview. Speak directly to the candidate ("you"). Be specific and concrete; avoid generic praise.
+
+DATA (aggregated across ${ctx.sessionCount} sessions over ~${ctx.weeksSpan} weeks):
+- Overall trajectory (0-10, oldest→newest): ${ctx.trajectory.map((n) => n.toFixed(1)).join(', ')}
+- Latest overall: ${ctx.latestOverall.toFixed(1)} / 10; change over last 3 sessions: ${ctx.delta3 >= 0 ? '+' : ''}${ctx.delta3.toFixed(1)}
+- Skill trends: ${ctx.competencyTrends.map((c) => `${c.skill} ${c.latest.toFixed(1)} (${c.trend})`).join('; ')}
+- Recurring habits (label [tag] → how many of ${ctx.sessionCount} sessions it appeared in): ${ctx.habits.map((h) => `${h.label} [${h.tag}] ${h.count}/${h.total}`).join('; ') || 'none detected yet'}
+- Best case type: ${ctx.bestCaseType ?? 'n/a'}; Untested case types: ${ctx.untestedCaseTypes.join(', ') || 'none'}
+
+Identify the SINGLE most important recurring bottleneck and frame it as a causal CHAIN (one root cause that triggers the others), using the habit data above. Then give a focused weekly plan.
+
+Return ONLY valid JSON:
+{
+  "heroHeadline": "string — one punchy line, may use a narrative hook (e.g. a turning point in the trajectory). No quotes inside.",
+  "heroLede": "string — 2-3 sentences: what changed, what it pulled with it, and the ONE habit still capping them.",
+  "pills": ["string","string","string"],   // 3 very short status chips, e.g. "Trending up, 3 sessions", "~5 sessions to interview-ready", "Best: Profitability"
+  "readinessNote": "string — one sentence on which readiness band they're in and the gap to interview-ready (target ~7/10).",
+  "bottleneck": {
+    "title": "string — the #1 problem stated as cause→effect (e.g. 'You skip structure, so you invent numbers you can't defend').",
+    "explanation": "string — 2-3 sentences: it's one chain, not separate flaws; fixing the first link dissolves the rest.",
+    "chain": [ { "label": "short link name", "tag": "the exact machine tag in [brackets] from the habit list above, e.g. invent_number", "count": number } ],   // 2-4 links, ordered cause→effect, counts from the data
+    "pointLossPct": number   // your estimate (0-100) of how much of their lost points trace to this chain
+  },
+  "weeklyPlan": [
+    { "kind": "FIX", "title": "string", "detail": "string — ties to the bottleneck" },
+    { "kind": "GROW", "title": "string", "detail": "string" },
+    { "kind": "STRETCH", "title": "string", "detail": "string — often: try an untested case type" }
+  ]
+}`;
 }
 
 export function INTERVIEWER_SYSTEM_PROMPT(

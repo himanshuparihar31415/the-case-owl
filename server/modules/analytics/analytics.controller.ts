@@ -30,6 +30,15 @@ export async function getWeaknesses(req: AuthRequest, res: Response, next: NextF
   }
 }
 
+export async function getDashboard(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const data = await analyticsService.getDashboard(req.userId!);
+    res.json(data);
+  } catch (err) {
+    next(err);
+  }
+}
+
 export async function getHistory(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
   try {
     const { page, limit } = req.query as Record<string, string>;
