@@ -3,7 +3,8 @@ import jwt from 'jsonwebtoken';
 import { User, IUser } from '../../models/User.js';
 import { env } from '../../config/env.js';
 import { AppError } from '../../middleware/errorHandler.js';
-import { ensureWallet } from '../billing/wallet.service.js';
+import { ensureWallet, grantCredits } from '../billing/wallet.service.js';
+import { getSettings } from '../../models/Setting.js';
 
 export async function signup(name: string, email: string, password: string): Promise<{ token: string; user: Partial<IUser> }> {
   const existing = await User.findOne({ email });
@@ -14,10 +15,22 @@ export async function signup(name: string, email: string, password: string): Pro
   const passwordHash = await bcrypt.hash(password, 12);
   const user = await User.create({ name, email, passwordHash });
 
-  // Every user gets a wallet at signup (starts empty, on no plan — they can
-  // browse but can't start an interview until they subscribe). A one-time promo
-  // grant could be dropped here later via grantCredits if we want to offer a taste.
+  // Every user gets a wallet at signup, plus a one-time free promo grant so they
+  // can try a few interviews before paying. The amount is configurable (settings
+  // doc) and can be changed without a redeploy. Promo lands in the top-up bucket
+  // so it persists (doesn't reset on a subscription cycle).
   await ensureWallet(user.id).catch((e) => console.error('wallet init failed:', e));
+  try {
+    const settings = await getSettings();
+    if (settings.promoEnabled && settings.signupPromoCredits > 0) {
+      await grantCredits({
+        userId: user.id, type: 'promo_grant', amount: settings.signupPromoCredits,
+        idempotencyKey: `promo:${user.id}`, reason: `signup promo (${settings.signupPromoCredits} free min)`, bucket: 'topup',
+      });
+    }
+  } catch (e) {
+    console.error('signup promo grant failed:', e);
+  }
 
   const token = signToken(user.id);
   return { token, user: sanitize(user) };

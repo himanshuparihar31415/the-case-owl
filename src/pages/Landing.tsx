@@ -234,7 +234,7 @@ export default function Landing({ onOpenAuth }: LandingProps) {
       {/* FAQ */}
       <section className="sec" id="faq">
         <div className="wrap faq">
-          <div className="qa"><div className="q">Why isn&apos;t there a free trial interview?</div><div className="a">A full voice interview is a live, intensive session on our side, so we can&apos;t give them away. But everything above is real — <em>you can see exactly what the owl catches and what you&apos;d get back before you pay a cent.</em> Plans start small and cancel anytime.</div></div>
+          <div className="qa"><div className="q">Can I try it free?</div><div className="a">Yes — <em>every new account starts with free practice credits (enough for your first few full interviews).</em> Run a real voice case, see exactly what the owl catches, and read your full report before you pay anything. Plans start small and cancel anytime.</div></div>
           <div className="qa"><div className="q">Is it really like a real interviewer?</div><div className="a">It talks, listens, and reacts live — it interrupts when your logic drifts, drills weak assumptions, and adapts to your answers. The pressure is real, and the feedback is more detailed than any human has time to give.</div></div>
           <div className="qa"><div className="q">What do I need to start?</div><div className="a">A microphone and a quiet room. It runs in your browser — nothing to install, nothing to schedule.</div></div>
         </div>

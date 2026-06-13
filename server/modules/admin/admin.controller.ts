@@ -6,6 +6,7 @@ import { AuditLog } from '../../models/AuditLog.js';
 import { ensureWallet, spendable, grantCredits, getLedger } from '../billing/wallet.service.js';
 import { createPlan, updatePlan, listActivePlans } from '../billing/plans.service.js';
 import { Plan } from '../../models/Plan.js';
+import { Setting, getSettings } from '../../models/Setting.js';
 
 async function audit(adminId: string, action: string, targetUserId: string | undefined, details: Record<string, unknown>) {
   await AuditLog.create({ adminId, action, targetUserId, details });
@@ -79,4 +80,20 @@ export async function getAudit(_req: AuthRequest, res: Response, next: NextFunct
 // Reference: surfaced so the admin UI can show the live catalogue.
 export async function getActivePlans(_req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
   try { res.json({ plans: await listActivePlans() }); } catch (err) { next(err); }
+}
+
+// GET/PATCH /admin/settings — the editable global rules (e.g. free signup credits).
+export async function getSettingsCtrl(_req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+  try { res.json({ settings: await getSettings() }); } catch (err) { next(err); }
+}
+export async function updateSettingsCtrl(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { signupPromoCredits, promoEnabled } = req.body as { signupPromoCredits?: number; promoEnabled?: boolean };
+    const update: Record<string, unknown> = {};
+    if (typeof signupPromoCredits === 'number') update.signupPromoCredits = signupPromoCredits;
+    if (typeof promoEnabled === 'boolean') update.promoEnabled = promoEnabled;
+    const settings = await Setting.findOneAndUpdate({ key: 'global' }, update, { new: true, upsert: true });
+    await audit(req.userId!, 'edit_settings', undefined, update);
+    res.json({ settings });
+  } catch (err) { next(err); }
 }
