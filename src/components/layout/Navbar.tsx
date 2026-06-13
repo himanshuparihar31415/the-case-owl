@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { UserCircle, Timer, LogOut } from 'lucide-react';
+import { UserCircle, Timer, LogOut, Coins, Infinity as InfinityIcon } from 'lucide-react';
 import { cn } from '@/src/lib/utils';
+import { api } from '@/src/lib/api';
 
 interface NavbarProps {
   showTimer?: boolean;
@@ -19,10 +20,20 @@ export default function Navbar({
   onLogin 
 }: NavbarProps) {
   const location = useLocation();
+  const [credits, setCredits] = useState<{ unlimited: boolean; spendable: number } | null>(null);
+
+  // Show the live balance; refetch on route change so it updates after purchase/use.
+  useEffect(() => {
+    if (!isAuthenticated) { setCredits(null); return; }
+    api.get<{ wallet: { unlimited: boolean; spendable: number } }>('/billing/wallet')
+      .then((d) => setCredits({ unlimited: d.wallet.unlimited, spendable: d.wallet.spendable }))
+      .catch(() => setCredits(null));
+  }, [isAuthenticated, location.pathname]);
 
   const navItems = [
     { name: 'Dashboard', path: '/dashboard' },
     { name: 'Library', path: '/library' },
+    { name: 'Plans', path: '/billing' },
     { name: 'Settings', path: '/settings' },
   ];
 
@@ -63,6 +74,20 @@ export default function Navbar({
             </div>
           )}
           
+          {isAuthenticated && credits && (
+            <Link
+              to="/billing"
+              title="Your credits"
+              className="hidden sm:flex items-center gap-1.5 bg-surface-container px-3 py-1.5 rounded-full hover:bg-surface-container-high transition-all"
+            >
+              {credits.unlimited ? (
+                <><InfinityIcon className="w-4 h-4 text-on-tertiary-container" /><span className="font-headline font-bold text-sm text-primary">Unlimited</span></>
+              ) : (
+                <><Coins className="w-4 h-4 text-on-tertiary-container" /><span className="font-headline font-bold text-sm text-primary">{credits.spendable}</span><span className="text-xs text-secondary">min</span></>
+              )}
+            </Link>
+          )}
+
           {isAuthenticated ? (
             <div className="flex items-center gap-2">
               <button className="p-2 rounded-full hover:bg-surface-container-low transition-all active:scale-95">

@@ -8,6 +8,7 @@ import Library from './pages/Library';
 import Config from './pages/Config';
 import Session from './pages/Session';
 import Report from './pages/Report';
+import Billing from './pages/Billing';
 import Landing from './pages/Landing';
 import AuthModal from './components/auth/AuthModal';
 import { api } from './lib/api';
@@ -100,6 +101,10 @@ function AppContent() {
           <Route
             path="/report/:sessionId"
             element={isAuthenticated ? <Report /> : <Navigate to="/" replace />}
+          />
+          <Route
+            path="/billing"
+            element={isAuthenticated ? <Billing user={user} /> : <Navigate to="/" replace />}
           />
           <Route path="/settings" element={<div className="py-20 text-center text-secondary">Settings module coming soon.</div>} />
         </Routes>

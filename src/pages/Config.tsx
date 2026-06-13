@@ -30,6 +30,7 @@ export default function Config() {
   const [interviewerStyle, setInterviewerStyle] = useState('Neutral');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [needsPlan, setNeedsPlan] = useState(false);
 
   // Custom case import state
   const [importMode, setImportMode] = useState<'ai' | 'custom'>(
@@ -44,6 +45,7 @@ export default function Config() {
   const handleBeginCase = async () => {
     setLoading(true);
     setError('');
+    setNeedsPlan(false);
     try {
       let caseId: string;
 
@@ -94,7 +96,10 @@ export default function Config() {
 
       navigate(`/session/${sessionData.session._id}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to start session. Please try again.');
+      const message = err instanceof Error ? err.message : 'Failed to start session. Please try again.';
+      // The backend returns a credit/plan message (HTTP 402) when the wallet is empty.
+      if (/credit|plan/i.test(message)) setNeedsPlan(true);
+      setError(message);
       setLoading(false);
     }
   };
@@ -382,6 +387,14 @@ export default function Config() {
                 <p className="font-body text-sm italic">Session will take approximately 45 minutes to complete.</p>
               </div>
               {error && <p className="text-sm text-red-500 font-medium">{error}</p>}
+              {needsPlan && (
+                <button
+                  onClick={() => navigate('/billing')}
+                  className="self-start mt-1 inline-flex items-center gap-2 px-5 py-2.5 bg-on-tertiary-container text-white font-headline font-bold text-sm rounded-lg hover:brightness-110 transition"
+                >
+                  Choose a plan <ArrowRight className="w-4 h-4" />
+                </button>
+              )}
             </div>
             <button
               onClick={handleBeginCase}
