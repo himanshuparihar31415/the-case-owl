@@ -20,7 +20,9 @@ export default defineConfig(({mode}) => {
       // Do not modifyâfile watching is disabled to prevent flickering during agent edits.
       hmr: process.env.DISABLE_HMR !== 'true',
       proxy: {
-        '/api': 'http://localhost:5000',
+        // Port 5000 is taken by macOS AirPlay Receiver; backend runs on 5050.
+        // ws:true so the voice WebSocket (/api/voice) is proxied too.
+        '/api': { target: 'http://localhost:5050', ws: true },
       },
     },
   };
