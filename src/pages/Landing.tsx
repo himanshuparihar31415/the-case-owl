@@ -1,151 +1,263 @@
-import React from 'react';
-import { ArrowRight, Shield, Zap, Target, BarChart3, Users, Globe } from 'lucide-react';
-import { motion } from 'motion/react';
-import { cn } from '@/src/lib/utils';
+import React, { useEffect, useRef, useState } from 'react';
+import './Landing.css';
 
 interface LandingProps {
   onOpenAuth: () => void;
 }
 
+const OwlMark = () => (
+  <svg className="owl-mini" viewBox="0 0 40 40">
+    <circle cx="20" cy="20" r="19" fill="#13294A" />
+    <circle cx="13.5" cy="17" r="5.2" fill="#fff" />
+    <circle cx="26.5" cy="17" r="5.2" fill="#fff" />
+    <circle cx="13.5" cy="17" r="2.4" fill="#1BA6E1" />
+    <circle cx="26.5" cy="17" r="2.4" fill="#1BA6E1" />
+    <path d="M20 22l-2.4 3h4.8z" fill="#1BA6E1" />
+  </svg>
+);
+
+// Phrases the owl "catches" as you move over it.
+const CATCH_PHRASES = [
+  'missed structure', 'weak frame', 'no hypothesis', 'unvalidated number',
+  'vague recommendation', 'lost the thread', 'filler creeping in', 'rushed the math',
+  'no prioritisation', 'skipped validation', 'that pause cost you', 'guessed, didn’t check',
+];
+
+interface Tag { id: number; x: number; y: number; text: string }
+
 export default function Landing({ onOpenAuth }: LandingProps) {
+  const owlRef = useRef<SVGSVGElement>(null);
+  const pLRef = useRef<SVGCircleElement>(null);
+  const pRRef = useRef<SVGCircleElement>(null);
+  const stageRef = useRef<HTMLDivElement>(null);
+  const lastSpawn = useRef(0);
+  const idRef = useRef(0);
+  const [navScrolled, setNavScrolled] = useState(false);
+  const [tags, setTags] = useState<Tag[]>([]);
+
+  const reduceMotion = typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion:reduce)').matches;
+
+  useEffect(() => {
+    const onScroll = () => setNavScrolled(window.scrollY > 8);
+    window.addEventListener('scroll', onScroll);
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+
+  // Pupils track the cursor.
+  useEffect(() => {
+    if (reduceMotion) return;
+    const onMove = (e: MouseEvent) => {
+      const owl = owlRef.current, pL = pLRef.current, pR = pRRef.current;
+      if (!owl || !pL || !pR) return;
+      const r = owl.getBoundingClientRect();
+      const cx = r.left + r.width / 2, cy = r.top + r.height * 0.42;
+      const ang = Math.atan2(e.clientY - cy, e.clientX - cx);
+      const d = 6, dx = Math.cos(ang) * d, dy = Math.sin(ang) * d;
+      pL.setAttribute('transform', `translate(${dx},${dy})`);
+      pR.setAttribute('transform', `translate(${dx},${dy})`);
+    };
+    window.addEventListener('mousemove', onMove);
+    return () => window.removeEventListener('mousemove', onMove);
+  }, [reduceMotion]);
+
+  const onStageMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (reduceMotion || !stageRef.current) return;
+    const now = Date.now();
+    if (now - lastSpawn.current < 480) return;
+    lastSpawn.current = now;
+    const rect = stageRef.current.getBoundingClientRect();
+    const id = ++idRef.current;
+    const tag: Tag = {
+      id,
+      x: e.clientX - rect.left + (Math.random() * 40 - 20),
+      y: e.clientY - rect.top + (Math.random() * 20 - 10),
+      text: CATCH_PHRASES[Math.floor(Math.random() * CATCH_PHRASES.length)],
+    };
+    setTags((t) => [...t, tag]);
+    window.setTimeout(() => setTags((t) => t.filter((z) => z.id !== id)), 1600);
+  };
+
   return (
-    <div className="flex flex-col w-full -mt-24">
-      {/* Hero Section */}
-      <section className="relative min-h-screen flex flex-col items-center justify-center overflow-hidden pt-24 px-8">
-        <div className="absolute inset-0 -z-10">
-          <div className="absolute top-0 left-1/4 w-96 h-96 bg-primary/5 rounded-full blur-3xl animate-pulse" />
-          <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-on-tertiary-container/5 rounded-full blur-3xl animate-pulse delay-1000" />
+    <div className="owl-landing">
+      {/* NAV */}
+      <nav className={`nav${navScrolled ? ' scrolled' : ''}`}>
+        <div className="wrap nav-in">
+          <div className="brand"><OwlMark /> The Case Owl</div>
+          <div className="nav-r">
+            <a className="signin" onClick={onOpenAuth}>Sign in</a>
+            <a className="btn btn-navy" href="#reps">Take the chair</a>
+          </div>
         </div>
+      </nav>
 
-        <div className="max-w-4xl text-center">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6 }}
-          >
-            <span className="label-blueprint mb-6 block">The Future of Case Preparation</span>
-            <h1 className="power-gap-h1 text-primary mb-8">
-              Master the Art of <br />
-              <span className="text-on-tertiary-container">The Case Owl</span>
-            </h1>
-            <p className="font-body text-xl text-secondary mb-12 max-w-2xl mx-auto leading-relaxed">
-              The Case Owl provides the most advanced simulation environment for aspiring consultants and executives. Train with precision, receive real-time feedback, and dominate your next interview.
-            </p>
-          </motion.div>
-
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ delay: 0.3, duration: 0.5 }}
-            className="flex flex-col sm:flex-row gap-4 justify-center"
-          >
-            <button
-              onClick={onOpenAuth}
-              className="bg-primary text-white px-8 py-4 rounded-full font-headline font-bold flex items-center justify-center gap-2 hover:bg-primary-container transition-all active:scale-95 shadow-lg shadow-primary/20"
-            >
-              Get Started Now <ArrowRight className="w-5 h-5" />
-            </button>
-            <button className="bg-white border border-outline-variant/30 text-primary px-8 py-4 rounded-full font-headline font-bold hover:bg-surface-container transition-all active:scale-95">
-              View Case Library
-            </button>
-          </motion.div>
-        </div>
-
-        {/* Floating Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-8 mt-24 w-full max-w-5xl">
-          {[
-            { label: 'Active Users', value: '12k+', icon: <Users className="w-5 h-5" /> },
-            { label: 'Success Rate', value: '94%', icon: <Target className="w-5 h-5" /> },
-            { label: 'Case Studies', value: '500+', icon: <Globe className="w-5 h-5" /> },
-            { label: 'Avg. Score Imp.', value: '+42%', icon: <BarChart3 className="w-5 h-5" /> },
-          ].map((stat, i) => (
-            <motion.div
-              key={i}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.5 + i * 0.1 }}
-              className="no-line-card p-6 text-center flex flex-col items-center"
-            >
-              <div className="text-on-tertiary-container mb-3">{stat.icon}</div>
-              <div className="font-headline font-extrabold text-2xl text-primary">{stat.value}</div>
-              <div className="label-blueprint mt-1">{stat.label}</div>
-            </motion.div>
-          ))}
-        </div>
-      </section>
-
-      {/* Features Section */}
-      <section className="py-32 px-8 bg-surface-container-low">
-        <div className="max-w-7xl mx-auto">
-          <div className="text-center mb-20">
-            <span className="label-blueprint">Core Capabilities</span>
-            <h2 className="text-4xl font-headline font-extrabold text-primary mt-4">Built for High-Stakes Performance</h2>
+      {/* HERO */}
+      <header className="hero">
+        <div className="wrap hero-grid">
+          <div>
+            <span className="eyebrow">Voice-based case interview practice</span>
+            <h1>Sit across from a partner. <span className="cy">As many times as it takes.</span></h1>
+            <p className="lead">The Case Owl runs the real case interview by voice — then shows you, <b>to the second</b>, where you lost the room. Practise until the chair feels like nothing.</p>
+            <div className="hero-cta">
+              <a className="btn btn-navy" href="#reps">Take the chair <span className="ar">→</span></a>
+              <a className="btn btn-out" href="#sees">See what it catches</a>
+            </div>
+            <div className="hero-tag"><i></i> Nothing you say gets past the owl.</div>
           </div>
 
-          <div className="grid md:grid-cols-3 gap-12">
-            {[
-              {
-                title: 'AI-Driven Simulations',
-                desc: 'Engage in dynamic, voice-enabled case interviews that adapt to your logic and structure.',
-                icon: <Zap className="w-10 h-10 text-on-tertiary-container" />
-              },
-              {
-                title: 'Structural Integrity',
-                desc: 'Our proprietary algorithms analyze your frameworks for logical consistency and exhaustive depth.',
-                icon: <Shield className="w-10 h-10 text-on-tertiary-container" />
-              },
-              {
-                title: 'Executive Reporting',
-                desc: 'Receive detailed post-session analytics on your business judgment, math accuracy, and creativity.',
-                icon: <BarChart3 className="w-10 h-10 text-on-tertiary-container" />
-              }
-            ].map((feature, i) => (
-              <div key={i} className="flex flex-col gap-6">
-                <div className="bg-white w-20 h-20 rounded-2xl flex items-center justify-center shadow-sm border border-outline-variant/10">
-                  {feature.icon}
-                </div>
-                <h3 className="text-2xl font-headline font-bold text-primary">{feature.title}</h3>
-                <p className="font-body text-secondary leading-relaxed">{feature.desc}</p>
-              </div>
+          <div className="owl-stage" ref={stageRef} onMouseMove={onStageMove}>
+            <svg className="owl" ref={owlRef} viewBox="0 0 260 260">
+              <ellipse cx="130" cy="150" rx="92" ry="98" fill="#13294A" />
+              <path d="M58 70 q6 -34 30 -40 q-8 26 -8 46z" fill="#13294A" />
+              <path d="M202 70 q-6 -34 -30 -40 q8 26 8 46z" fill="#13294A" />
+              <circle cx="130" cy="118" r="78" fill="#1C3354" />
+              <circle className="eye" cx="98" cy="110" r="34" fill="#F4F6FA" />
+              <circle className="eye" cx="162" cy="110" r="34" fill="#F4F6FA" />
+              <circle className="iris" cx="98" cy="110" r="17" />
+              <circle className="iris" cx="162" cy="110" r="17" />
+              <circle className="pupil" ref={pLRef} cx="98" cy="110" r="8" />
+              <circle className="pupil" ref={pRRef} cx="162" cy="110" r="8" />
+              <circle cx="93" cy="105" r="3" fill="#fff" opacity=".9" />
+              <circle cx="157" cy="105" r="3" fill="#fff" opacity=".9" />
+              <path d="M130 132 l-11 16 h22 z" fill="#1BA6E1" />
+            </svg>
+            <span className="watching"><i></i> Watching</span>
+            {tags.map((t) => (
+              <span key={t.id} className="owl-tag" style={{ left: t.x, top: t.y }}>{t.text}</span>
             ))}
           </div>
         </div>
-      </section>
+      </header>
 
-      {/* Social Proof / Logo Cloud */}
-      <section className="py-20 px-8 border-y border-outline-variant/10">
-        <div className="max-w-7xl mx-auto text-center">
-          <p className="label-blueprint mb-12">Trusted by candidates at top-tier firms</p>
-          <div className="flex flex-wrap justify-center gap-12 md:gap-24 opacity-40 grayscale">
-            {['McKinsey', 'BCG', 'Bain', 'Goldman Sachs', 'Morgan Stanley'].map((firm) => (
-              <span key={firm} className="font-headline font-extrabold text-2xl tracking-tighter text-primary">
-                {firm}
-              </span>
-            ))}
+      {/* STAKES */}
+      <section className="dark dark-glow sec stakes">
+        <div className="wrap sec-narrow">
+          <span className="eyebrow">The math nobody tells you</span>
+          <h2 style={{ marginTop: 14 }}>A handful of interviews decide <span className="cy">years</span> of your career.</h2>
+          <p>The top firms accept around 1 in 100. You&apos;ll get a few rounds, a few cases each, and no second takes. The people who make it aren&apos;t smarter. They&apos;ve just done it more.</p>
+          <div className="stakes-row">
+            <div className="s"><div className="v">~<span className="cy">1%</span></div><div className="l">acceptance rate</div></div>
+            <div className="s"><div className="v">3–4</div><div className="l">interviews, total</div></div>
+            <div className="s"><div className="v">0</div><div className="l">do-overs</div></div>
           </div>
         </div>
       </section>
 
-      {/* CTA Section */}
-      <section className="py-32 px-8">
-        <div className="max-w-5xl mx-auto bg-primary rounded-[2rem] p-12 md:p-20 text-center relative overflow-hidden">
-          <div className="absolute top-0 right-0 w-64 h-64 bg-on-tertiary-container/10 rounded-full -mr-32 -mt-32 blur-3xl" />
-          <div className="relative z-10">
-            <h2 className="text-4xl md:text-5xl font-headline font-extrabold text-white mb-8">
-              Ready to elevate your <br /> professional trajectory?
-            </h2>
-            <p className="text-on-tertiary-fixed-variant/80 text-lg mb-12 max-w-xl mx-auto">
-              Join thousands of successful candidates who used our platform to secure their dream offers.
-            </p>
-            <button
-              onClick={onOpenAuth}
-              className="bg-on-tertiary-container text-primary px-10 py-5 rounded-full font-headline font-bold text-lg hover:bg-tertiary-fixed transition-all active:scale-95"
-            >
-              Start Free Trial
-            </button>
+      {/* STUCK */}
+      <section className="sec stuck">
+        <div className="wrap">
+          <span className="eyebrow">Why practice stops working</span>
+          <h2>Your friends say <span className="q">&ldquo;that was great.&rdquo;</span><br />The interviewer won&apos;t.</h2>
+          <p className="sub">You can drill a hundred cases and still not improve — because nobody tells you the exact thing that&apos;s holding you back. Real feedback is too expensive, too rare, and far too polite.</p>
+        </div>
+      </section>
+
+      {/* OWL SEES */}
+      <section className="sec sees" id="sees" style={{ background: 'var(--bg-2)' }}>
+        <div className="wrap">
+          <span className="eyebrow" style={{ display: 'block', textAlign: 'center' }}>The owl misses nothing</span>
+          <h2 style={{ marginTop: 14 }}>It doesn&apos;t flatter you. It just sees everything.</h2>
+          <p className="lead">Every word, every pause, every number you waved past — caught, timestamped, and handed back to you.</p>
+          <div className="obs">
+            <div className="ob">
+              <div className="t mono">02:08</div>
+              <div><div className="said">&ldquo;I&apos;m assuming 50 million are diabetic.&rdquo;</div><div className="caught"><b>Caught:</b> a load-bearing assumption, never validated. <span className="g">Better:</span> anchor it to a real figure first.</div></div>
+            </div>
+            <div className="ob">
+              <div className="t mono">04:14</div>
+              <div><div className="said">&ldquo;will check the historical trend…&rdquo;</div><div className="caught"><b>Caught:</b> dropped subject — small slips read as nerves. <span className="g">Better:</span> &ldquo;I will check the historical trend.&rdquo;</div></div>
+            </div>
+            <div className="ob">
+              <div className="t mono">08:18</div>
+              <div><div className="said">…four seconds of silence.</div><div className="caught"><b>Caught:</b> a long pause and a fragmented answer when the pressure rose.</div></div>
+            </div>
+            <div className="ob">
+              <div className="t mono">— pace</div>
+              <div><div className="said">&ldquo;like&rdquo; × 9 · &ldquo;basically&rdquo; × 1 · 116 wpm</div><div className="caught"><b>Caught:</b> filler and pace that quietly cost you executive presence.</div></div>
+            </div>
           </div>
         </div>
       </section>
+
+      {/* RECEIPTS */}
+      <section className="sec receipts">
+        <div className="wrap">
+          <span className="eyebrow">And then</span>
+          <h2 style={{ marginTop: 14, fontSize: 'clamp(28px,4vw,46px)' }}>It hands you the receipts.</h2>
+          <div className="glimpse">
+            <div className="gt mono">thecaseowl.com / your-report</div>
+            <div className="gb">
+              <div className="gscore"><span className="v">5.2<small>/10</small></span><span className="st">Needs practice</span></div>
+              <div className="gsub">Borderline · Advanced market-entry · 8 competencies scored</div>
+              <div className="gline"><span className="nm">Structuring</span><span className="sv">4/10</span></div>
+              <div className="gline"><span className="nm">Communication</span><span className="sv">4/10</span></div>
+              <div className="gline"><span className="nm">Problem understanding</span><span className="sv ok">6/10</span></div>
+              <div className="gline"><span className="nm">Next rep · P0</span><span className="sv ok">Fix structuring</span></div>
+            </div>
+          </div>
+          <p style={{ color: 'var(--muted)', fontSize: 15, marginTop: 26 }}>A full debrief, a tagged transcript, and the one thing to fix first — every single session.</p>
+        </div>
+      </section>
+
+      {/* REPS / PRICING */}
+      <section className="dark dark-glow sec reps" id="reps">
+        <div className="wrap">
+          <span className="eyebrow" style={{ display: 'block', textAlign: 'center' }}>Pricing</span>
+          <h2 style={{ marginTop: 14 }}>How many reps before the real one?</h2>
+          <p className="lead">The candidates who walk in calm have already heard exactly where they slip. Cancel anytime.</p>
+          <div className="price">
+            <div className="pc">
+              <div className="tier">Starter</div>
+              <div className="sub">Find your gaps before committing a season.</div>
+              <div className="pp">$19<span className="per">/mo</span></div>
+              <ul><li><span className="ck">✓</span> 5 scored interviews / month</li><li><span className="ck">✓</span> Core case types</li><li><span className="ck">✓</span> Full report + transcript</li></ul>
+              <button className="btn btn-out-light" onClick={onOpenAuth}>Choose Starter</button>
+            </div>
+            <div className="pc feat">
+              <div className="badge">Most reps</div>
+              <div className="tier">Pro</div>
+              <div className="sub">Unlimited reps for an active interview season.</div>
+              <div className="pp">$49<span className="per">/mo</span></div>
+              <ul><li><span className="ck">✓</span> Unlimited interviews</li><li><span className="ck">✓</span> All firm styles + exhibits</li><li><span className="ck">✓</span> Full dashboard + trends</li><li><span className="ck">✓</span> Weak-spot targeting</li></ul>
+              <button className="btn btn-cyan" onClick={onOpenAuth}>Choose Pro</button>
+            </div>
+            <div className="pc">
+              <div className="tier">Sprint</div>
+              <div className="sub">Two intense weeks before interview day.</div>
+              <div className="pp">$79<span className="per">/2wk</span></div>
+              <ul><li><span className="ck">✓</span> Everything in Pro</li><li><span className="ck">✓</span> Daily targeted plan</li><li><span className="ck">✓</span> Full mock-day loop</li></ul>
+              <button className="btn btn-out-light" onClick={onOpenAuth}>Choose Sprint</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* FAQ */}
+      <section className="sec" id="faq">
+        <div className="wrap faq">
+          <div className="qa"><div className="q">Why isn&apos;t there a free trial interview?</div><div className="a">A full voice interview is a live, intensive session on our side, so we can&apos;t give them away. But everything above is real — <em>you can see exactly what the owl catches and what you&apos;d get back before you pay a cent.</em> Plans start small and cancel anytime.</div></div>
+          <div className="qa"><div className="q">Is it really like a real interviewer?</div><div className="a">It talks, listens, and reacts live — it interrupts when your logic drifts, drills weak assumptions, and adapts to your answers. The pressure is real, and the feedback is more detailed than any human has time to give.</div></div>
+          <div className="qa"><div className="q">What do I need to start?</div><div className="a">A microphone and a quiet room. It runs in your browser — nothing to install, nothing to schedule.</div></div>
+        </div>
+      </section>
+
+      {/* CLOSE */}
+      <section className="dark dark-glow sec close">
+        <div className="wrap">
+          <div className="resetline mono">00:00 — READY WHEN YOU ARE</div>
+          <h2>The chair is <span className="cy">empty.</span></h2>
+          <p>Sit down tonight. Make the first time you say it out loud not be the one that counts.</p>
+          <button className="btn btn-cyan" onClick={onOpenAuth}>Take the chair <span className="ar">→</span></button>
+        </div>
+      </section>
+
+      {/* FOOTER */}
+      <footer>
+        <div className="wrap foot">
+          <div className="brand" style={{ fontSize: 17 }}><OwlMark /> The Case Owl</div>
+          <div className="links"><a href="#sees">What it catches</a><a href="#reps">Pricing</a><a href="#faq">FAQ</a></div>
+          <div>© 2026 The Case Owl</div>
+        </div>
+      </footer>
     </div>
   );
 }

@@ -66,15 +66,18 @@ function AppContent() {
         onClose={() => setIsAuthModalOpen(false)}
         onLogin={handleLogin}
       />
-      <Navbar
-        showTimer={isSession}
-        isAuthenticated={isAuthenticated}
-        onLogout={handleLogout}
-        onLogin={() => setIsAuthModalOpen(true)}
-      />
+      {/* Landing is a self-contained marketing page with its own nav/footer. */}
+      {!isLanding && (
+        <Navbar
+          showTimer={isSession}
+          isAuthenticated={isAuthenticated}
+          onLogout={handleLogout}
+          onLogin={() => setIsAuthModalOpen(true)}
+        />
+      )}
       <main className={cn(
         "flex-grow w-full mx-auto",
-        isLanding ? "pt-24" : isSession ? "pt-24 px-4 lg:px-6" : "pt-24 pb-20 px-8 max-w-7xl"
+        isLanding ? "" : isSession ? "pt-24 px-4 lg:px-6" : "pt-24 pb-20 px-8 max-w-7xl"
       )}>
         <Routes>
           <Route path="/" element={<Landing onOpenAuth={() => setIsAuthModalOpen(true)} />} />
@@ -101,7 +104,7 @@ function AppContent() {
           <Route path="/settings" element={<div className="py-20 text-center text-secondary">Settings module coming soon.</div>} />
         </Routes>
       </main>
-      {!isSession && <Footer />}
+      {!isSession && !isLanding && <Footer />}
     </div>
   );
 }
