@@ -409,9 +409,14 @@ export default function Report() {
                     p.priority === 'P0' ? 'bg-error-container text-on-error-container' : p.priority === 'P1' ? 'bg-amber-100 text-amber-800' : 'bg-surface-container text-secondary')}>
                     {p.priority}
                   </span>
-                  <div>
+                  <div className="flex-grow space-y-2">
                     <p className="text-sm font-bold text-primary">{p.action}</p>
-                    <p className="text-xs text-secondary mt-0.5">{p.practiceMethod}</p>
+                    {p.detail && <p className="text-sm text-on-surface-variant leading-relaxed">{p.detail}</p>}
+                    {p.practiceMethod && (
+                      <p className="text-xs text-secondary leading-relaxed">
+                        <span className="font-bold text-on-tertiary-container">Practice drill: </span>{p.practiceMethod}
+                      </p>
+                    )}
                   </div>
                 </div>
               ))}

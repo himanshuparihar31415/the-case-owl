@@ -70,7 +70,7 @@ export async function generateEvaluationWithAI(ctx: EvaluationContext): Promise<
     ],
     response_format: { type: 'json_object' },
     temperature: 0.4,
-    max_tokens: 8000,
+    max_tokens: 12000, // detailed per-competency + improvement-plan prose; headroom so JSON never truncates
   });
   const text = response.choices[0]?.message?.content ?? '{}';
   return JSON.parse(text) as Record<string, unknown>;

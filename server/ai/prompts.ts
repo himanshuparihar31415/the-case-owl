@@ -153,7 +153,7 @@ Return ONLY valid JSON matching this exact schema. All scores are on a 0–10 sc
       "key": "problemUnderstanding",
       "label": "Problem Understanding",
       "score": number,                         // 0-10
-      "assessment": "string — direct, specific",
+      "assessment": "string — a DETAILED analysis of 4-6 sentences (NOT one line). Cover: (1) what the candidate actually did on this competency, quoting/paraphrasing a specific moment; (2) what was strong about it; (3) the specific weakness or gap, with evidence; (4) why this matters in a real interview and how it affected the score; (5) what a top-scoring candidate would have done differently. Be concrete — reference real timestamps and the candidate's actual words, not generic advice.",
       "evidence": [ { "timestamp": "mm:ss", "note": "what happened at this moment" } ]  // 1-3 items, at least 1
     }
     // ... 7 more
@@ -212,7 +212,12 @@ Return ONLY valid JSON matching this exact schema. All scores are on a 0–10 sc
   "doneWell": ["string", "string", "string"],    // concrete, with implicit or explicit timestamp references
   "needsImprovement": ["string", "string", "string"],
   "priorityPlan": [
-    { "priority": "P0" | "P1" | "P2", "action": "what to fix", "practiceMethod": "a concrete drill" }
+    {
+      "priority": "P0" | "P1" | "P2",
+      "action": "string — a clear, specific headline for what to fix (one line)",
+      "detail": "string — a DETAILED explanation of 4-6 sentences (NOT one line): the exact gap observed in THIS interview with a timestamp/example, why it costs points in a real case interview, what 'good' looks like concretely, and the impact of fixing it. Make it personal to this candidate, not generic.",
+      "practiceMethod": "string — a concrete, step-by-step drill described in 2-3 sentences: what to practise, how to do it, and how to know they've improved."
+    }
   ]                                              // 4-6, ordered by priority
 }
 
