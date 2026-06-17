@@ -53,7 +53,7 @@ Requirements:
 - Difficulty ${difficulty}/4 should reflect complexity: ${DIFFICULTY_LABELS[difficulty]}
 - Use realistic company names and numbers
 - The scenario should feel like a real client situation
-- solutionTree: MECE, 3-4 top-level branches, 2-3 levels deep; leaf nodes carry the concrete insight/number that drives the conclusion. It must logically lead to plausibleSolution.
+- solutionTree: MECE and COMPREHENSIVE — 4-5 top-level branches and 4-5 levels deep where the analysis warrants it. Decompose each branch down to specific sub-drivers/analysis steps, not just one layer. Leaf nodes carry the concrete insight/number that drives the conclusion. It must logically lead to plausibleSolution.
 - idealScript: 6-8 exchanges walking the full arc from clarifying to final recommendation, consistent with the tree
 - plausibleSolution, solutionTree, and idealScript must be mutually consistent — all leading to the same recommendation`;
 }
