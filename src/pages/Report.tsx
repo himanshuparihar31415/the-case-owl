@@ -72,6 +72,7 @@ type Filter = typeof TRANSCRIPT_FILTERS[number];
 export default function Report() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const [report, setReport] = useState<ReportData | null>(null);
+  const [fullTranscript, setFullTranscript] = useState<Array<{ role: string; text: string; timestamp?: string }>>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [expandedComp, setExpandedComp] = useState<Set<number>>(new Set());
@@ -80,10 +81,36 @@ export default function Report() {
 
   useEffect(() => {
     if (!sessionId) return;
-    api.get<{ report: ReportData }>(`/reports/${sessionId}`)
-      .then((data) => { setReport(data.report); setLoading(false); })
+    api.get<{ report: ReportData; transcript: Array<{ role: string; text: string; timestamp?: string }> }>(`/reports/${sessionId}`)
+      .then((data) => { setReport(data.report); setFullTranscript(data.transcript ?? []); setLoading(false); })
       .catch((err) => { setError(err instanceof Error ? err.message : 'Failed to load report.'); setLoading(false); });
   }, [sessionId]);
+
+  // Build a plain-text transcript and trigger a download. mm:ss is relative to
+  // the first turn so the timestamps line up with the report's evidence.
+  const downloadTranscript = () => {
+    if (!fullTranscript.length) return;
+    const start = fullTranscript[0]?.timestamp ? new Date(fullTranscript[0].timestamp).getTime() : 0;
+    const stamp = (ts?: string) => {
+      if (!ts || !start) return '  -  ';
+      const s = Math.max(0, Math.floor((new Date(ts).getTime() - start) / 1000));
+      return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+    };
+    const title = (report as any)?.caseTitle || a?.caseTitle || 'Case Interview';
+    const header = `THE CASE OWL — Interview Transcript\n${title}\n${'='.repeat(48)}\n\n`;
+    const body = fullTranscript
+      .map((t) => `[${stamp(t.timestamp)}] ${t.role === 'candidate' ? 'YOU' : 'INTERVIEWER'}: ${t.text}`)
+      .join('\n\n');
+    const blob = new Blob([header + body + '\n'], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `transcript-${sessionId}.txt`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  };
 
   const a = report?.analysis;
 
@@ -498,9 +525,14 @@ export default function Report() {
 
       {/* Footer actions */}
       <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-6 bg-surface-container rounded-xl">
-        <button onClick={() => window.print()} className="flex items-center gap-2 px-5 py-3 bg-white text-primary border border-outline-variant/20 font-bold rounded-lg hover:bg-surface-container-low transition w-full sm:w-auto justify-center">
-          <Download className="w-4 h-4" /> Download Report
-        </button>
+        <div className="flex gap-3 w-full sm:w-auto">
+          <button onClick={() => window.print()} className="flex-1 sm:flex-none flex items-center gap-2 px-5 py-3 bg-white text-primary border border-outline-variant/20 font-bold rounded-lg hover:bg-surface-container-low transition justify-center">
+            <Download className="w-4 h-4" /> Download Report
+          </button>
+          <button onClick={downloadTranscript} disabled={!fullTranscript.length} className="flex-1 sm:flex-none flex items-center gap-2 px-5 py-3 bg-white text-primary border border-outline-variant/20 font-bold rounded-lg hover:bg-surface-container-low transition justify-center disabled:opacity-40 disabled:cursor-not-allowed">
+            <Download className="w-4 h-4" /> Full Transcript
+          </button>
+        </div>
         <div className="flex gap-3 w-full sm:w-auto">
           <Link to="/config" className="flex-1 sm:flex-none flex items-center gap-2 px-5 py-3 border border-outline-variant/20 text-primary font-bold rounded-lg hover:bg-surface-container-low transition justify-center">
             <RefreshCw className="w-4 h-4" /> Retry Case
