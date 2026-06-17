@@ -9,8 +9,11 @@ import { INTERVIEWER_SYSTEM_PROMPT } from '../../ai/prompts.js';
 import { appendTranscript, settleSession } from '../sessions/session.service.js';
 import { CaseType } from '../../models/Case.js';
 
-// gpt-4o-realtime-preview-* were all shut down 2026-05-07; GA model is gpt-realtime.
-const OPENAI_REALTIME_URL = 'wss://api.openai.com/v1/realtime?model=gpt-realtime';
+// gpt-4o-realtime-preview-* were all shut down 2026-05-07. gpt-realtime-2 (released
+// 2026-05-07) is the current top realtime voice model — GPT-5-class reasoning,
+// stronger instruction-following. Same Realtime API, so the session schema below
+// is unchanged. Fall back to gpt-realtime if you ever need to cut cost/latency.
+const OPENAI_REALTIME_URL = 'wss://api.openai.com/v1/realtime?model=gpt-realtime-2';
 
 function extractToken(req: IncomingMessage): string | null {
   const url = new URL(req.url ?? '', `http://${req.headers.host}`);
