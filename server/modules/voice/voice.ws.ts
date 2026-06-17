@@ -148,7 +148,11 @@ async function handleConnection(clientWs: WebSocket, req: IncomingMessage): Prom
               transcription: { model: 'whisper-1' },
               turn_detection: {
                 type: 'server_vad',
-                threshold: 0.5,
+                // Higher threshold = less sensitive: the audio must be clearly
+                // speech (not background noise / room tone) before it counts as
+                // the candidate's turn. 0.5 was too trigger-happy and the AI
+                // kept interrupting itself on noise; 0.75 needs real speech.
+                threshold: 0.75,
                 prefix_padding_ms: 300,
                 // Wait ~550ms of silence before the AI takes its turn — long
                 // enough to not cut the candidate off mid-thought, short enough

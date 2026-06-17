@@ -214,7 +214,15 @@ export default function Session() {
     const ws = wsRef.current;
     if (!ws) return;
 
-    navigator.mediaDevices.getUserMedia({ audio: true, video: false }).then((stream: MediaStream) => {
+    navigator.mediaDevices.getUserMedia({
+      // Let the browser DSP clean the mic before it ever reaches the VAD:
+      // echoCancellation stops the AI's own voice (from the speakers) being
+      // heard as the candidate talking, noiseSuppression strips background hum,
+      // autoGainControl levels the volume. Without these, bare `audio: true`
+      // sends raw mic and the server VAD misfires on every little sound.
+      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      video: false,
+    }).then((stream: MediaStream) => {
       micStreamRef.current = stream;
       // Must match the input rate the server declares to OpenAI (24kHz). A
       // mismatch makes the candidate's speech sound sped-up/garbled to the
