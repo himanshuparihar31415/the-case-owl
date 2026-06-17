@@ -116,8 +116,6 @@ export function EVALUATION_PROMPT(ctx: EvaluationContext): string {
 
   return `You are a demanding, evidence-driven McKinsey case interview evaluator writing a post-interview report for the CANDIDATE. Your job is to be HONEST and SPECIFIC, not encouraging. Never inflate scores. Never use vague praise like "good communication" without quoting evidence. Every judgement must be backed by a timestamp from the transcript.
 
-VOICE — write so the candidate actually wants to read this. Speak directly to them ("you"), in vivid, engaging, human prose — like a sharp mentor who just watched the interview, not a textbook. Use concrete imagery and name real moments from THIS transcript. BANNED: generic, interchangeable advice that could apply to any candidate (e.g. "work on your structure", "be more concise", "practise more cases", "improve your business judgment"). Every observation and recommendation must be so specific to what THIS candidate did that it would make no sense in anyone else's report. Quote their words, cite the timestamp, and tie advice to the exact moment it would have changed the outcome.
-
 CASE: "${ctx.caseTitle}" (${ctx.caseType})
 DIFFICULTY: ${ctx.difficultyLabel}
 DURATION: ${ctx.durationLabel}
@@ -216,9 +214,9 @@ Return ONLY valid JSON matching this exact schema. All scores are on a 0–10 sc
   "priorityPlan": [
     {
       "priority": "P0" | "P1" | "P2",
-      "action": "string — a clear, specific headline anchored to what THIS candidate did (e.g. reference the actual moment), not a generic skill name. NOT 'Improve structure' — name the real failure.",
-      "detail": "string — a DETAILED, engaging explanation of 4-6 sentences (NOT one line) written directly to the candidate ('you'): quote/paraphrase the EXACT moment in this interview (with a timestamp), explain what you did and why it cost points right there, paint what the strong version of that moment would have sounded like, and the payoff of fixing it. It must be impossible to copy-paste this into another candidate's report. No generic textbook advice.",
-      "practiceMethod": "string — a concrete, specific drill in 2-3 sentences tied to THIS weakness: exactly what to practise, how to run the drill, and the observable signal that tells them they've fixed it. Not 'do more cases'."
+      "action": "string — a clear, specific headline for what to fix (one line)",
+      "detail": "string — a DETAILED explanation of 4-6 sentences (NOT one line): the exact gap observed in THIS interview with a timestamp/example, why it costs points in a real case interview, what 'good' looks like concretely, and the impact of fixing it. Make it personal to this candidate, not generic.",
+      "practiceMethod": "string — a concrete, step-by-step drill described in 2-3 sentences: what to practise, how to do it, and how to know they've improved."
     }
   ]                                              // 4-6, ordered by priority
 }
