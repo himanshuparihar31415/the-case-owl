@@ -27,7 +27,24 @@ Return ONLY valid JSON matching this exact schema:
   "keyDataPoints": [
     { "label": "string", "value": "string" }
   ],
-  "questions": ["string", "string", "string", "string"]
+  "questions": ["string", "string", "string", "string"],
+  "plausibleSolution": "string — the model answer to THIS case in 3-5 sentences: the bottom-line recommendation plus the 2-3 key drivers and the numbers that prove it. This is the conclusion a strong candidate should converge on.",
+  "solutionTree": {
+    "label": "the core question the case is really asking",
+    "insight": "one line on what cracking this question requires",
+    "children": [
+      {
+        "label": "a MECE top-level branch of the analysis",
+        "insight": "what this branch reveals and why it matters",
+        "children": [
+          { "label": "sub-driver or analysis step", "insight": "the finding at this node (use real numbers from keyDataPoints where relevant)" }
+        ]
+      }
+    ]
+  },
+  "idealScript": [
+    { "stage": "string (e.g. Clarifying, Structuring, Analysis, Quant, Risks, Recommendation)", "interviewer": "what a sharp interviewer asks at this stage", "idealResponse": "what a top candidate answers — concise and concrete" }
+  ]
 }
 
 Requirements:
@@ -35,7 +52,10 @@ Requirements:
 - questions: 4 progressive interviewer questions that follow ${FRAMEWORK_BY_TYPE[type]}
 - Difficulty ${difficulty}/4 should reflect complexity: ${DIFFICULTY_LABELS[difficulty]}
 - Use realistic company names and numbers
-- The scenario should feel like a real client situation`;
+- The scenario should feel like a real client situation
+- solutionTree: MECE, 3-4 top-level branches, 2-3 levels deep; leaf nodes carry the concrete insight/number that drives the conclusion. It must logically lead to plausibleSolution.
+- idealScript: 6-8 exchanges walking the full arc from clarifying to final recommendation, consistent with the tree
+- plausibleSolution, solutionTree, and idealScript must be mutually consistent — all leading to the same recommendation`;
 }
 
 export function HINT_PROMPT(transcriptText: string): string {
@@ -275,7 +295,8 @@ export function INTERVIEWER_SYSTEM_PROMPT(
   caseType: CaseType,
   difficulty: number,
   interviewerStyle: 'supportive' | 'neutral' | 'stress',
-  durationMinutes: number = 45
+  durationMinutes: number = 30,
+  solutionSummary?: string
 ): string {
   const styleDescriptions = {
     // Friendly EM: more Socratic, moderate pressure — but still never hands out answers.
@@ -287,6 +308,11 @@ export function INTERVIEWER_SYSTEM_PROMPT(
   };
 
   const dataPointsText = keyDataPoints.map((dp) => `  - ${dp.label}: ${dp.value}`).join('\n');
+
+  // Private answer key: steers the interview toward a real conclusion. NEVER surfaced.
+  const solutionBlock = solutionSummary
+    ? `\n\nINTERNAL ANSWER KEY (PRIVATE — never reveal, never hint at, never read out): the strong conclusion to this case is roughly:\n${solutionSummary}\nUse this only to judge the candidate's direction and to steer the case toward a meaningful close — probe hardest on the gaps between their thinking and this. Do NOT lead them to it.`
+    : '';
 
   return `You are Alex, a McKinsey interviewer running a live, spoken case interview.
 
@@ -300,7 +326,7 @@ SCENARIO (your internal context — present a shorter version to the candidate):
 ${scenario}
 
 KEY DATA (share these selectively when asked or when relevant):
-${dataPointsText}
+${dataPointsText}${solutionBlock}
 
 YOUR JOB
 Assess how this candidate thinks — you are NOT here to teach. Default to challenging an answer, not accepting it. You care about prioritisation, hypotheses, business implications, and judgment — not frameworks or exhaustive analysis.

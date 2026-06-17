@@ -42,6 +42,9 @@ export async function generateCaseWithAI(type: CaseType, industry: Industry, dif
     scenario: string;
     keyDataPoints: Array<{ label: string; value: string }>;
     questions: string[];
+    plausibleSolution?: string;
+    solutionTree?: unknown;
+    idealScript?: Array<{ stage: string; interviewer: string; idealResponse: string }>;
   }>(
     'You are a McKinsey case interview designer. Return only valid JSON.',
     prompt

@@ -63,8 +63,30 @@ const SECTIONS = [
   ['hints', 'Hint Dependency'],
   ['ideal', 'Ideal Answers'],
   ['plan', 'Improvement Plan'],
+  ['solution', 'Model Solution'],
+  ['script', 'Ideal Script'],
   ['progress', 'Progress Over Time'],
 ] as const;
+
+// Recursive node for the comprehensive solution tree. Indented with connector
+// lines; each node carries a label and an optional insight/finding.
+function SolutionNode({ node, depth = 0 }: { node: any; depth?: number }) {
+  if (!node) return null;
+  const children: any[] = node.children ?? [];
+  return (
+    <div className={cn(depth > 0 && 'ml-3 pl-4 border-l border-outline-variant/30')}>
+      <div className="py-1.5">
+        <p className={cn('font-bold text-primary', depth === 0 ? 'text-base' : 'text-sm')}>{node.label}</p>
+        {node.insight && <p className="text-xs text-on-surface-variant mt-0.5 leading-relaxed">{node.insight}</p>}
+      </div>
+      {children.length > 0 && (
+        <div className="space-y-1">
+          {children.map((c, i) => <React.Fragment key={i}><SolutionNode node={c} depth={depth + 1} /></React.Fragment>)}
+        </div>
+      )}
+    </div>
+  );
+}
 
 const TRANSCRIPT_FILTERS = ['All', 'Strengths', 'Critical Issues', 'Grammar', 'Quantitative', 'Missed Opportunities', 'Hint Usage'] as const;
 type Filter = typeof TRANSCRIPT_FILTERS[number];
@@ -72,6 +94,7 @@ type Filter = typeof TRANSCRIPT_FILTERS[number];
 export default function Report() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const [report, setReport] = useState<ReportData | null>(null);
+  const [solution, setSolution] = useState<{ plausibleSolution?: string; solutionTree?: any; idealScript?: any[] } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [expandedComp, setExpandedComp] = useState<Set<number>>(new Set());
@@ -80,8 +103,8 @@ export default function Report() {
 
   useEffect(() => {
     if (!sessionId) return;
-    api.get<{ report: ReportData }>(`/reports/${sessionId}`)
-      .then((data) => { setReport(data.report); setLoading(false); })
+    api.get<{ report: ReportData; solution: typeof solution }>(`/reports/${sessionId}`)
+      .then((data) => { setReport(data.report); setSolution(data.solution ?? null); setLoading(false); })
       .catch((err) => { setError(err instanceof Error ? err.message : 'Failed to load report.'); setLoading(false); });
   }, [sessionId]);
 
@@ -184,7 +207,12 @@ export default function Report() {
 
       {/* Section nav */}
       <nav className="sticky top-20 z-10 bg-surface/90 backdrop-blur-sm -mx-1 px-1 py-2 flex gap-1 overflow-x-auto scrolling-log border-b border-outline-variant/15">
-        {SECTIONS.map(([id, label]) => (
+        {SECTIONS.filter(([id]) => {
+          // Hide the solution/script tabs when this case has no answer key (legacy/custom).
+          if (id === 'solution') return !!(solution && (solution.plausibleSolution || solution.solutionTree));
+          if (id === 'script') return !!(solution && Array.isArray(solution.idealScript) && solution.idealScript.length > 0);
+          return true;
+        }).map(([id, label]) => (
           <a key={id} href={`#${id}`} className="shrink-0 px-3 py-1.5 rounded-md text-xs font-medium text-secondary hover:text-primary hover:bg-surface-container-low transition">
             {label}
           </a>
@@ -422,6 +450,47 @@ export default function Report() {
               ))}
             </div>
           </Section>
+
+          {/* Model Solution — the pre-generated answer key + solution tree */}
+          {solution && (solution.plausibleSolution || solution.solutionTree) && (
+            <Section id="solution" title="Model Solution" action={<span className="label-blueprint">the answer key</span>}>
+              <div className="space-y-4">
+                {solution.plausibleSolution && (
+                  <div className="no-line-card p-6 border-l-4 border-on-tertiary-container">
+                    <p className="label-blueprint text-on-tertiary-container font-bold mb-2">The recommendation</p>
+                    <p className="text-sm text-primary leading-relaxed">{solution.plausibleSolution}</p>
+                  </div>
+                )}
+                {solution.solutionTree && (
+                  <div className="no-line-card p-6">
+                    <p className="label-blueprint text-secondary font-bold mb-4">How a strong candidate gets there — solution tree</p>
+                    <SolutionNode node={solution.solutionTree} />
+                  </div>
+                )}
+              </div>
+            </Section>
+          )}
+
+          {/* Ideal Interview Script */}
+          {solution && Array.isArray(solution.idealScript) && solution.idealScript.length > 0 && (
+            <Section id="script" title="Ideal Interview Script" action={<span className="label-blueprint">how it should have flowed</span>}>
+              <div className="space-y-3">
+                {solution.idealScript.map((s: any, i: number) => (
+                  <div key={i} className="no-line-card p-5">
+                    {s.stage && <p className="label-blueprint text-on-tertiary-container font-bold mb-2">{s.stage}</p>}
+                    {s.interviewer && (
+                      <p className="text-sm text-primary mb-2"><span className="font-bold">Interviewer:</span> {s.interviewer}</p>
+                    )}
+                    {s.idealResponse && (
+                      <p className="text-sm text-on-surface-variant leading-relaxed border-l-2 border-outline-variant/40 pl-3">
+                        <span className="font-bold text-secondary">Strong answer:</span> {s.idealResponse}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </Section>
+          )}
 
           {/* Progress */}
           <Section id="progress" title="Progress Over Time">

@@ -12,6 +12,12 @@ export interface ICase extends Document {
   scenario: string;
   keyDataPoints: Array<{ label: string; value: string }>;
   questions: string[];
+  // Pre-generated "answer key" — used to steer the live interview toward a
+  // meaningful conclusion, then shown to the user in the report. Optional:
+  // seeded/custom/legacy cases won't have these.
+  plausibleSolution?: string;
+  solutionTree?: unknown; // recursive { label, insight?, children? }
+  idealScript?: Array<{ stage: string; interviewer: string; idealResponse: string }>;
   isSeeded: boolean;
   generatedAt: Date;
   isCustom: boolean;
@@ -36,6 +42,9 @@ const CaseSchema = new Schema<ICase>(
     scenario: { type: String, required: true },
     keyDataPoints: [{ label: String, value: String }],
     questions: [String],
+    plausibleSolution: { type: String },
+    solutionTree: { type: Schema.Types.Mixed },
+    idealScript: { type: Schema.Types.Mixed },
     isSeeded: { type: Boolean, default: false },
     generatedAt: { type: Date, default: Date.now },
     isCustom: { type: Boolean, default: false },
