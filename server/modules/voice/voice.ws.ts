@@ -90,7 +90,10 @@ async function handleConnection(clientWs: WebSocket, req: IncomingMessage): Prom
       caseDoc.keyDataPoints,
       caseDoc.type as CaseType,
       session.config.difficulty,
-      session.config.interviewerStyle
+      session.config.interviewerStyle,
+      session.reservedMinutes && session.reservedMinutes > 0
+        ? session.reservedMinutes
+        : (session.config.durationMinutes || 45)
     );
 
     // Fail fast if no API key configured
