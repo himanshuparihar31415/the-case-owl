@@ -121,7 +121,7 @@ async function handleConnection(clientWs: WebSocket, req: IncomingMessage): Prom
     // session from burning unbounded API cost.
     const capMinutes = session.reservedMinutes && session.reservedMinutes > 0
       ? session.reservedMinutes
-      : (session.config.durationMinutes || 30);
+      : (session.config.durationMinutes || 45); // align with the prompt-builder fallback
     const capTimer = setTimeout(() => {
       sendToClient(clientWs, { type: 'error', message: `Time limit reached (${capMinutes} min). Wrapping up your session.` });
       sendToClient(clientWs, { type: 'session_ended' });
@@ -160,15 +160,19 @@ async function handleConnection(clientWs: WebSocket, req: IncomingMessage): Prom
           audio: {
             input: {
               format: { type: 'audio/pcm', rate: 24000 },
-              transcription: { model: 'whisper-1' },
+              // gpt-realtime-whisper: the streaming STT released with gpt-realtime-2;
+              // better candidate transcripts than the old whisper-1 (bad transcription
+              // is itself a "not listening" failure mode).
+              transcription: { model: 'gpt-realtime-whisper' },
               turn_detection: {
-                // Back to server_vad: it gives explicit knobs semantic_vad lacks
-                // — `threshold` for noise rejection and `silence_duration_ms` for
-                // how long to wait before replying. Semantic VAD felt erratic.
+                // server_vad gives explicit knobs (threshold + silence_duration);
+                // semantic_vad felt erratic for this app.
                 type: 'server_vad',
-                // Matched to the Playground values that felt right in testing.
                 threshold: 0.63,
-                prefix_padding_ms: 1000,
+                // prefix_padding = how much audio BEFORE speech onset is kept.
+                // Keep it small (200-500ms); high values fold trailing AI audio /
+                // room noise into the candidate's turn. (1000 was too high.)
+                prefix_padding_ms: 400,
                 // 1330ms of silence before taking a turn — gives candidates room
                 // to think mid-answer instead of firing into a thinking pause.
                 silence_duration_ms: 1330,
@@ -304,17 +308,15 @@ async function handleConnection(clientWs: WebSocket, req: IncomingMessage): Prom
             audio: message.data,
           };
           openaiWs.send(JSON.stringify(audioAppend));
-        } else if (message.type === 'audio_commit') {
-          // Client signals end of speech turn
-          openaiWs.send(JSON.stringify({ type: 'input_audio_buffer.commit' }));
-          openaiWs.send(JSON.stringify({ type: 'response.create' }));
-        } else if (message.type === 'interrupt') {
-          // Cancel current AI response
-          openaiWs.send(JSON.stringify({ type: 'response.cancel' }));
         } else if (message.type === 'end_session') {
           openaiWs.close();
           clientWs.close();
         }
+        // NOTE: server_vad owns turn-taking (create_response) AND barge-in
+        // (interrupt_response). We deliberately do NOT handle manual 'audio_commit'
+        // or 'interrupt' here — committing/creating a response ourselves would
+        // produce a SECOND response for the same turn (the double-speak bug). The
+        // browser only sends audio_chunk + end_session; the server drives turns.
       } catch {
         // Handle raw binary audio (PCM16 directly)
         if (Buffer.isBuffer(data) && openaiReady) {
