@@ -162,13 +162,15 @@ async function handleConnection(clientWs: WebSocket, req: IncomingMessage): Prom
                 // — `threshold` for noise rejection and `silence_duration_ms` for
                 // how long to wait before replying. Semantic VAD felt erratic.
                 type: 'server_vad',
-                // 0.6: moderate — sensitive enough to hear a soft voice (so it
-                // doesn't ignore the candidate) without firing on room noise.
-                threshold: 0.6,
-                prefix_padding_ms: 300,
-                // 800ms: patient — waits a beat longer so it doesn't cut the
-                // candidate off mid-thought or jump in too fast.
-                silence_duration_ms: 800,
+                // 0.65: needs clearly-speech audio to trigger (rejects room noise).
+                threshold: 0.65,
+                // 400ms: a touch more lead-in before deciding they've started.
+                prefix_padding_ms: 400,
+                // 1200ms: the key knob. Candidates pause to THINK mid-answer;
+                // at ~500-800ms the model treated a thinking pause as "your turn
+                // done" and fired into silence (the "I didn't catch that" x2 bug).
+                // 1.2s of silence gives real room before it takes its turn.
+                silence_duration_ms: 1200,
                 create_response: true,
                 interrupt_response: true,
               },
