@@ -152,6 +152,10 @@ async function handleConnection(clientWs: WebSocket, req: IncomingMessage): Prom
           // NOTE: the GA Realtime session schema does not accept a top-level
           // `temperature` — sending it makes OpenAI reject the whole
           // session.update. Steer consistency via the prompt instead.
+          // Reasoning effort for gpt-realtime-2 (minimal|low|medium|high|xhigh;
+          // default low). 'high' = sharper, less shallow follow-ups, at the cost
+          // of slower replies. Drop to 'medium'/'low' if latency hurts.
+          reasoning: { effort: 'high' },
           output_modalities: ['audio'],
           audio: {
             input: {
@@ -162,15 +166,12 @@ async function handleConnection(clientWs: WebSocket, req: IncomingMessage): Prom
                 // — `threshold` for noise rejection and `silence_duration_ms` for
                 // how long to wait before replying. Semantic VAD felt erratic.
                 type: 'server_vad',
-                // 0.65: needs clearly-speech audio to trigger (rejects room noise).
-                threshold: 0.65,
-                // 400ms: a touch more lead-in before deciding they've started.
-                prefix_padding_ms: 400,
-                // 1200ms: the key knob. Candidates pause to THINK mid-answer;
-                // at ~500-800ms the model treated a thinking pause as "your turn
-                // done" and fired into silence (the "I didn't catch that" x2 bug).
-                // 1.2s of silence gives real room before it takes its turn.
-                silence_duration_ms: 1200,
+                // Matched to the Playground values that felt right in testing.
+                threshold: 0.63,
+                prefix_padding_ms: 1000,
+                // 1330ms of silence before taking a turn — gives candidates room
+                // to think mid-answer instead of firing into a thinking pause.
+                silence_duration_ms: 1330,
                 create_response: true,
                 interrupt_response: true,
               },
