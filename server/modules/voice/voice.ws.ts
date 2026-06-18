@@ -148,9 +148,9 @@ async function handleConnection(clientWs: WebSocket, req: IncomingMessage): Prom
         session: {
           type: 'realtime',
           instructions: systemPrompt,
-          // Lower-ish temperature keeps the interviewer consistent and on-task
-          // (less improvising). Realtime requires >= 0.6; 0.75 is a calm middle.
-          temperature: 0.75,
+          // NOTE: the GA Realtime session schema does not accept a top-level
+          // `temperature` — sending it makes OpenAI reject the whole
+          // session.update. Steer consistency via the prompt instead.
           output_modalities: ['audio'],
           audio: {
             input: {
