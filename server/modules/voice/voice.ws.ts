@@ -114,6 +114,11 @@ async function handleConnection(clientWs: WebSocket, req: IncomingMessage): Prom
     });
 
     let openaiReady = false;
+    // Guard: the AI greeting must fire EXACTLY once. `session.updated` can be
+    // emitted more than once (and we may send session.update again later), and
+    // each one would otherwise trigger another response.create → the "two
+    // greetings at 00:00" double-message bug.
+    let greeted = false;
 
     // HARD STOP (non-negotiable guardrail): kill the session when it reaches the
     // minutes reserved for it (bounded by the plan's per-interview cap). This is
@@ -198,9 +203,14 @@ async function handleConnection(clientWs: WebSocket, req: IncomingMessage): Prom
 
         switch (event.type) {
           case 'session.updated':
-            // Session is configured — trigger AI greeting and tell client we're ready
-            openaiWs.send(JSON.stringify({ type: 'response.create' }));
-            sendToClient(clientWs, { type: 'session_ready' });
+            // Session is configured — trigger the AI greeting ONCE, and tell the
+            // client we're ready. Guarded so a repeated session.updated can't
+            // fire a second greeting (the double-message bug).
+            if (!greeted) {
+              greeted = true;
+              openaiWs.send(JSON.stringify({ type: 'response.create' }));
+              sendToClient(clientWs, { type: 'session_ready' });
+            }
             break;
 
           case 'input_audio_buffer.speech_started':
