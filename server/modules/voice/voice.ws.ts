@@ -8,6 +8,7 @@ import { Case } from '../../models/Case.js';
 import { INTERVIEWER_SYSTEM_PROMPT } from '../../ai/prompts.js';
 import { appendTranscript, settleSession } from '../sessions/session.service.js';
 import { CaseType } from '../../models/Case.js';
+import { buildForbiddenList, deterministicCheck } from './supervisor.js';
 
 // gpt-4o-realtime-preview-* were all shut down 2026-05-07. gpt-realtime-2 (released
 // 2026-05-07) is the current top realtime voice model — GPT-5-class reasoning,
@@ -112,6 +113,10 @@ async function handleConnection(clientWs: WebSocket, req: IncomingMessage): Prom
         // GA Realtime interface no longer uses the OpenAI-Beta header.
       },
     });
+
+    // Silent supervisor (observe-only for now): flags leading / fed-data per turn.
+    const forbidden = buildForbiddenList(caseDoc);
+    const candidateHistory: string[] = [];
 
     let openaiReady = false;
     // Guard: the AI greeting must fire EXACTLY once. `session.updated` can be
@@ -248,6 +253,11 @@ async function handleConnection(clientWs: WebSocket, req: IncomingMessage): Prom
                 role: 'interviewer',
                 text: event.transcript,
               });
+              // Supervisor (observe-only): flag if the interviewer led or fed data.
+              const check = deterministicCheck(event.transcript, candidateHistory, forbidden);
+              if (check.verdict !== 'OK') {
+                console.warn(`[supervisor] session=${sessionId} ${check.verdict} term="${check.term}"`);
+              }
               // Fix 1: don't let DB errors crash the WS handler
               await appendTranscript(sessionId, {
                 role: 'interviewer',
@@ -260,6 +270,7 @@ async function handleConnection(clientWs: WebSocket, req: IncomingMessage): Prom
           case 'conversation.item.input_audio_transcription.completed':
             // Candidate speech transcribed — save and display
             if (event.transcript) {
+              candidateHistory.push(event.transcript); // supervisor: what they've earned
               sendToClient(clientWs, {
                 type: 'transcript',
                 role: 'candidate',
