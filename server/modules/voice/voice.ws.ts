@@ -257,6 +257,11 @@ async function handleConnection(clientWs: WebSocket, req: IncomingMessage): Prom
               const check = deterministicCheck(event.transcript, candidateHistory, forbidden);
               if (check.verdict !== 'OK') {
                 console.warn(`[supervisor] session=${sessionId} ${check.verdict} term="${check.term}"`);
+                // Persist for the admin compliance block in the report (fire-and-forget).
+                Session.updateOne(
+                  { _id: sessionId },
+                  { $push: { supervisorFlags: { verdict: check.verdict, term: check.term, at: new Date().toISOString() } } }
+                ).catch((e) => console.error('supervisorFlags persist failed:', e));
               }
               // Fix 1: don't let DB errors crash the WS handler
               await appendTranscript(sessionId, {

@@ -24,6 +24,8 @@ export interface ISession extends Document {
   transcript: TranscriptEntry[];
   // Candidate's private working notes, submitted when the session ends.
   scratchpad?: string;
+  // Silent-supervisor compliance flags (admin-only). Mixed array.
+  supervisorFlags?: unknown[];
   // Credits (minutes) held for this session at start; settled (consumed +
   // released) exactly once when the session ends or is abandoned.
   reservedMinutes?: number;
@@ -57,6 +59,8 @@ const SessionSchema = new Schema<ISession>(
       },
     ],
     scratchpad: { type: String },
+    // Silent-supervisor flags (LED / FED_DATA) — admin-only debug/compliance.
+    supervisorFlags: { type: [Schema.Types.Mixed], default: [] },
     reservedMinutes: { type: Number, default: 0 },
     settled: { type: Boolean, default: false },
     startedAt: { type: Date, default: Date.now },

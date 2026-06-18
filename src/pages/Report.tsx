@@ -96,6 +96,7 @@ export default function Report() {
   const [report, setReport] = useState<ReportData | null>(null);
   const [solution, setSolution] = useState<{ plausibleSolution?: string; solutionTree?: any; idealScript?: any[] } | null>(null);
   const [fullTranscript, setFullTranscript] = useState<Array<{ role: string; text: string; timestamp?: string }>>([]);
+  const [supervisor, setSupervisor] = useState<Array<{ verdict: string; term?: string; at?: string }> | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [expandedComp, setExpandedComp] = useState<Set<number>>(new Set());
@@ -104,8 +105,8 @@ export default function Report() {
 
   useEffect(() => {
     if (!sessionId) return;
-    api.get<{ report: ReportData; solution: typeof solution; transcript: typeof fullTranscript }>(`/reports/${sessionId}`)
-      .then((data) => { setReport(data.report); setSolution(data.solution ?? null); setFullTranscript(data.transcript ?? []); setLoading(false); })
+    api.get<{ report: ReportData; solution: typeof solution; transcript: typeof fullTranscript; supervisor?: typeof supervisor }>(`/reports/${sessionId}`)
+      .then((data) => { setReport(data.report); setSolution(data.solution ?? null); setFullTranscript(data.transcript ?? []); setSupervisor(data.supervisor ?? null); setLoading(false); })
       .catch((err) => { setError(err instanceof Error ? err.message : 'Failed to load report.'); setLoading(false); });
   }, [sessionId]);
 
@@ -591,6 +592,26 @@ export default function Report() {
           </div>
         </div>
       </div>
+
+      {/* Admin-only: silent-supervisor compliance flags */}
+      {supervisor && (
+        <div className="rounded-xl border border-dashed border-outline-variant/40 p-5 bg-surface-container-lowest">
+          <p className="label-blueprint text-secondary font-bold mb-2">Interviewer compliance (admin · debug)</p>
+          {supervisor.length === 0 ? (
+            <p className="text-sm text-green-700">No leading or fed-data flags this session. ✓</p>
+          ) : (
+            <div className="space-y-1.5">
+              <p className="text-sm font-bold text-amber-700">{supervisor.length} flag{supervisor.length > 1 ? 's' : ''}:</p>
+              {supervisor.map((f, i) => (
+                <div key={i} className="text-xs text-on-surface-variant flex gap-2">
+                  <span className={cn('font-mono font-bold', f.verdict === 'FED_DATA' ? 'text-error' : 'text-amber-600')}>{f.verdict}</span>
+                  <span>named “{f.term}” before the candidate did</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Footer actions */}
       <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-6 bg-surface-container rounded-xl">

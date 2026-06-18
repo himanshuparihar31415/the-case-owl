@@ -3,6 +3,7 @@ import * as reportService from './report.service.js';
 import { AuthRequest } from '../../middleware/auth.js';
 import { Session } from '../../models/Session.js';
 import { Case } from '../../models/Case.js';
+import { User } from '../../models/User.js';
 
 export async function getReport(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
   try {
@@ -13,7 +14,7 @@ export async function getReport(req: AuthRequest, res: Response, next: NextFunct
     let solution: { plausibleSolution?: string; solutionTree?: unknown; idealScript?: unknown } | null = null;
     // Also ship the FULL transcript (every turn) so the user can download the
     // complete conversation — the report's analysis only carries key turns.
-    const session = await Session.findOne({ _id: req.params.sessionId, userId: req.userId! }).select('caseId transcript');
+    const session = await Session.findOne({ _id: req.params.sessionId, userId: req.userId! }).select('caseId transcript supervisorFlags');
     if (session?.caseId) {
       const caseDoc = await Case.findById(session.caseId).select('plausibleSolution solutionTree idealScript');
       if (caseDoc && (caseDoc.plausibleSolution || caseDoc.solutionTree || caseDoc.idealScript)) {
@@ -24,7 +25,12 @@ export async function getReport(req: AuthRequest, res: Response, next: NextFunct
         };
       }
     }
-    res.json({ report, solution, transcript: session?.transcript ?? [] });
+    // Supervisor compliance flags are admin-only debug data — omit for everyone else.
+    let supervisor: unknown[] | undefined;
+    const me = await User.findById(req.userId!).select('role');
+    if (me?.role === 'admin') supervisor = session?.supervisorFlags ?? [];
+
+    res.json({ report, solution, transcript: session?.transcript ?? [], supervisor });
   } catch (err) {
     next(err);
   }
