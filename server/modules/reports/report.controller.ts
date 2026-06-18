@@ -11,7 +11,9 @@ export async function getReport(req: AuthRequest, res: Response, next: NextFunct
     // so the report can show it at the end. Lives on the case; absent for
     // legacy/seeded/custom cases.
     let solution: { plausibleSolution?: string; solutionTree?: unknown; idealScript?: unknown } | null = null;
-    const session = await Session.findOne({ _id: req.params.sessionId, userId: req.userId! }).select('caseId');
+    // Also ship the FULL transcript (every turn) so the user can download the
+    // complete conversation — the report's analysis only carries key turns.
+    const session = await Session.findOne({ _id: req.params.sessionId, userId: req.userId! }).select('caseId transcript');
     if (session?.caseId) {
       const caseDoc = await Case.findById(session.caseId).select('plausibleSolution solutionTree idealScript');
       if (caseDoc && (caseDoc.plausibleSolution || caseDoc.solutionTree || caseDoc.idealScript)) {
@@ -22,7 +24,7 @@ export async function getReport(req: AuthRequest, res: Response, next: NextFunct
         };
       }
     }
-    res.json({ report, solution });
+    res.json({ report, solution, transcript: session?.transcript ?? [] });
   } catch (err) {
     next(err);
   }
