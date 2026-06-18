@@ -11,12 +11,20 @@ function normalize(s: string): string {
   return String(s).toLowerCase().replace(/[^a-z0-9%$.\s]/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
-// Generic case vocabulary that's fair game — using these isn't "leading".
+// Generic case/analytical vocabulary that's fair game — using these isn't
+// "leading". Leading is naming a SPECIFIC mechanism (e.g. "channel mix",
+// "freight", "payer access"), not generic framework concepts ("market size",
+// "growth rate", "market attractiveness").
 const GENERIC = new Set([
   'revenue', 'revenues', 'cost', 'costs', 'price', 'pricing', 'market', 'markets',
   'growth', 'profit', 'profits', 'margin', 'margins', 'customer', 'customers',
   'product', 'products', 'volume', 'sales', 'demand', 'supply', 'company',
   'industry', 'competition', 'competitor', 'competitors', 'strategy', 'analysis',
+  // generic analytical nouns — asking about these is normal interviewer framing
+  'size', 'rate', 'rates', 'share', 'attractiveness', 'landscape', 'fit', 'entry',
+  'segment', 'segments', 'segmentation', 'factor', 'factors', 'lever', 'levers',
+  'driver', 'drivers', 'risk', 'risks', 'opportunity', 'opportunities', 'value',
+  'potential', 'trend', 'trends', 'economics', 'structure',
   'the', 'and', 'for', 'with', 'from', 'into', 'their', 'a', 'an', 'of', 'to',
 ]);
 

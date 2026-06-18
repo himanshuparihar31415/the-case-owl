@@ -117,6 +117,11 @@ async function handleConnection(clientWs: WebSocket, req: IncomingMessage): Prom
     // Silent supervisor (observe-only for now): flags leading / fed-data per turn.
     const forbidden = buildForbiddenList(caseDoc);
     const candidateHistory: string[] = [];
+    const flaggedTerms = new Set<string>(); // dedupe: flag each term once per session
+    // Don't forward candidate audio to OpenAI until the greeting turn finishes —
+    // otherwise the AI's own opening (echo) or mic-startup noise false-triggers
+    // VAD, interrupts the greeting, and spawns phantom "Got it." turns.
+    let greetingDone = false;
 
     let openaiReady = false;
     // Guard: the AI greeting must fire EXACTLY once. `session.updated` can be
@@ -255,7 +260,8 @@ async function handleConnection(clientWs: WebSocket, req: IncomingMessage): Prom
               });
               // Supervisor (observe-only): flag if the interviewer led or fed data.
               const check = deterministicCheck(event.transcript, candidateHistory, forbidden);
-              if (check.verdict !== 'OK') {
+              if (check.verdict !== 'OK' && check.term && !flaggedTerms.has(check.term)) {
+                flaggedTerms.add(check.term); // each term flagged once per session
                 console.warn(`[supervisor] session=${sessionId} ${check.verdict} term="${check.term}"`);
                 // Persist for the admin compliance block in the report (fire-and-forget).
                 Session.updateOne(
@@ -263,6 +269,8 @@ async function handleConnection(clientWs: WebSocket, req: IncomingMessage): Prom
                   { $push: { supervisorFlags: { verdict: check.verdict, term: check.term, at: new Date().toISOString() } } }
                 ).catch((e) => console.error('supervisorFlags persist failed:', e));
               }
+              // First interviewer turn = the greeting; now accept candidate audio.
+              greetingDone = true;
               // Fix 1: don't let DB errors crash the WS handler
               await appendTranscript(sessionId, {
                 role: 'interviewer',
@@ -328,6 +336,9 @@ async function handleConnection(clientWs: WebSocket, req: IncomingMessage): Prom
         const message = JSON.parse(data.toString());
 
         if (message.type === 'audio_chunk') {
+          // Drop the candidate's audio while the AI greeting is still playing —
+          // prevents echo/startup-noise from interrupting it and spawning phantom turns.
+          if (!greetingDone) return;
           // Forward audio to OpenAI
           const audioAppend = {
             type: 'input_audio_buffer.append',
@@ -345,7 +356,7 @@ async function handleConnection(clientWs: WebSocket, req: IncomingMessage): Prom
         // browser only sends audio_chunk + end_session; the server drives turns.
       } catch {
         // Handle raw binary audio (PCM16 directly)
-        if (Buffer.isBuffer(data) && openaiReady) {
+        if (Buffer.isBuffer(data) && openaiReady && greetingDone) {
           const audioAppend = {
             type: 'input_audio_buffer.append',
             audio: data.toString('base64'),
