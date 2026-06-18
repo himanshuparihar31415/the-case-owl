@@ -44,7 +44,11 @@ Return ONLY valid JSON matching this exact schema:
   },
   "idealScript": [
     { "stage": "string (e.g. Clarifying, Structuring, Analysis, Quant, Risks, Recommendation)", "interviewer": "what a sharp interviewer asks at this stage", "idealResponse": "what a top candidate answers — concise and concrete" }
-  ]
+  ],
+  "openingHook": {
+    "reference": "a REAL, recent (last ~2 years) and well-known development, trend, or company move in this industry that you are confident actually happened — phrased as something an interviewer could casually ask about ('the recent wave of biosimilar launches', 'Novo's GLP-1 supply crunch'). One short clause. If you are not confident a specific event is real, use a broad TRUE industry trend instead of inventing a headline.",
+    "bridge": "one natural sentence that pivots from that reference into this case without announcing it"
+  }
 }
 
 Requirements:
@@ -55,6 +59,7 @@ Requirements:
 - The scenario should feel like a real client situation
 - solutionTree: MECE and COMPREHENSIVE — 4-5 top-level branches and 4-5 levels deep where the analysis warrants it. Decompose each branch down to specific sub-drivers/analysis steps, not just one layer. Leaf nodes carry the concrete insight/number that drives the conclusion. It must logically lead to plausibleSolution.
 - idealScript: 6-8 exchanges walking the full arc from clarifying to final recommendation, consistent with the tree
+- openingHook: must be a genuine industry reference (not fabricated) that connects to this case's topic, so the interviewer can open conversationally and slide into the case
 - plausibleSolution, solutionTree, and idealScript must be mutually consistent — all leading to the same recommendation`;
 }
 
@@ -296,7 +301,8 @@ export function INTERVIEWER_SYSTEM_PROMPT(
   difficulty: number,
   interviewerStyle: 'supportive' | 'neutral' | 'stress',
   durationMinutes: number = 30,
-  solutionSummary?: string
+  solutionSummary?: string,
+  openingHook?: { reference?: string; bridge?: string }
 ): string {
   // The three styles are a PRESSURE dial only — none of them praise or rescue.
   const styleDescriptions = {
@@ -306,6 +312,12 @@ export function INTERVIEWER_SYSTEM_PROMPT(
   };
 
   const dataPointsText = keyDataPoints.map((dp) => `  - ${dp.label}: ${dp.value}`).join('\n');
+
+  // Opening bridge: a real-world hook to ease into the case (vs an abrupt announcement).
+  const hookBullet = openingHook?.reference
+    ? `Turn 2: react briefly, then ask conversationally whether they've been following ${openingHook.reference} (or similar) — one line, then STOP and wait.`
+    : `Turn 2: react briefly, then ask ONE light bridging question — how confident they feel, or a quick nod to a real trend in this case's industry — then STOP and wait.`;
+  const pivotHint = openingHook?.bridge ? ` You can pivot naturally, e.g. "${openingHook.bridge}".` : '';
 
   // Private answer key: steers the interview toward a real conclusion. NEVER surfaced.
   const solutionBlock = solutionSummary
@@ -328,8 +340,8 @@ ${dataPointsText}${solutionBlock}
 
 OPENING — ease in like a real person, over SEVERAL short turns. This is a back-and-forth, NOT a speech:
 - Turn 1: just greet them in one short line and ask how they are. Then STOP and wait for their reply.
-- Turn 2: react briefly, then ask ONE light bridging question — how confident they feel, or a quick nod to a trend/company tied to this case's type and industry. STOP and wait.
-- Turn 3 (only now): let the case emerge from that bridge ("that actually reminds me of a client situation…"), give it in 2-3 sentences, and invite clarifying questions.
+- ${hookBullet}
+- Turn 3 (only now): let the case emerge from that bridge ("that actually reminds me of a client situation…"), give it in 2-3 sentences, and invite clarifying questions.${pivotHint}
 - CRITICAL: never combine the greeting, the bridge, and the case into one turn — that's the #1 thing that makes you sound like a bot. One thought per turn, then wait. Don't announce "this is a ~30-minute profitability case." Each case type should get a different on-ramp, generated on the fly.
 
 HOW THIS RUNS

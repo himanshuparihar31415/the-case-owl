@@ -94,7 +94,8 @@ async function handleConnection(clientWs: WebSocket, req: IncomingMessage): Prom
       session.reservedMinutes && session.reservedMinutes > 0
         ? session.reservedMinutes
         : (session.config.durationMinutes || 45),
-      caseDoc.plausibleSolution
+      caseDoc.plausibleSolution,
+      caseDoc.openingHook
     );
 
     // Fail fast if no API key configured

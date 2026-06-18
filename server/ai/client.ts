@@ -45,6 +45,7 @@ export async function generateCaseWithAI(type: CaseType, industry: Industry, dif
     plausibleSolution?: string;
     solutionTree?: unknown;
     idealScript?: Array<{ stage: string; interviewer: string; idealResponse: string }>;
+    openingHook?: { reference: string; bridge: string };
   }>(
     'You are a McKinsey case interview designer. Return only valid JSON.',
     prompt

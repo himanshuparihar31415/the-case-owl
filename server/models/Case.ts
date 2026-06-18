@@ -18,6 +18,7 @@ export interface ICase extends Document {
   plausibleSolution?: string;
   solutionTree?: unknown; // recursive { label, insight?, children? }
   idealScript?: Array<{ stage: string; interviewer: string; idealResponse: string }>;
+  openingHook?: { reference: string; bridge: string }; // real-world hook to open the interview naturally
   isSeeded: boolean;
   generatedAt: Date;
   isCustom: boolean;
@@ -45,6 +46,7 @@ const CaseSchema = new Schema<ICase>(
     plausibleSolution: { type: String },
     solutionTree: { type: Schema.Types.Mixed },
     idealScript: { type: Schema.Types.Mixed },
+    openingHook: { type: Schema.Types.Mixed },
     isSeeded: { type: Boolean, default: false },
     generatedAt: { type: Date, default: Date.now },
     isCustom: { type: Boolean, default: false },
