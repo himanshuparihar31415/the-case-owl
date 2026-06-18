@@ -129,6 +129,19 @@ async function handleConnection(clientWs: WebSocket, req: IncomingMessage): Prom
     // each one would otherwise trigger another response.create → the "two
     // greetings at 00:00" double-message bug.
     let greeted = false;
+    // We deliberately DON'T greet the moment the session is configured. If the
+    // AI speaks before the candidate's mic/speaker pipeline is live, its first
+    // line ("Hey, can you hear me okay?") plays into a dead pipeline and gets
+    // clipped (the 00:00 bug). We wait for the client to confirm audio is live
+    // (audio_live), then fire the greeting. greetTimer is a fallback in case the
+    // client never confirms (mic denied / slow getUserMedia) so we don't hang silent.
+    let greetTimer: ReturnType<typeof setTimeout> | null = null;
+    const fireGreeting = (): void => {
+      if (greeted || openaiWs.readyState !== WebSocketNode.OPEN) return;
+      greeted = true;
+      if (greetTimer) { clearTimeout(greetTimer); greetTimer = null; }
+      openaiWs.send(JSON.stringify({ type: 'response.create' }));
+    };
 
     // HARD STOP (non-negotiable guardrail): kill the session when it reaches the
     // minutes reserved for it (bounded by the plan's per-interview cap). This is
@@ -213,14 +226,12 @@ async function handleConnection(clientWs: WebSocket, req: IncomingMessage): Prom
 
         switch (event.type) {
           case 'session.updated':
-            // Session is configured — trigger the AI greeting ONCE, and tell the
-            // client we're ready. Guarded so a repeated session.updated can't
-            // fire a second greeting (the double-message bug).
-            if (!greeted) {
-              greeted = true;
-              openaiWs.send(JSON.stringify({ type: 'response.create' }));
-              sendToClient(clientWs, { type: 'session_ready' });
-            }
+            // Session is configured — tell the client to bring its audio pipeline
+            // up. We do NOT greet here; we wait for the client's audio_live
+            // confirmation so the AI's first words land in a live pipeline (see
+            // fireGreeting). Fallback-greet after 4s if the client never confirms.
+            sendToClient(clientWs, { type: 'session_ready' });
+            if (!greetTimer && !greeted) greetTimer = setTimeout(fireGreeting, 4000);
             break;
 
           case 'input_audio_buffer.speech_started':
@@ -317,6 +328,7 @@ async function handleConnection(clientWs: WebSocket, req: IncomingMessage): Prom
 
     openaiWs.on('close', (code, reason) => {
       clearTimeout(capTimer);
+      if (greetTimer) clearTimeout(greetTimer);
       console.error('OpenAI WS closed:', code, reason?.toString?.() ?? reason);
       sendToClient(clientWs, { type: 'error', message: `AI connection closed (code=${code}): ${reason?.toString?.() ?? ''}` });
       sendToClient(clientWs, { type: 'session_ended' });
@@ -335,7 +347,12 @@ async function handleConnection(clientWs: WebSocket, req: IncomingMessage): Prom
       try {
         const message = JSON.parse(data.toString());
 
-        if (message.type === 'audio_chunk') {
+        if (message.type === 'audio_live') {
+          // Client's mic + speaker pipeline is confirmed live. NOW fire the AI's
+          // first turn ("Hey, can you hear me okay?") so it lands in a live
+          // pipeline instead of getting clipped at 00:00.
+          fireGreeting();
+        } else if (message.type === 'audio_chunk') {
           // Drop the candidate's audio while the AI greeting is still playing —
           // prevents echo/startup-noise from interrupting it and spawning phantom turns.
           if (!greetingDone) return;
@@ -368,6 +385,7 @@ async function handleConnection(clientWs: WebSocket, req: IncomingMessage): Prom
 
     clientWs.on('close', () => {
       clearTimeout(capTimer);
+      if (greetTimer) clearTimeout(greetTimer);
       if (openaiWs.readyState === WebSocketNode.OPEN) {
         openaiWs.close();
       }

@@ -237,8 +237,18 @@ export default function Session() {
       source.connect(processor);
       processor.connect(captureCtx.destination);
 
+      // The first audio frame means mic + capture context are truly live; tell
+      // the server so it fires the AI's opening ("can you hear me?") into a live
+      // pipeline instead of clipping it at 00:00. Sent once, before the mute
+      // check (pipeline being up is independent of whether the mic is muted).
+      let liveSent = false;
       processor.onaudioprocess = (e) => {
-        if (ws.readyState !== WebSocket.OPEN || micMutedRef.current) return;
+        if (ws.readyState !== WebSocket.OPEN) return;
+        if (!liveSent) {
+          liveSent = true;
+          ws.send(JSON.stringify({ type: 'audio_live' }));
+        }
+        if (micMutedRef.current) return;
         const float32 = e.inputBuffer.getChannelData(0);
         const int16 = new Int16Array(float32.length);
         for (let i = 0; i < float32.length; i++) {
