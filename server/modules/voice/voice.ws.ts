@@ -157,17 +157,17 @@ async function handleConnection(clientWs: WebSocket, req: IncomingMessage): Prom
               format: { type: 'audio/pcm', rate: 24000 },
               transcription: { model: 'whisper-1' },
               turn_detection: {
-                // Semantic VAD waits until the candidate has finished a THOUGHT,
-                // not just gone quiet — fewer mid-sentence interruptions, more
-                // natural turns. 'eagerness' trades responsiveness vs patience:
-                // 'low' = wait longer (let them think), 'high' = reply fast.
-                type: 'semantic_vad',
-                // 'low' = most patient: waits for a clear end-of-thought before
-                // replying, so it won't jump in while the candidate is still
-                // mid-sentence. ('medium' felt too quick to respond.)
-                eagerness: 'low',
-                // Auto-reply when they finish, and yield the floor (barge-in)
-                // the moment they start talking again.
+                // Back to server_vad: it gives explicit knobs semantic_vad lacks
+                // — `threshold` for noise rejection and `silence_duration_ms` for
+                // how long to wait before replying. Semantic VAD felt erratic.
+                type: 'server_vad',
+                // 0.6: moderate — sensitive enough to hear a soft voice (so it
+                // doesn't ignore the candidate) without firing on room noise.
+                threshold: 0.6,
+                prefix_padding_ms: 300,
+                // 800ms: patient — waits a beat longer so it doesn't cut the
+                // candidate off mid-thought or jump in too fast.
+                silence_duration_ms: 800,
                 create_response: true,
                 interrupt_response: true,
               },
