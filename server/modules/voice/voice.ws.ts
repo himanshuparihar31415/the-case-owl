@@ -128,6 +128,13 @@ async function handleConnection(clientWs: WebSocket, req: IncomingMessage): Prom
     // twice (garbled) and the live transcript shows every word doubled.
     let audioDeltaType: string | null = null;
     let transcriptDeltaType: string | null = null;
+    // While the AI is generating/speaking a response, drop ALL candidate audio
+    // server-side so the AI's own voice (echo, which browser echoCancellation does
+    // NOT remove for Web-Audio playback) can't reach OpenAI's VAD and spawn a
+    // phantom turn / duplicate response. Server-side so it's independent of any
+    // client-gate deploy timing. The client gate covers the post-generation
+    // playback drain; this covers the generation window.
+    let responseActive = false;
     // Don't forward candidate audio to OpenAI until the greeting turn finishes —
     // otherwise the AI's own opening (echo) or mic-startup noise false-triggers
     // VAD, interrupts the greeting, and spawns phantom "Got it." turns.
@@ -215,7 +222,13 @@ async function handleConnection(clientWs: WebSocket, req: IncomingMessage): Prom
                 // to think mid-answer instead of firing into a thinking pause.
                 silence_duration_ms: 1330,
                 create_response: true,
-                interrupt_response: true,
+                // interrupt_response OFF: candidate barge-in is already disabled
+                // (we gate the mic uplink while the AI speaks), so this flag's only
+                // remaining effect was letting echo-triggered VAD CANCEL the AI's
+                // turn and create a NEW response — two interviewer turns with
+                // different item_ids that dedup can't merge. This is the persistent
+                // double-message bug. Off = the AI finishes its turn, no recreate.
+                interrupt_response: false,
               },
             },
             output: {
@@ -242,6 +255,18 @@ async function handleConnection(clientWs: WebSocket, req: IncomingMessage): Prom
             // fireGreeting). Fallback-greet after 4s if the client never confirms.
             sendToClient(clientWs, { type: 'session_ready' });
             if (!greetTimer && !greeted) greetTimer = setTimeout(fireGreeting, 4000);
+            break;
+
+          case 'response.created':
+            // AI turn started — gate candidate audio until it finishes (echo guard).
+            responseActive = true;
+            break;
+
+          case 'response.done':
+          case 'response.cancelled':
+            // AI turn finished — reopen the candidate uplink (client gate still
+            // covers the playback-drain tail).
+            responseActive = false;
             break;
 
           case 'input_audio_buffer.speech_started':
@@ -371,9 +396,10 @@ async function handleConnection(clientWs: WebSocket, req: IncomingMessage): Prom
           // pipeline instead of getting clipped at 00:00.
           fireGreeting();
         } else if (message.type === 'audio_chunk') {
-          // Drop the candidate's audio while the AI greeting is still playing —
-          // prevents echo/startup-noise from interrupting it and spawning phantom turns.
-          if (!greetingDone) return;
+          // Drop candidate audio (a) before the greeting and (b) while any AI
+          // response is active — both prevent the AI's echo from reaching the VAD
+          // and spawning a phantom/duplicate turn.
+          if (!greetingDone || responseActive) return;
           // Forward audio to OpenAI
           const audioAppend = {
             type: 'input_audio_buffer.append',
@@ -391,7 +417,7 @@ async function handleConnection(clientWs: WebSocket, req: IncomingMessage): Prom
         // browser only sends audio_chunk + end_session; the server drives turns.
       } catch {
         // Handle raw binary audio (PCM16 directly)
-        if (Buffer.isBuffer(data) && openaiReady && greetingDone) {
+        if (Buffer.isBuffer(data) && openaiReady && greetingDone && !responseActive) {
           const audioAppend = {
             type: 'input_audio_buffer.append',
             audio: data.toString('base64'),
