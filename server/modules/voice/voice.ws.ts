@@ -118,6 +118,16 @@ async function handleConnection(clientWs: WebSocket, req: IncomingMessage): Prom
     const forbidden = buildForbiddenList(caseDoc);
     const candidateHistory: string[] = [];
     const flaggedTerms = new Set<string>(); // dedupe: flag each term once per session
+    // GA Realtime emits BOTH the namespaced (response.output_audio_transcript.done)
+    // AND the legacy (response.audio_transcript.done) event for the SAME turn. Our
+    // case fall-through would then save/send that turn twice — the "double message"
+    // bug. Dedupe by item_id so each conversation item is processed exactly once.
+    const processedItems = new Set<string>();
+    // Same dual-emit applies to the streaming deltas (audio + transcript). Lock to
+    // the first event type we see and ignore the parallel stream, else audio plays
+    // twice (garbled) and the live transcript shows every word doubled.
+    let audioDeltaType: string | null = null;
+    let transcriptDeltaType: string | null = null;
     // Don't forward candidate audio to OpenAI until the greeting turn finishes —
     // otherwise the AI's own opening (echo) or mic-startup noise false-triggers
     // VAD, interrupts the greeting, and spawns phantom "Got it." turns.
@@ -243,7 +253,9 @@ async function handleConnection(clientWs: WebSocket, req: IncomingMessage): Prom
           // the legacy response.audio.delta — accept both.
           case 'response.output_audio.delta':
           case 'response.audio.delta':
-            // Stream AI audio chunk to client
+            // Stream AI audio chunk to client (ignore the parallel dual-emit stream).
+            if (audioDeltaType === null) audioDeltaType = event.type;
+            if (event.type !== audioDeltaType) break;
             sendToClient(clientWs, {
               type: 'audio_chunk',
               data: event.delta,
@@ -252,7 +264,9 @@ async function handleConnection(clientWs: WebSocket, req: IncomingMessage): Prom
 
           case 'response.output_audio_transcript.delta':
           case 'response.audio_transcript.delta':
-            // Partial AI transcript — forward for live display
+            // Partial AI transcript — forward for live display (ignore the dual-emit stream).
+            if (transcriptDeltaType === null) transcriptDeltaType = event.type;
+            if (event.type !== transcriptDeltaType) break;
             sendToClient(clientWs, {
               type: 'transcript_delta',
               role: 'interviewer',
@@ -262,8 +276,12 @@ async function handleConnection(clientWs: WebSocket, req: IncomingMessage): Prom
 
           case 'response.output_audio_transcript.done':
           case 'response.audio_transcript.done':
-            // Final AI transcript turn — save to DB
+            // Final AI transcript turn — save to DB. Guard against the GA dual-event
+            // emit (namespaced + legacy for the same item) doubling the turn.
             if (event.transcript) {
+              const itemKey = String(event.item_id ?? event.response_id ?? '');
+              if (itemKey && processedItems.has(itemKey)) break;
+              if (itemKey) processedItems.add(itemKey);
               sendToClient(clientWs, {
                 type: 'transcript',
                 role: 'interviewer',

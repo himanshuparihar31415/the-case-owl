@@ -249,6 +249,15 @@ export default function Session() {
           ws.send(JSON.stringify({ type: 'audio_live' }));
         }
         if (micMutedRef.current) return;
+        // Don't send mic audio while the AI is speaking. Browser echoCancellation
+        // does NOT cancel audio played through a separate Web Audio AudioContext
+        // (the reference signal isn't captured), so the AI's voice leaks into the
+        // mic and false-triggers the server VAD → the AI interrupts/duplicates
+        // itself. Gating the uplink during playback (+150ms tail for room echo to
+        // settle) kills that at the source. Trade-off: no candidate barge-in, which
+        // is fine — the partner asks short questions and turn-taking stays clean.
+        const pbCtx = playbackCtxRef.current;
+        if (pbCtx && nextPlayTimeRef.current > pbCtx.currentTime - 0.15) return;
         const float32 = e.inputBuffer.getChannelData(0);
         const int16 = new Int16Array(float32.length);
         for (let i = 0; i < float32.length; i++) {
