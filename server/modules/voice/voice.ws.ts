@@ -128,20 +128,6 @@ async function handleConnection(clientWs: WebSocket, req: IncomingMessage): Prom
     // twice (garbled) and the live transcript shows every word doubled.
     let audioDeltaType: string | null = null;
     let transcriptDeltaType: string | null = null;
-    // While the AI is generating/speaking a response, drop ALL candidate audio
-    // server-side so the AI's own voice (echo, which browser echoCancellation does
-    // NOT remove for Web-Audio playback) can't reach OpenAI's VAD and spawn a
-    // phantom turn / duplicate response. Server-side so it's independent of any
-    // client-gate deploy timing.
-    let responseActive = false;
-    // The echo window doesn't end at response.done — the client keeps PLAYING the
-    // buffered AI audio for seconds after generation finishes, and that playback
-    // echoes into the mic. So we estimate when the client will finish playing all
-    // audio sent so far (accumulating each chunk's PCM16 duration: bytes/48 ms @
-    // 24kHz mono) and keep the mic gate closed until then. This seals the drain
-    // window server-side, independent of the client gate.
-    let playbackEndsAt = 0;
-    const GATE_TAIL_MS = 400; // extra margin for network + room echo to settle
     // Don't forward candidate audio to OpenAI until the greeting turn finishes —
     // otherwise the AI's own opening (echo) or mic-startup noise false-triggers
     // VAD, interrupts the greeting, and spawns phantom "Got it." turns.
@@ -229,13 +215,12 @@ async function handleConnection(clientWs: WebSocket, req: IncomingMessage): Prom
                 // to think mid-answer instead of firing into a thinking pause.
                 silence_duration_ms: 1330,
                 create_response: true,
-                // interrupt_response OFF: candidate barge-in is already disabled
-                // (we gate the mic uplink while the AI speaks), so this flag's only
-                // remaining effect was letting echo-triggered VAD CANCEL the AI's
-                // turn and create a NEW response — two interviewer turns with
-                // different item_ids that dedup can't merge. This is the persistent
-                // double-message bug. Off = the AI finishes its turn, no recreate.
-                interrupt_response: false,
+                // Candidate barge-in: when they start talking, cancel the AI's turn
+                // and respond to them. Safe because users are on headphones — no
+                // speaker echo to false-trigger it. (If we ever support speakers,
+                // this is the flag that lets echo recreate a turn; the GA dual-event
+                // dedup below still guards the OTHER double-message source.)
+                interrupt_response: true,
               },
             },
             output: {
@@ -264,18 +249,6 @@ async function handleConnection(clientWs: WebSocket, req: IncomingMessage): Prom
             if (!greetTimer && !greeted) greetTimer = setTimeout(fireGreeting, 4000);
             break;
 
-          case 'response.created':
-            // AI turn started — gate candidate audio until it finishes (echo guard).
-            responseActive = true;
-            break;
-
-          case 'response.done':
-          case 'response.cancelled':
-            // AI turn finished — reopen the candidate uplink (client gate still
-            // covers the playback-drain tail).
-            responseActive = false;
-            break;
-
           case 'input_audio_buffer.speech_started':
             // Candidate started talking — tell the client to stop playing any
             // buffered AI audio immediately so the AI doesn't talk over them.
@@ -288,10 +261,6 @@ async function handleConnection(clientWs: WebSocket, req: IncomingMessage): Prom
             // Stream AI audio chunk to client (ignore the parallel dual-emit stream).
             if (audioDeltaType === null) audioDeltaType = event.type;
             if (event.type !== audioDeltaType) break;
-            // Push out the estimated playback-finish time by this chunk's duration.
-            // Math.max(.., now) handles the start of a new turn (now > old end).
-            playbackEndsAt = Math.max(playbackEndsAt, Date.now())
-              + Buffer.from(String(event.delta ?? ''), 'base64').length / 48;
             sendToClient(clientWs, {
               type: 'audio_chunk',
               data: event.delta,
@@ -407,11 +376,10 @@ async function handleConnection(clientWs: WebSocket, req: IncomingMessage): Prom
           // pipeline instead of getting clipped at 00:00.
           fireGreeting();
         } else if (message.type === 'audio_chunk') {
-          // Drop candidate audio (a) before the greeting, (b) while an AI response
-          // is generating, and (c) until the client finishes PLAYING that audio
-          // (drain) — all prevent the AI's echo from reaching the VAD and spawning
-          // a phantom/duplicate turn.
-          if (!greetingDone || responseActive || Date.now() < playbackEndsAt + GATE_TAIL_MS) return;
+          // Drop candidate audio only until the greeting finishes (keeps startup
+          // mic noise from triggering a phantom turn). After that the mic stays
+          // open so the candidate can barge in — they're on headphones, no echo.
+          if (!greetingDone) return;
           // Forward audio to OpenAI
           const audioAppend = {
             type: 'input_audio_buffer.append',
@@ -429,8 +397,7 @@ async function handleConnection(clientWs: WebSocket, req: IncomingMessage): Prom
         // browser only sends audio_chunk + end_session; the server drives turns.
       } catch {
         // Handle raw binary audio (PCM16 directly)
-        if (Buffer.isBuffer(data) && openaiReady && greetingDone && !responseActive
-            && Date.now() >= playbackEndsAt + GATE_TAIL_MS) {
+        if (Buffer.isBuffer(data) && openaiReady && greetingDone) {
           const audioAppend = {
             type: 'input_audio_buffer.append',
             audio: data.toString('base64'),
