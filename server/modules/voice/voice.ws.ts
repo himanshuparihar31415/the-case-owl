@@ -148,33 +148,30 @@ async function handleConnection(clientWs: WebSocket, req: IncomingMessage): Prom
         session: {
           type: 'realtime',
           instructions: systemPrompt,
+          // Lower-ish temperature keeps the interviewer consistent and on-task
+          // (less improvising). Realtime requires >= 0.6; 0.75 is a calm middle.
+          temperature: 0.75,
           output_modalities: ['audio'],
           audio: {
             input: {
               format: { type: 'audio/pcm', rate: 24000 },
               transcription: { model: 'whisper-1' },
               turn_detection: {
-                type: 'server_vad',
-                // Higher threshold = less sensitive: the audio must be clearly
-                // speech (not background noise / room tone) before it counts as
-                // the candidate's turn. 0.5 was too trigger-happy and the AI
-                // kept interrupting itself on noise; 0.75 needs real speech.
-                threshold: 0.75,
-                prefix_padding_ms: 300,
-                // Wait ~550ms of silence before the AI takes its turn — long
-                // enough to not cut the candidate off mid-thought, short enough
-                // to feel like a real conversation.
-                silence_duration_ms: 550,
-                // Auto-generate a reply when the candidate stops speaking, and
-                // auto-cancel the AI's current reply the moment the candidate
-                // starts talking again (barge-in).
+                // Semantic VAD waits until the candidate has finished a THOUGHT,
+                // not just gone quiet — fewer mid-sentence interruptions, more
+                // natural turns. 'eagerness' trades responsiveness vs patience:
+                // 'low' = wait longer (let them think), 'high' = reply fast.
+                type: 'semantic_vad',
+                eagerness: 'medium',
+                // Auto-reply when they finish, and yield the floor (barge-in)
+                // the moment they start talking again.
                 create_response: true,
                 interrupt_response: true,
               },
             },
             output: {
               format: { type: 'audio/pcm', rate: 24000 },
-              voice: 'alloy',
+              voice: 'cedar',
             },
           },
         },
