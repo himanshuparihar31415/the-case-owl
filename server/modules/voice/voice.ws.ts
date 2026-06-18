@@ -162,7 +162,10 @@ async function handleConnection(clientWs: WebSocket, req: IncomingMessage): Prom
                 // natural turns. 'eagerness' trades responsiveness vs patience:
                 // 'low' = wait longer (let them think), 'high' = reply fast.
                 type: 'semantic_vad',
-                eagerness: 'medium',
+                // 'low' = most patient: waits for a clear end-of-thought before
+                // replying, so it won't jump in while the candidate is still
+                // mid-sentence. ('medium' felt too quick to respond.)
+                eagerness: 'low',
                 // Auto-reply when they finish, and yield the floor (barge-in)
                 // the moment they start talking again.
                 create_response: true,
