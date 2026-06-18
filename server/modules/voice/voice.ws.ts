@@ -132,9 +132,16 @@ async function handleConnection(clientWs: WebSocket, req: IncomingMessage): Prom
     // server-side so the AI's own voice (echo, which browser echoCancellation does
     // NOT remove for Web-Audio playback) can't reach OpenAI's VAD and spawn a
     // phantom turn / duplicate response. Server-side so it's independent of any
-    // client-gate deploy timing. The client gate covers the post-generation
-    // playback drain; this covers the generation window.
+    // client-gate deploy timing.
     let responseActive = false;
+    // The echo window doesn't end at response.done — the client keeps PLAYING the
+    // buffered AI audio for seconds after generation finishes, and that playback
+    // echoes into the mic. So we estimate when the client will finish playing all
+    // audio sent so far (accumulating each chunk's PCM16 duration: bytes/48 ms @
+    // 24kHz mono) and keep the mic gate closed until then. This seals the drain
+    // window server-side, independent of the client gate.
+    let playbackEndsAt = 0;
+    const GATE_TAIL_MS = 400; // extra margin for network + room echo to settle
     // Don't forward candidate audio to OpenAI until the greeting turn finishes —
     // otherwise the AI's own opening (echo) or mic-startup noise false-triggers
     // VAD, interrupts the greeting, and spawns phantom "Got it." turns.
@@ -198,9 +205,9 @@ async function handleConnection(clientWs: WebSocket, req: IncomingMessage): Prom
           // `temperature` — sending it makes OpenAI reject the whole
           // session.update. Steer consistency via the prompt instead.
           // Reasoning effort for gpt-realtime-2 (minimal|low|medium|high|xhigh;
-          // default low). 'high' = sharper, less shallow follow-ups, at the cost
-          // of slower replies. Drop to 'medium'/'low' if latency hurts.
-          reasoning: { effort: 'high' },
+          // default low). 'medium' keeps it sharp but less verbose than 'high'
+          // (high tended to pack 2-3 questions + long sentences into one turn).
+          reasoning: { effort: 'medium' },
           output_modalities: ['audio'],
           audio: {
             input: {
@@ -281,6 +288,10 @@ async function handleConnection(clientWs: WebSocket, req: IncomingMessage): Prom
             // Stream AI audio chunk to client (ignore the parallel dual-emit stream).
             if (audioDeltaType === null) audioDeltaType = event.type;
             if (event.type !== audioDeltaType) break;
+            // Push out the estimated playback-finish time by this chunk's duration.
+            // Math.max(.., now) handles the start of a new turn (now > old end).
+            playbackEndsAt = Math.max(playbackEndsAt, Date.now())
+              + Buffer.from(String(event.delta ?? ''), 'base64').length / 48;
             sendToClient(clientWs, {
               type: 'audio_chunk',
               data: event.delta,
@@ -396,10 +407,11 @@ async function handleConnection(clientWs: WebSocket, req: IncomingMessage): Prom
           // pipeline instead of getting clipped at 00:00.
           fireGreeting();
         } else if (message.type === 'audio_chunk') {
-          // Drop candidate audio (a) before the greeting and (b) while any AI
-          // response is active — both prevent the AI's echo from reaching the VAD
-          // and spawning a phantom/duplicate turn.
-          if (!greetingDone || responseActive) return;
+          // Drop candidate audio (a) before the greeting, (b) while an AI response
+          // is generating, and (c) until the client finishes PLAYING that audio
+          // (drain) — all prevent the AI's echo from reaching the VAD and spawning
+          // a phantom/duplicate turn.
+          if (!greetingDone || responseActive || Date.now() < playbackEndsAt + GATE_TAIL_MS) return;
           // Forward audio to OpenAI
           const audioAppend = {
             type: 'input_audio_buffer.append',
@@ -417,7 +429,8 @@ async function handleConnection(clientWs: WebSocket, req: IncomingMessage): Prom
         // browser only sends audio_chunk + end_session; the server drives turns.
       } catch {
         // Handle raw binary audio (PCM16 directly)
-        if (Buffer.isBuffer(data) && openaiReady && greetingDone && !responseActive) {
+        if (Buffer.isBuffer(data) && openaiReady && greetingDone && !responseActive
+            && Date.now() >= playbackEndsAt + GATE_TAIL_MS) {
           const audioAppend = {
             type: 'input_audio_buffer.append',
             audio: data.toString('base64'),
