@@ -1,19 +1,20 @@
-import React, { useRef, useState } from 'react';
-import { Compass, TrendingUp, Handshake, Settings, DollarSign, Info, ArrowRight, CheckCircle, Circle, Loader2, FileText, Upload } from 'lucide-react';
+import { useRef, useState } from 'react';
+import { Compass, TrendingUp, Handshake, Settings, DollarSign, ArrowRight, Loader2, FileText, Upload } from 'lucide-react';
 import { cn } from '@/src/lib/utils';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { api } from '@/src/lib/api';
 
 const archetypes = [
-  { id: 'profitability', title: 'Profitability', desc: 'Diagnose declining margins and optimize cost structures.', icon: <DollarSign className="w-8 h-8" /> },
-  { id: 'market_entry', title: 'Market Entry', desc: 'Assess attractiveness and define GTM strategy for new territories.', icon: <Compass className="w-8 h-8" /> },
-  { id: 'ma', title: 'M&A', desc: 'Evaluate synergy potential and strategic fit for acquisitions.', icon: <Handshake className="w-8 h-8" /> },
-  { id: 'growth', title: 'Growth', desc: 'Identify levers to scale revenue and capture market share.', icon: <TrendingUp className="w-8 h-8" /> },
-  { id: 'pricing', title: 'Pricing', desc: 'Develop elasticity models and tiered pricing architectures.', icon: <DollarSign className="w-8 h-8" /> },
-  { id: 'operations', title: 'Operations', desc: 'Streamline supply chains and improve process efficiency.', icon: <Settings className="w-8 h-8" /> },
+  { id: 'profitability', title: 'Profitability', desc: 'Declining margins & cost structure.', icon: <DollarSign className="w-5 h-5" /> },
+  { id: 'market_entry', title: 'Market Entry', desc: 'Attractiveness & GTM for new markets.', icon: <Compass className="w-5 h-5" /> },
+  { id: 'ma', title: 'M&A', desc: 'Synergies & strategic fit.', icon: <Handshake className="w-5 h-5" /> },
+  { id: 'growth', title: 'Growth', desc: 'Levers to scale revenue.', icon: <TrendingUp className="w-5 h-5" /> },
+  { id: 'pricing', title: 'Pricing', desc: 'Elasticity & tiered pricing.', icon: <DollarSign className="w-5 h-5" /> },
+  { id: 'operations', title: 'Operations', desc: 'Supply chain & process efficiency.', icon: <Settings className="w-5 h-5" /> },
 ];
 
 const industries = ['Tech', 'CPG', 'Pharma', 'Finance', 'Energy', 'Automotive', 'Retail'];
+const DIFF_LABELS = ['Beginner', 'Intermediate', 'Advanced', 'Expert'];
 
 const styleMap: Record<string, string> = {
   'Supportive': 'supportive',
@@ -105,316 +106,211 @@ export default function Config() {
   };
 
   return (
-    <div className="max-w-7xl mx-auto py-12 md:py-20">
-      {/* Header Section */}
-      <header className="mb-16 md:mb-24 flex flex-col md:flex-row md:items-end justify-between gap-8">
-        <div className="max-w-2xl">
-          <span className="label-blueprint text-on-tertiary-container font-bold mb-4 block">Simulation Module 04</span>
-          <h1 className="power-gap-h1 text-primary mb-6"> Configure Your <br /> Case Session. </h1>
-          <p className="font-body text-secondary text-lg max-w-lg leading-relaxed">
-            Select the parameters for your session. Our AI engine will synthesize a unique case based on real-world market shifts and data sets.
-          </p>
-        </div>
-        <div className="hidden lg:block w-48 h-1 bg-primary/10 mb-2" />
+    <div className="max-w-3xl mx-auto px-4 py-10 space-y-8">
+      {/* Header */}
+      <header>
+        <h1 className="font-headline text-2xl font-extrabold text-primary">New case session</h1>
+        <p className="text-secondary text-sm mt-1">
+          Pick a case type and tune the difficulty — we&apos;ll generate a unique case, or you can import your own.
+        </p>
       </header>
 
-      {/* Configuration Flow */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-16">
-        {/* Step Navigation */}
-        <aside className="lg:col-span-3 space-y-12">
-          <div className="flex flex-col gap-8">
-            <div className="flex items-center gap-4 group cursor-pointer">
-              <div className="w-10 h-10 rounded-full flex items-center justify-center bg-primary text-on-primary font-bold text-sm shadow-lg">01</div>
-              <div>
-                <p className="label-blueprint text-on-tertiary-container font-bold">Step One</p>
-                <p className="font-headline font-bold text-primary group-hover:text-on-tertiary-container transition-colors">Case Archetype</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-4 group cursor-pointer opacity-40 hover:opacity-100 transition-opacity">
-              <div className="w-10 h-10 rounded-full flex items-center justify-center border border-outline-variant text-secondary font-bold text-sm">02</div>
-              <div>
-                <p className="label-blueprint font-bold">Step Two</p>
-                <p className="font-headline font-bold text-primary">Market Sector</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-4 group cursor-pointer opacity-40 hover:opacity-100 transition-opacity">
-              <div className="w-10 h-10 rounded-full flex items-center justify-center border border-outline-variant text-secondary font-bold text-sm">03</div>
-              <div>
-                <p className="label-blueprint font-bold">Step Three</p>
-                <p className="font-headline font-bold text-primary">Simulation Rigor</p>
-              </div>
-            </div>
-          </div>
-        </aside>
-
-        {/* Main Config Area */}
-        <div className="lg:col-span-9 space-y-24">
-          {/* Case Type Grid */}
-          <section>
-            <div className="flex items-center justify-between mb-8">
-              <h2 className="font-headline text-2xl font-bold text-primary">Select Case Type</h2>
-              <span className="text-on-tertiary-container font-label text-xs font-bold uppercase tracking-widest">Required</span>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {archetypes.map((a) => (
-                <div
-                  key={a.id}
-                  onClick={() => setSelectedArchetype(a.id)}
-                  className={cn(
-                    "p-8 cursor-pointer transition-all border-b-4 group",
-                    selectedArchetype === a.id
-                      ? "bg-primary border-on-tertiary-container shadow-2xl"
-                      : "bg-surface-container-lowest border-transparent hover:bg-surface-container-low hover:border-on-tertiary-container"
-                  )}
-                >
-                  <div className={cn(
-                    "mb-6 block transition-transform group-hover:scale-110",
-                    selectedArchetype === a.id ? "text-on-tertiary-container" : "text-primary"
-                  )}>
-                    {a.icon}
-                  </div>
-                  <h3 className={cn("font-headline font-bold mb-2", selectedArchetype === a.id ? "text-white" : "text-primary")}>
-                    {a.title}
-                  </h3>
-                  <p className={cn("font-body text-xs leading-relaxed", selectedArchetype === a.id ? "text-on-primary-container" : "text-secondary")}>
-                    {a.desc}
-                  </p>
-                </div>
-              ))}
-            </div>
-          </section>
-
-          {/* Industry Filters */}
-          <section>
-            <h2 className="font-headline text-2xl font-bold text-primary mb-8">Select Industry</h2>
-            <div className="flex flex-wrap gap-3">
-              {industries.map((ind) => (
-                <button
-                  key={ind}
-                  onClick={() => setSelectedIndustry(ind)}
-                  className={cn(
-                    "px-6 py-2 rounded-full font-label text-xs font-bold uppercase tracking-widest transition-all",
-                    selectedIndustry === ind
-                      ? "bg-primary text-white shadow-lg"
-                      : "border border-outline-variant text-secondary hover:border-primary"
-                  )}
-                >
-                  {ind}
-                </button>
-              ))}
-            </div>
-          </section>
-
-          {/* Difficulty & Style */}
-          <section className="grid grid-cols-1 md:grid-cols-2 gap-16">
-            <div>
-              <h2 className="font-headline text-2xl font-bold text-primary mb-10">Difficulty Level</h2>
-              <div className="relative px-2">
-                <input
-                  className="w-full appearance-none bg-surface-container h-1 rounded-full cursor-pointer accent-on-tertiary-container"
-                  max="4" min="1" step="1" type="range"
-                  value={difficulty}
-                  onChange={(e) => setDifficulty(parseInt(e.target.value))}
-                />
-                <div className="flex justify-between mt-6 text-[10px] font-label font-bold uppercase tracking-widest text-secondary">
-                  <span className={difficulty === 1 ? "text-on-tertiary-container" : "opacity-50"}>Beginner</span>
-                  <span className={difficulty === 2 ? "text-on-tertiary-container" : "opacity-50"}>Intermediate</span>
-                  <span className={difficulty === 3 ? "text-on-tertiary-container" : "opacity-50"}>Advanced</span>
-                  <span className={difficulty === 4 ? "text-on-tertiary-container" : "opacity-50"}>Expert</span>
-                </div>
-              </div>
-            </div>
-
-            <div>
-              <h2 className="font-headline text-2xl font-bold text-primary mb-8">Interviewer Style</h2>
-              <div className="space-y-3">
-                {['Supportive', 'Neutral', 'Stress Interview'].map((style) => (
-                  <div
-                    key={style}
-                    onClick={() => setInterviewerStyle(style)}
-                    className={cn(
-                      "flex items-center justify-between p-4 bg-surface-container-lowest border cursor-pointer transition-all",
-                      interviewerStyle === style
-                        ? "border-on-tertiary-container shadow-sm"
-                        : "border-outline-variant/30 hover:border-on-tertiary-container"
-                    )}
-                  >
-                    <span className="font-body font-semibold text-primary">{style}</span>
-                    {interviewerStyle === style ? (
-                      <CheckCircle className="w-5 h-5 text-on-tertiary-container fill-current" />
-                    ) : (
-                      <Circle className="w-5 h-5 text-outline-variant" />
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          </section>
-
-          {/* Case Source — AI or Custom Import */}
-          <section className="space-y-6">
-            <div className="flex items-center justify-between mb-2">
-              <h2 className="font-headline text-2xl font-bold text-primary">Case Source</h2>
-              <span className="text-on-tertiary-container font-label text-xs font-bold uppercase tracking-widest">Required</span>
-            </div>
-
-            {/* Toggle */}
-            <div className="grid grid-cols-2 gap-4">
+      {/* Case type */}
+      <section>
+        <label className="label-blueprint mb-3 block">Case type</label>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+          {archetypes.map((a) => {
+            const on = selectedArchetype === a.id;
+            return (
               <button
+                key={a.id}
                 type="button"
-                onClick={() => setImportMode('ai')}
+                onClick={() => setSelectedArchetype(a.id)}
                 className={cn(
-                  'flex items-center gap-3 p-5 rounded-xl border-2 transition-all text-left',
-                  importMode === 'ai'
-                    ? 'border-on-tertiary-container bg-on-tertiary-container/10 text-primary'
-                    : 'border-outline-variant/30 text-secondary hover:border-on-tertiary-container/50'
+                  'flex flex-col items-start gap-1.5 p-3.5 rounded-xl border text-left transition-all',
+                  on ? 'border-on-tertiary-container bg-on-tertiary-container/10 shadow-sm'
+                     : 'border-outline-variant/25 bg-surface-container-lowest hover:border-on-tertiary-container/50'
                 )}
               >
-                <Compass className="w-6 h-6 shrink-0" />
-                <div>
-                  <p className="font-label font-bold text-sm">AI-Generated</p>
-                  <p className="font-body text-xs opacity-70 mt-0.5">Synthesize a unique case using the parameters above.</p>
-                </div>
+                <span className={cn(on ? 'text-on-tertiary-container' : 'text-primary')}>{a.icon}</span>
+                <span className="font-headline font-bold text-sm text-primary">{a.title}</span>
+                <span className="text-[11px] text-secondary leading-snug">{a.desc}</span>
               </button>
-              <button
-                type="button"
-                onClick={() => setImportMode('custom')}
-                className={cn(
-                  'flex items-center gap-3 p-5 rounded-xl border-2 transition-all text-left',
-                  importMode === 'custom'
-                    ? 'border-on-tertiary-container bg-on-tertiary-container/10 text-primary'
-                    : 'border-outline-variant/30 text-secondary hover:border-on-tertiary-container/50'
-                )}
-              >
-                <Upload className="w-6 h-6 shrink-0" />
-                <div>
-                  <p className="font-label font-bold text-sm">Import Your Own</p>
-                  <p className="font-body text-xs opacity-70 mt-0.5">Paste text or upload a PDF case document.</p>
-                </div>
-              </button>
-            </div>
-
-            {/* Custom import fields */}
-            {importMode === 'custom' && (
-              <div className="space-y-5 pt-2">
-                {/* Input type */}
-                <div className="flex gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setCustomInputType('text')}
-                    className={cn(
-                      'flex items-center gap-2 px-4 py-2 rounded-lg border text-sm font-label font-semibold transition-all',
-                      customInputType === 'text'
-                        ? 'border-on-tertiary-container bg-on-tertiary-container/10 text-primary'
-                        : 'border-outline-variant/30 text-secondary hover:border-on-tertiary-container/50'
-                    )}
-                  >
-                    <FileText className="w-4 h-4" /> Paste Text
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setCustomInputType('pdf')}
-                    className={cn(
-                      'flex items-center gap-2 px-4 py-2 rounded-lg border text-sm font-label font-semibold transition-all',
-                      customInputType === 'pdf'
-                        ? 'border-on-tertiary-container bg-on-tertiary-container/10 text-primary'
-                        : 'border-outline-variant/30 text-secondary hover:border-on-tertiary-container/50'
-                    )}
-                  >
-                    <Upload className="w-4 h-4" /> Upload PDF
-                  </button>
-                </div>
-
-                {/* Title */}
-                <div>
-                  <label className="block text-sm font-label font-semibold text-secondary mb-1">Case Title *</label>
-                  <input
-                    type="text"
-                    value={customTitle}
-                    onChange={(e) => setCustomTitle(e.target.value)}
-                    placeholder="e.g. Declining Margins at Retailer X"
-                    className="w-full bg-surface-container-lowest border border-outline-variant/30 rounded-lg px-4 py-2.5 text-primary placeholder:text-outline focus:outline-none focus:border-on-tertiary-container"
-                  />
-                </div>
-
-                {/* Text or PDF */}
-                {customInputType === 'text' ? (
-                  <div>
-                    <label className="block text-sm font-label font-semibold text-secondary mb-1">Case Scenario *</label>
-                    <textarea
-                      value={customScenario}
-                      onChange={(e) => setCustomScenario(e.target.value)}
-                      rows={6}
-                      placeholder="Paste the full case scenario, background information, and any data provided..."
-                      className="w-full bg-surface-container-lowest border border-outline-variant/30 rounded-lg px-4 py-2.5 text-primary placeholder:text-outline focus:outline-none focus:border-on-tertiary-container resize-none"
-                    />
-                  </div>
-                ) : (
-                  <div>
-                    <label className="block text-sm font-label font-semibold text-secondary mb-1">PDF File *</label>
-                    <div
-                      onClick={() => fileRef.current?.click()}
-                      className={cn(
-                        'border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-colors',
-                        customFile
-                          ? 'border-on-tertiary-container bg-on-tertiary-container/5 text-primary'
-                          : 'border-outline-variant/30 text-secondary hover:border-on-tertiary-container/50'
-                      )}
-                    >
-                      <Upload className="w-8 h-8 mx-auto mb-2 opacity-60" />
-                      <p className="text-sm font-label font-medium">
-                        {customFile ? customFile.name : 'Click to select a PDF (max 10 MB)'}
-                      </p>
-                    </div>
-                    <input
-                      ref={fileRef}
-                      type="file"
-                      accept=".pdf"
-                      className="hidden"
-                      onChange={(e) => setCustomFile(e.target.files?.[0] ?? null)}
-                    />
-                  </div>
-                )}
-              </div>
-            )}
-          </section>
-
-          {/* Action Bar */}
-          <section className="flex flex-col md:flex-row items-center justify-between pt-12 border-t border-outline-variant/20 gap-8">
-            <div className="flex flex-col gap-2">
-              <div className="flex items-center gap-4 text-secondary">
-                <Info className="w-5 h-5" />
-                <p className="font-body text-sm italic">Session will take approximately 45 minutes to complete.</p>
-              </div>
-              {error && <p className="text-sm text-red-500 font-medium">{error}</p>}
-              {needsPlan && (
-                <button
-                  onClick={() => navigate('/billing')}
-                  className="self-start mt-1 inline-flex items-center gap-2 px-5 py-2.5 bg-on-tertiary-container text-white font-headline font-bold text-sm rounded-lg hover:brightness-110 transition"
-                >
-                  Choose a plan <ArrowRight className="w-4 h-4" />
-                </button>
-              )}
-            </div>
-            <button
-              onClick={handleBeginCase}
-              disabled={loading}
-              className="bg-gradient-to-br from-primary to-primary-container text-white px-12 py-5 rounded-md font-headline font-bold text-lg tracking-tight hover:scale-95 transition-transform shadow-2xl flex items-center gap-3 disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:scale-100"
-            >
-              {loading ? (
-                <>
-                  <Loader2 className="w-6 h-6 animate-spin" />
-                  {importMode === 'custom' ? 'Saving & Starting...' : 'Generating Case...'}
-                </>
-              ) : (
-                <>
-                  Begin Case
-                  <ArrowRight className="w-6 h-6" />
-                </>
-              )}
-            </button>
-          </section>
+            );
+          })}
         </div>
+      </section>
+
+      {/* Industry */}
+      <section>
+        <label className="label-blueprint mb-3 block">Industry</label>
+        <div className="flex flex-wrap gap-2">
+          {industries.map((ind) => (
+            <button
+              key={ind}
+              type="button"
+              onClick={() => setSelectedIndustry(ind)}
+              className={cn(
+                'px-4 py-1.5 rounded-full text-xs font-medium transition-all',
+                selectedIndustry === ind
+                  ? 'bg-primary text-on-primary'
+                  : 'border border-outline-variant/40 text-secondary hover:border-primary'
+              )}
+            >
+              {ind}
+            </button>
+          ))}
+        </div>
+      </section>
+
+      {/* Difficulty + Style */}
+      <section className="grid sm:grid-cols-2 gap-8">
+        <div>
+          <div className="flex items-baseline justify-between mb-3">
+            <label className="label-blueprint">Difficulty</label>
+            <span className="text-xs font-bold text-on-tertiary-container">{DIFF_LABELS[difficulty - 1]}</span>
+          </div>
+          <input
+            className="w-full appearance-none bg-surface-container h-1.5 rounded-full cursor-pointer accent-on-tertiary-container"
+            max="4" min="1" step="1" type="range"
+            value={difficulty}
+            onChange={(e) => setDifficulty(parseInt(e.target.value))}
+          />
+          <div className="flex justify-between mt-2 text-[10px] text-secondary/70">
+            <span>Beginner</span><span>Expert</span>
+          </div>
+        </div>
+
+        <div>
+          <label className="label-blueprint mb-3 block">Interviewer style</label>
+          <div className="grid grid-cols-3 gap-2">
+            {(['Supportive', 'Neutral', 'Stress Interview'] as const).map((style) => (
+              <button
+                key={style}
+                type="button"
+                onClick={() => setInterviewerStyle(style)}
+                className={cn(
+                  'px-2 py-2 rounded-lg border text-xs font-semibold transition-all',
+                  interviewerStyle === style
+                    ? 'border-on-tertiary-container bg-on-tertiary-container/10 text-primary'
+                    : 'border-outline-variant/30 text-secondary hover:border-on-tertiary-container/50'
+                )}
+              >
+                {style === 'Stress Interview' ? 'Stress' : style}
+              </button>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Case source */}
+      <section>
+        <label className="label-blueprint mb-3 block">Case source</label>
+        <div className="grid grid-cols-2 gap-2.5">
+          {([['ai', 'AI-generated', 'Unique case from the settings above', Compass],
+             ['custom', 'Import your own', 'Paste text or upload a PDF', Upload]] as const).map(([mode, title, sub, Icon]) => (
+            <button
+              key={mode}
+              type="button"
+              onClick={() => setImportMode(mode)}
+              className={cn(
+                'flex items-start gap-3 p-3.5 rounded-xl border text-left transition-all',
+                importMode === mode
+                  ? 'border-on-tertiary-container bg-on-tertiary-container/10 text-primary'
+                  : 'border-outline-variant/25 text-secondary hover:border-on-tertiary-container/50'
+              )}
+            >
+              <Icon className="w-5 h-5 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-bold text-sm text-primary">{title}</p>
+                <p className="text-[11px] text-secondary leading-snug mt-0.5">{sub}</p>
+              </div>
+            </button>
+          ))}
+        </div>
+
+        {importMode === 'custom' && (
+          <div className="space-y-4 mt-4">
+            <div className="flex gap-2">
+              {([['text', 'Paste text', FileText], ['pdf', 'Upload PDF', Upload]] as const).map(([t, label, Icon]) => (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => setCustomInputType(t)}
+                  className={cn(
+                    'flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-semibold transition-all',
+                    customInputType === t
+                      ? 'border-on-tertiary-container bg-on-tertiary-container/10 text-primary'
+                      : 'border-outline-variant/30 text-secondary hover:border-on-tertiary-container/50'
+                  )}
+                >
+                  <Icon className="w-4 h-4" /> {label}
+                </button>
+              ))}
+            </div>
+
+            <input
+              type="text"
+              value={customTitle}
+              onChange={(e) => setCustomTitle(e.target.value)}
+              placeholder="Case title — e.g. Declining margins at Retailer X"
+              className="w-full bg-surface-container-lowest border border-outline-variant/30 rounded-lg px-3.5 py-2.5 text-sm text-primary placeholder:text-secondary/60 focus:outline-none focus:border-on-tertiary-container"
+            />
+
+            {customInputType === 'text' ? (
+              <textarea
+                value={customScenario}
+                onChange={(e) => setCustomScenario(e.target.value)}
+                rows={5}
+                placeholder="Paste the full case scenario, background, and any data provided…"
+                className="w-full bg-surface-container-lowest border border-outline-variant/30 rounded-lg px-3.5 py-2.5 text-sm text-primary placeholder:text-secondary/60 focus:outline-none focus:border-on-tertiary-container resize-none"
+              />
+            ) : (
+              <>
+                <div
+                  onClick={() => fileRef.current?.click()}
+                  className={cn(
+                    'border-2 border-dashed rounded-xl p-5 text-center cursor-pointer transition-colors',
+                    customFile
+                      ? 'border-on-tertiary-container bg-on-tertiary-container/5 text-primary'
+                      : 'border-outline-variant/30 text-secondary hover:border-on-tertiary-container/50'
+                  )}
+                >
+                  <Upload className="w-6 h-6 mx-auto mb-1.5 opacity-60" />
+                  <p className="text-xs font-medium">{customFile ? customFile.name : 'Click to select a PDF (max 10 MB)'}</p>
+                </div>
+                <input ref={fileRef} type="file" accept=".pdf" className="hidden" onChange={(e) => setCustomFile(e.target.files?.[0] ?? null)} />
+              </>
+            )}
+          </div>
+        )}
+      </section>
+
+      {/* Action bar */}
+      <div className="flex items-center justify-between gap-4 pt-6 border-t border-outline-variant/20">
+        <div className="min-w-0">
+          <p className="text-xs text-secondary">~45 min · spoken interview</p>
+          {error && <p className="text-sm text-red-500 font-medium mt-1">{error}</p>}
+          {needsPlan && (
+            <button
+              onClick={() => navigate('/billing')}
+              className="mt-1 inline-flex items-center gap-1.5 text-sm font-bold text-on-tertiary-container hover:underline"
+            >
+              Choose a plan <ArrowRight className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+        <button
+          onClick={handleBeginCase}
+          disabled={loading}
+          className="shrink-0 bg-primary text-on-primary px-7 py-3 rounded-lg font-headline font-bold text-sm hover:scale-[0.98] transition-transform shadow-lg shadow-primary/20 flex items-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:scale-100"
+        >
+          {loading ? (
+            <><Loader2 className="w-4 h-4 animate-spin" /> {importMode === 'custom' ? 'Starting…' : 'Generating…'}</>
+          ) : (
+            <>Begin case <ArrowRight className="w-4 h-4" /></>
+          )}
+        </button>
       </div>
     </div>
   );
