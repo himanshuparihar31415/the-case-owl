@@ -159,6 +159,17 @@ function trendOf(series: number[]): 'up' | 'flat' | 'down' {
   const d = series[series.length - 1] - series[Math.max(0, series.length - 4)];
   return d > 0.4 ? 'up' : d < -0.4 ? 'down' : 'flat';
 }
+// Trailing flat-run length: how many consecutive recent sessions stayed within
+// ~0.5 of the latest score. A run >= 3 is a plateau (spec §9 bottleneck).
+function trailingFlat(series: number[]): number {
+  if (series.length === 0) return 0;
+  const last = series[series.length - 1];
+  let run = 1;
+  for (let i = series.length - 2; i >= 0; i--) {
+    if (Math.abs(series[i] - last) <= 0.5) run++; else break;
+  }
+  return run;
+}
 
 export async function getDashboard(userId: string) {
   // Reports oldest → newest, joined with their session (case type + date).
@@ -173,6 +184,7 @@ export async function getDashboard(userId: string) {
       report: r as any,
       type: caseDoc?.type ?? (sess?.config?.caseType) ?? 'unknown',
       title: caseDoc?.title ?? 'Case',
+      difficulty: sess?.config?.difficulty ?? null,
       date: r.generatedAt,
       sessionId: r.sessionId.toString(),
     };
@@ -182,23 +194,46 @@ export async function getDashboard(userId: string) {
   const overallSeries = rows.map((x) => overall10(x.report));
 
   // Trajectory
+  const DIFFICULTY_SHORT: Record<number, string> = { 1: 'Beg', 2: 'Int', 3: 'Adv', 4: 'Exp' };
   const trajectory = rows.map((x, i) => ({
     n: i + 1,
     date: x.date,
     type: CASE_TYPE_LABELS[x.type] ?? x.type,
+    difficulty: x.difficulty,
+    difficultyLabel: x.difficulty ? (DIFFICULTY_SHORT[x.difficulty] ?? `L${x.difficulty}`) : '',
     overall: Math.round(overall10(x.report) * 10) / 10,
     structuring: compScore10(x.report, 'structuring', 'structure'),
     quant: compScore10(x.report, 'quantitative', 'math'),
     sessionId: x.sessionId,
   }));
 
-  // Movers (per-skill series, latest, delta, trend)
+  // Movers (per-skill series, latest, delta, trend, plateau run)
   const movers = MOVER_SKILLS.map((sk) => {
     const series = rows.map((x) => compScore10(x.report, sk.rich, sk.legacy) ?? 0);
     const latest = series[series.length - 1] ?? 0;
     const prior = series[Math.max(0, series.length - 4)] ?? latest;
-    return { key: sk.key, label: sk.label, latest: Math.round(latest * 10) / 10, delta: Math.round((latest - prior) * 10) / 10, trend: trendOf(series), series };
+    return {
+      key: sk.key, label: sk.label, latest: Math.round(latest * 10) / 10,
+      delta: Math.round((latest - prior) * 10) / 10, trend: trendOf(series),
+      plateau: trailingFlat(series), series,
+    };
   });
+
+  // Progress bottleneck (spec §9): the single dimension stuck the longest at the
+  // same level (>= 3 sessions), tie-broken by lowest score. Plus a deterministic
+  // narrative delta callout for under the trajectory chart.
+  const plateaued = movers.filter((m) => m.plateau >= 3).sort((a, b) => b.plateau - a.plateau || a.latest - b.latest);
+  const progressBottleneck = plateaued[0]
+    ? { key: plateaued[0].key, label: plateaued[0].label, score: plateaued[0].latest, sessions: plateaued[0].plateau }
+    : null;
+  let deltaCallout = '';
+  if (n >= 3) {
+    const improver = [...movers].sort((a, b) => b.delta - a.delta)[0];
+    const parts: string[] = [];
+    if (improver && improver.delta >= 0.4) parts.push(`${improver.label} is up +${improver.delta.toFixed(1)} over your recent sessions`);
+    if (progressBottleneck) parts.push(`${progressBottleneck.label} has been flat at ${progressBottleneck.score.toFixed(1)} for ${progressBottleneck.sessions} sessions — your current bottleneck`);
+    deltaCallout = parts.length ? parts.join('; ') + '.' : '';
+  }
 
   // By case type
   const caseTypes = ALL_CASE_TYPES.map((t) => {
@@ -246,7 +281,11 @@ export async function getDashboard(userId: string) {
       habitSessions.get(tag)!.add(i);
       evidence.push({
         sess: i + 1, date: x.date, type: CASE_TYPE_LABELS[x.type] ?? x.type, sessionId: x.sessionId,
-        timestamp: m.timestamp, habitTag: tag, quote: m.candidateResponse, miss: m.missed, better: m.better,
+        timestamp: m.timestamp, habitTag: tag,
+        // v2 four-part shape (setup/yourMove/gap/practicePattern); fall back to v1.
+        quote: m.yourMove ?? m.candidateResponse,
+        miss: m.gap ?? m.missed,
+        better: m.practicePattern ?? m.better,
       });
     }
   });
@@ -270,7 +309,7 @@ export async function getDashboard(userId: string) {
     sessionCount: n, weeksSpan, latestOverall, delta3, trajectory, movers, habits, caseTypes,
   });
 
-  return { totals: { sessions: n, weeks: weeksSpan }, readiness, trajectory, movers, caseTypes, variance, timeSignature, habits, evidence, insight };
+  return { totals: { sessions: n, weeks: weeksSpan }, readiness, trajectory, movers, progressBottleneck, deltaCallout, caseTypes, variance, timeSignature, habits, evidence, insight };
 }
 
 // Cached cross-session narrative; regenerated only when report count changes.

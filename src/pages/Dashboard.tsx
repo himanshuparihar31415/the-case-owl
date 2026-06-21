@@ -18,6 +18,8 @@ interface Dashboard {
   readiness: { overall: number; delta3: number; band: string; target: number };
   trajectory: any[];
   movers: any[];
+  progressBottleneck: { key: string; label: string; score: number; sessions: number } | null;
+  deltaCallout: string;
   caseTypes: any[];
   variance: { series: number[]; mean: number; stdev: number };
   timeSignature: any[];
@@ -208,13 +210,18 @@ export default function Dashboard({ user }: { user: AuthUser | null }) {
                 <CartesianGrid strokeDasharray="3 3" stroke="#EEF1F6" vertical={false} />
                 <XAxis dataKey="n" tick={{ fontSize: 11 }} />
                 <YAxis domain={[0, 10]} tick={{ fontSize: 11 }} width={24} />
-                <Tooltip formatter={(v: any, name: string) => [Number(v).toFixed(1), name]} labelFormatter={(l) => `Session ${l}`} contentStyle={{ borderRadius: 10, border: 'none', boxShadow: '0 8px 22px rgba(11,31,58,.12)', fontSize: 12 }} />
+                <Tooltip formatter={(v: any, name: string) => [Number(v).toFixed(1), name]} labelFormatter={(l: any, payload: any) => { const p = payload?.[0]?.payload; return p ? `Session ${l} · ${p.type}${p.difficultyLabel ? ` · ${p.difficultyLabel}` : ''}` : `Session ${l}`; }} contentStyle={{ borderRadius: 10, border: 'none', boxShadow: '0 8px 22px rgba(11,31,58,.12)', fontSize: 12 }} />
                 <ReferenceLine y={data.readiness.target} stroke="#1FA971" strokeDasharray="6 6" strokeOpacity={0.6} />
                 <Line type="monotone" dataKey="structuring" stroke="#08aae4" strokeWidth={2} dot={{ r: 3 }} />
                 <Line type="monotone" dataKey="quant" stroke="#ba1a1a" strokeWidth={2} dot={{ r: 3 }} />
                 <Line type="monotone" dataKey="overall" stroke="#002046" strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 6 }} />
               </LineChart>
             </ResponsiveContainer>
+            {data.deltaCallout && (
+              <p className="text-[12.5px] text-secondary mt-3 leading-relaxed border-t border-outline-variant/10 pt-3">
+                {data.deltaCallout} <span className="text-[11px] text-secondary/70">· hover a point for case type &amp; difficulty</span>
+              </p>
+            )}
           </div>
 
           <div className="no-line-card p-6">
@@ -225,7 +232,12 @@ export default function Dashboard({ user }: { user: AuthUser | null }) {
                 <button key={m.key} onClick={() => setDrawer({ kind: 'skill', arg: m.key })}
                   className="w-full text-left py-3 border-b border-outline-variant/10 last:border-0 hover:bg-surface-container-low rounded-lg px-2 -mx-2 transition">
                   <div className="flex items-center justify-between mb-1.5">
-                    <span className="font-headline font-semibold text-sm text-primary">{m.label}</span>
+                    <span className="font-headline font-semibold text-sm text-primary flex items-center gap-2">
+                      {m.label}
+                      {data.progressBottleneck?.key === m.key && (
+                        <span className="text-[9px] font-bold uppercase tracking-wide text-error bg-error-container/60 px-1.5 py-0.5 rounded">Current bottleneck</span>
+                      )}
+                    </span>
                     <span className="flex items-baseline gap-2">
                       <span className="font-headline font-bold text-[15px] text-primary">{m.latest.toFixed(1)}</span>
                       <span className={cn('inline-flex items-center gap-0.5 text-[11px] font-semibold px-1.5 py-0.5 rounded', trendCls(m.trend))}>

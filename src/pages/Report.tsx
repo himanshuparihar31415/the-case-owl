@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   CheckCircle, AlertCircle, AlertTriangle, Loader2, ArrowRight, Download,
-  RefreshCw, Play, Bookmark, ChevronDown,
+  RefreshCw, Bookmark, ChevronDown,
 } from 'lucide-react';
 import { cn } from '@/src/lib/utils';
 import { Link, useParams } from 'react-router-dom';
@@ -102,6 +102,7 @@ export default function Report() {
   const [expandedComp, setExpandedComp] = useState<Set<number>>(new Set());
   const [bookmarks, setBookmarks] = useState<Set<number>>(new Set());
   const [filter, setFilter] = useState<Filter>('All');
+  const [openCoach, setOpenCoach] = useState<Set<number>>(new Set());
 
   useEffect(() => {
     if (!sessionId) return;
@@ -139,6 +140,14 @@ export default function Report() {
   const a = report?.analysis;
 
   const transcriptTurns: any[] = useMemo(() => a?.transcript ?? [], [a]);
+  // Link transcript moments to their four-part coaching (spec §10): map each
+  // missed opportunity to its timestamp so a tagged turn can expand into Setup /
+  // Your Move / The Gap / Practice Pattern.
+  const coachByTs = useMemo(() => {
+    const map = new Map<string, any>();
+    for (const m of (a?.missedOpportunities ?? [])) if (m?.timestamp) map.set(String(m.timestamp), m);
+    return map;
+  }, [a]);
   const filteredTurns = useMemo(() => {
     if (filter === 'All') return transcriptTurns;
     return transcriptTurns.filter((t) => {
@@ -738,38 +747,68 @@ export default function Report() {
                   </button>
                 ))}
               </div>
+              {/* Momentum legend (spec §10) */}
+              <div className="flex items-center gap-3 mt-2.5 text-[10px] text-secondary">
+                <span className="flex items-center gap-1"><i className="w-2 h-2 rounded-full bg-green-500" /> driving</span>
+                <span className="flex items-center gap-1"><i className="w-2 h-2 rounded-full bg-amber-400" /> redirected</span>
+                <span className="flex items-center gap-1"><i className="w-2 h-2 rounded-full bg-error" /> stalling</span>
+              </div>
             </div>
             <div className="overflow-y-auto scrolling-log p-4 space-y-4">
               {filteredTurns.length === 0 && <p className="text-xs text-secondary italic">No turns match this filter.</p>}
-              {filteredTurns.map((t, i) => (
-                <div key={i} className="space-y-1.5 group">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-bold text-on-tertiary-container font-mono">
-                      [{t.timestamp}] {t.role === 'candidate' ? 'YOU' : 'PARTNER'}
-                    </span>
-                    <div className="flex items-center gap-1">
-                      <button title="Audio playback (coming with audio analysis)" disabled className="text-secondary/30 cursor-not-allowed"><Play className="w-3.5 h-3.5" /></button>
+              {filteredTurns.map((t, i) => {
+                const coach = coachByTs.get(String(t.timestamp));
+                const coachOpen = openCoach.has(i);
+                const mom = t.momentum as string | undefined;
+                // Momentum (spec §10): GREEN driving · YELLOW interviewer redirecting · RED stalling
+                const momBorder = mom === 'GREEN' ? 'border-green-500' : mom === 'RED' ? 'border-error' : mom === 'YELLOW' ? 'border-amber-400' : 'border-outline-variant/20';
+                return (
+                  <div key={i} className={cn('space-y-1.5 group pl-3 border-l-2', momBorder)}>
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-bold text-on-tertiary-container font-mono">
+                        [{t.timestamp}] {t.role === 'candidate' ? 'YOU' : 'PARTNER'}
+                      </span>
                       <button onClick={() => setBookmarks((s) => toggle(s, i))} className={cn('transition', bookmarks.has(i) ? 'text-on-tertiary-container' : 'text-secondary/40 hover:text-secondary')}>
                         <Bookmark className="w-3.5 h-3.5" fill={bookmarks.has(i) ? 'currentColor' : 'none'} />
                       </button>
                     </div>
+                    {/* Interviewer intent label (spec §10) */}
+                    {t.role === 'interviewer' && t.intent && (
+                      <span className="inline-block text-[10px] font-medium text-on-tertiary-container bg-tertiary-fixed/40 px-1.5 py-0.5 rounded">Testing: {t.intent}</span>
+                    )}
+                    <p className="text-sm text-on-surface-variant leading-relaxed">{t.text}</p>
+                    {(t.markers ?? []).map((m: any, j: number) => (
+                      <div key={j} className={cn('flex gap-1.5 text-xs', m.type === 'strength' ? 'text-green-700' : 'text-amber-700')}>
+                        {m.type === 'strength' ? <CheckCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" /> : <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />}
+                        <span>{m.note}</span>
+                      </div>
+                    ))}
+                    {(t.tags ?? []).length > 0 && (
+                      <div className="flex flex-wrap gap-1">
+                        {t.tags.map((tag: string, j: number) => (
+                          <span key={j} className="text-[10px] text-secondary bg-surface-container-low px-1.5 py-0.5 rounded">#{tag}</span>
+                        ))}
+                      </div>
+                    )}
+                    {/* Expandable four-part coaching when this moment was a missed opportunity (spec §10) */}
+                    {coach && (
+                      <div>
+                        <button onClick={() => setOpenCoach((s) => toggle(s, i))} className="flex items-center gap-1 text-[11px] font-semibold text-amber-700 hover:underline">
+                          <AlertTriangle className="w-3 h-3" /> Coaching note <ChevronDown className={cn('w-3 h-3 transition-transform', coachOpen && 'rotate-180')} />
+                        </button>
+                        {coachOpen && (
+                          <div className="mt-2 space-y-1.5 bg-surface-container-low rounded-lg p-3 text-xs leading-relaxed">
+                            {coach.setup && <p><span className="font-bold text-primary">Setup: </span><span className="text-on-surface-variant">{coach.setup}</span></p>}
+                            {coach.yourMove && <p><span className="font-bold text-amber-700">Your move: </span><span className="text-on-surface-variant">{coach.yourMove}</span></p>}
+                            {coach.gap && <p><span className="font-bold text-error">The gap: </span><span className="text-on-surface-variant">{coach.gap}</span></p>}
+                            {coach.practicePattern && <p><span className="font-bold text-green-700">Practice: </span><span className="text-on-surface-variant">{coach.practicePattern}</span></p>}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
-                  <p className="text-sm text-on-surface-variant leading-relaxed">{t.text}</p>
-                  {(t.markers ?? []).map((m: any, j: number) => (
-                    <div key={j} className={cn('flex gap-1.5 text-xs', m.type === 'strength' ? 'text-green-700' : 'text-amber-700')}>
-                      {m.type === 'strength' ? <CheckCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" /> : <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />}
-                      <span>{m.note}</span>
-                    </div>
-                  ))}
-                  {(t.tags ?? []).length > 0 && (
-                    <div className="flex flex-wrap gap-1">
-                      {t.tags.map((tag: string, j: number) => (
-                        <span key={j} className="text-[10px] text-secondary bg-surface-container-low px-1.5 py-0.5 rounded">#{tag}</span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         </div>
