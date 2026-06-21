@@ -56,6 +56,17 @@ export function buildForbiddenList(caseDoc: InstanceType<typeof Case>): Forbidde
     // false-positives on ordinary case vocabulary.
     if (n.split(' ').length >= 2 && tokens.length >= 1 && n.length >= 6) drivers.push(n);
   }
+
+  // Pharma exhibit cases ship a curated list of the exact mechanism jargon + key
+  // figures the candidate must self-discover. These bypass the GENERIC filter —
+  // they're hand-picked, so a numeric token → "data", a word/phrase → "driver".
+  for (const term of caseDoc.forbiddenTerms ?? []) {
+    const n = normalize(term);
+    if (!n || n.length < 2) continue;
+    if (/[0-9%$]/.test(n)) data.push(n);
+    else drivers.push(n);
+  }
+
   return { drivers: Array.from(new Set(drivers)), data: Array.from(new Set(data)) };
 }
 

@@ -1,6 +1,7 @@
 import { Case, ICase, CaseType, Industry } from '../../models/Case.js';
 import { AppError } from '../../middleware/errorHandler.js';
-import { generateCaseWithAI } from '../../ai/client.js';
+import { generateCaseWithAI, generatePharmaProfitabilityCaseWithAI } from '../../ai/client.js';
+import { PharmaTheme } from '../../ai/prompts.js';
 
 interface CaseFilter {
   type?: CaseType;
@@ -74,11 +75,40 @@ export async function getCaseById(id: string): Promise<ICase> {
   return c;
 }
 
+const PHARMA_THEMES: PharmaTheme[] = ['pricing', 'cost', 'competition', 'pipeline'];
+
 export async function generateCase(
   type: CaseType,
   industry: Industry,
   difficulty: number
 ): Promise<ICase> {
+  // Specialized track: pharma profitability uses the rigorous exhibit/quant
+  // generator (reconciled numbers, a private mechanism discovered via exhibits).
+  if (type === 'profitability' && industry === 'pharma') {
+    const theme = PHARMA_THEMES[Math.floor(Math.random() * PHARMA_THEMES.length)];
+    const g = await generatePharmaProfitabilityCaseWithAI(difficulty, theme);
+    return Case.create({
+      title: g.title,
+      type, industry, difficulty,
+      description: (g.situation ?? '').slice(0, 300),
+      scenario: g.situation ?? '',
+      // Empty so the live Case Brief panel can't spoil the discovery — exhibit
+      // data is released verbally by the interviewer only when earned.
+      keyDataPoints: [],
+      questions: [],
+      // answerKey doubles as the report's recommendation + the interviewer's
+      // private "destination" (plausibleSolution).
+      plausibleSolution: g.answerKey,
+      answerKey: g.answerKey,
+      exhibits: g.exhibits ?? [],
+      quant: g.quant,
+      privateMechanismNote: g.privateMechanismNote,
+      commonWrongTurns: g.commonWrongTurns ?? [],
+      forbiddenTerms: g.forbiddenTerms ?? [],
+      isSeeded: false,
+    });
+  }
+
   const generated = await generateCaseWithAI(type, industry, difficulty);
   return Case.create({ ...generated, type, industry, difficulty, isSeeded: false });
 }

@@ -96,7 +96,12 @@ async function handleConnection(clientWs: WebSocket, req: IncomingMessage): Prom
         ? session.reservedMinutes
         : (session.config.durationMinutes || 45),
       caseDoc.plausibleSolution,
-      caseDoc.openingHook
+      caseDoc.openingHook,
+      // Pharma-profitability exhibit cases: hand the interviewer the exhibits to
+      // release only when earned, the quant task, and the private mechanism.
+      (caseDoc.exhibits && caseDoc.exhibits.length)
+        ? { exhibits: caseDoc.exhibits, quant: caseDoc.quant, privateMechanism: caseDoc.privateMechanismNote }
+        : undefined
     );
 
     // Fail fast if no API key configured

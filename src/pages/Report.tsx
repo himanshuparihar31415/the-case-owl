@@ -63,6 +63,7 @@ const SECTIONS = [
   ['hints', 'Hint Dependency'],
   ['ideal', 'Ideal Answers'],
   ['plan', 'Improvement Plan'],
+  ['exhibits', 'Exhibits & Quant'],
   ['solution', 'Model Solution'],
   ['script', 'Ideal Script'],
   ['progress', 'Progress Over Time'],
@@ -94,7 +95,7 @@ type Filter = typeof TRANSCRIPT_FILTERS[number];
 export default function Report() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const [report, setReport] = useState<ReportData | null>(null);
-  const [solution, setSolution] = useState<{ plausibleSolution?: string; solutionTree?: any; idealScript?: any[] } | null>(null);
+  const [solution, setSolution] = useState<{ plausibleSolution?: string; solutionTree?: any; idealScript?: any[]; exhibits?: any[]; quant?: any; commonWrongTurns?: string[] } | null>(null);
   const [fullTranscript, setFullTranscript] = useState<Array<{ role: string; text: string; timestamp?: string }>>([]);
   const [supervisor, setSupervisor] = useState<Array<{ verdict: string; term?: string; at?: string }> | null>(null);
   const [loading, setLoading] = useState(true);
@@ -291,6 +292,7 @@ export default function Report() {
           // Hide the solution/script tabs when this case has no answer key (legacy/custom).
           if (id === 'solution') return !!(solution && (solution.plausibleSolution || solution.solutionTree));
           if (id === 'script') return !!(solution && Array.isArray(solution.idealScript) && solution.idealScript.length > 0);
+          if (id === 'exhibits') return !!(solution && Array.isArray(solution.exhibits) && solution.exhibits.length > 0);
           return true;
         }).map(([id, label]) => (
           <a key={id} href={`#${id}`} className="shrink-0 px-3 py-1.5 rounded-md text-xs font-medium text-secondary hover:text-primary hover:bg-surface-container-low transition">
@@ -669,6 +671,47 @@ export default function Report() {
               ))}
             </div>
           </Section>
+
+          {/* Exhibits & Quant — pharma cases: the exhibit set you could have earned,
+              the quant derivation, and the traps. Post-interview teaching layer. */}
+          {solution && Array.isArray(solution.exhibits) && solution.exhibits.length > 0 && (
+            <Section id="exhibits" title="Exhibits &amp; Quant" action={<span className="label-blueprint">what the data showed</span>}>
+              <div className="space-y-4">
+                {solution.exhibits.map((e: any, i: number) => (
+                  <div key={i} className="no-line-card p-5">
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="font-headline font-bold text-sm text-primary">{e.label ?? `Exhibit ${i + 1}`}</span>
+                      {e.visual && <span className="text-[10px] uppercase tracking-wide text-secondary bg-surface-container-low px-1.5 py-0.5 rounded">{e.visual}</span>}
+                    </div>
+                    {e.data && <p className="text-sm text-on-surface-variant leading-relaxed whitespace-pre-line font-mono bg-surface-container-lowest rounded-lg p-3">{e.data}</p>}
+                    {e.insight && <p className="text-xs text-on-tertiary-container mt-2"><span className="font-bold">What it reveals: </span>{e.insight}</p>}
+                  </div>
+                ))}
+
+                {solution.quant && (solution.quant.task || solution.quant.derivation) && (
+                  <div className="no-line-card p-5 border-l-4 border-on-tertiary-container">
+                    <p className="label-blueprint text-on-tertiary-container font-bold mb-2">The quant</p>
+                    {solution.quant.task && <p className="text-sm font-bold text-primary mb-2">{solution.quant.task}</p>}
+                    {solution.quant.derivation && <p className="text-sm text-on-surface-variant leading-relaxed whitespace-pre-line mb-2">{solution.quant.derivation}</p>}
+                    {solution.quant.answer && (
+                      <p className="text-sm text-primary bg-green-50 border border-green-200 rounded-lg p-3"><span className="font-bold text-green-700">Answer: </span>{solution.quant.answer}</p>
+                    )}
+                  </div>
+                )}
+
+                {Array.isArray(solution.commonWrongTurns) && solution.commonWrongTurns.length > 0 && (
+                  <div className="no-line-card p-5">
+                    <p className="label-blueprint text-error font-bold mb-2">Common wrong turns</p>
+                    <ul className="space-y-1.5 text-sm text-on-surface-variant">
+                      {solution.commonWrongTurns.map((w: string, i: number) => (
+                        <li key={i} className="flex gap-2"><AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />{w}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            </Section>
+          )}
 
           {/* Model Solution — the pre-generated answer key + solution tree */}
           {solution && (solution.plausibleSolution || solution.solutionTree) && (

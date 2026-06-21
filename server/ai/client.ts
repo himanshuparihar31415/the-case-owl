@@ -2,7 +2,7 @@ import OpenAI from 'openai';
 import { env } from '../config/env.js';
 import { CaseType, Industry } from '../models/Case.js';
 import { TranscriptEntry } from '../models/Session.js';
-import { CASE_GENERATION_PROMPT, HINT_PROMPT, SCORING_PROMPT, EVALUATION_PROMPT, EvaluationContext, PROGRESS_INSIGHT_PROMPT, ProgressInsightContext } from './prompts.js';
+import { CASE_GENERATION_PROMPT, PHARMA_PROFITABILITY_CASE_PROMPT, PharmaTheme, HINT_PROMPT, SCORING_PROMPT, EVALUATION_PROMPT, EvaluationContext, PROGRESS_INSIGHT_PROMPT, ProgressInsightContext } from './prompts.js';
 
 export const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
 
@@ -68,6 +68,34 @@ export async function generateCaseWithAI(type: CaseType, industry: Industry, dif
     'You are a McKinsey case interview designer. Return only valid JSON.',
     prompt
   );
+}
+
+export interface PharmaProfitabilityCase {
+  title: string;
+  difficulty?: number;
+  situation: string;
+  privateMechanismNote?: string;
+  exhibits?: Array<{ id?: number; label?: string; visual?: string; data?: string; whenToShow?: string; doNotShowIf?: string; insight?: string }>;
+  quant?: { task?: string; whenToShow?: string; derivation?: string; answer?: string };
+  answerKey?: string;
+  commonWrongTurns?: string[];
+  forbiddenTerms?: string[];
+}
+
+// Specialized pharma-profitability generator (exhibit/quant schema). Larger
+// output + low temperature so the numbers reconcile.
+export async function generatePharmaProfitabilityCaseWithAI(difficulty: number, theme: PharmaTheme): Promise<PharmaProfitabilityCase> {
+  const response = await openai.chat.completions.create({
+    model: TEXT_MODEL,
+    messages: [
+      { role: 'system', content: 'You are a McKinsey pharma case designer. The numbers must reconcile. Return only valid JSON.' },
+      { role: 'user', content: PHARMA_PROFITABILITY_CASE_PROMPT(difficulty, theme) },
+    ],
+    response_format: { type: 'json_object' },
+    temperature: 0.5,
+    max_tokens: 6000,
+  });
+  return JSON.parse(response.choices[0]?.message?.content ?? '{}') as PharmaProfitabilityCase;
 }
 
 export async function generateHintWithAI(transcript: TranscriptEntry[]): Promise<string> {

@@ -19,6 +19,14 @@ export interface ICase extends Document {
   solutionTree?: unknown; // recursive { label, insight?, children? }
   idealScript?: Array<{ stage: string; interviewer: string; idealResponse: string }>;
   openingHook?: { reference: string; bridge: string }; // real-world hook to open the interview naturally
+  // Pharma-profitability exhibit cases (specialized generator): reconciled
+  // exhibits revealed only when earned + a quant task + the private mechanism.
+  exhibits?: Array<{ id?: number; label?: string; visual?: string; data?: string; whenToShow?: string; doNotShowIf?: string; insight?: string }>;
+  quant?: { task?: string; whenToShow?: string; derivation?: string; answer?: string };
+  privateMechanismNote?: string;
+  answerKey?: string;
+  commonWrongTurns?: string[];
+  forbiddenTerms?: string[]; // mechanism jargon + key figures the candidate must self-discover (supervisor)
   isSeeded: boolean;
   generatedAt: Date;
   isCustom: boolean;
@@ -47,6 +55,12 @@ const CaseSchema = new Schema<ICase>(
     solutionTree: { type: Schema.Types.Mixed },
     idealScript: { type: Schema.Types.Mixed },
     openingHook: { type: Schema.Types.Mixed },
+    exhibits: { type: Schema.Types.Mixed },
+    quant: { type: Schema.Types.Mixed },
+    privateMechanismNote: { type: String },
+    answerKey: { type: String },
+    commonWrongTurns: { type: [String] },
+    forbiddenTerms: { type: [String] },
     isSeeded: { type: Boolean, default: false },
     generatedAt: { type: Date, default: Date.now },
     isCustom: { type: Boolean, default: false },

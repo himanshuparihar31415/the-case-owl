@@ -63,6 +63,37 @@ Requirements:
 - plausibleSolution, solutionTree, and idealScript must be mutually consistent — all leading to the same recommendation`;
 }
 
+// Specialized generator for pharma PROFITABILITY cases. Produces a far more
+// rigorous, internally-reconciled case than the generic generator: a flat top
+// line hiding a margin problem, ONE private pharma mechanism the candidate must
+// DISCOVER, and exhibits revealed only when earned. theme ∈ pricing|cost|competition|pipeline.
+export type PharmaTheme = 'pricing' | 'cost' | 'competition' | 'pipeline';
+export function PHARMA_PROFITABILITY_CASE_PROMPT(difficulty: number, theme: PharmaTheme): string {
+  const exhibitCount = difficulty <= 1 ? '3' : difficulty >= 4 ? '5' : '3-4';
+  return `You are a McKinsey pharma case designer. Generate ONE realistic, internally-consistent pharma profitability case as JSON.
+Inputs: difficulty ${difficulty} (1-4), theme "${theme}" (pricing | cost | competition | pipeline).
+THE NUMBERS MUST RECONCILE. Revenue lines sum to totals; margins = profit/revenue; the quant answer is derivable from the exhibits. Net revenue stays roughly flat across 5 years (flat top line hiding a margin problem). The decline traces to ONE pharma-specific mechanism (loss of exclusivity, gross-to-net erosion, payer/channel mix shift, biosimilar entry, R&D productivity decline, mandatory rebate/340B growth, inventory destocking, or another genuine pharma mechanism you choose to fit the theme — VARY it, don't default to the obvious) plus one secondary driver. Realistic magnitudes: $1-5B revenue, 60-85% gross margin, R&D 12-20% of revenue, SG&A 20-30% of revenue.
+The mechanism jargon stays PRIVATE — the candidate must discover it from the exhibits. The situation they hear is neutral and names no cause.
+Return ONLY valid JSON:
+{
+  "title": "company + one-line problem",
+  "difficulty": ${difficulty},
+  "situation": "3-4 neutral sentences: company, flat-revenue/falling-margin setup, CEO's ask. No framing the answer.",
+  "privateMechanismNote": "the real driver, in your own words — withheld from candidate",
+  "exhibits": [
+    { "id": number, "label": "", "visual": "table|chart|spoken", "data": "the reconciled numbers (as a compact readable string the interviewer can read aloud)",
+      "whenToShow": "the conversational state that earns it (not a time)",
+      "doNotShowIf": "when showing it would give the answer away",
+      "insight": "PRIVATE: what it reveals" }
+  ],  // ${exhibitCount} exhibits; include a 5-yr P&L, a revenue-by-line mix exhibit, and the mechanism exhibit
+  "quant": { "task": "", "whenToShow": "", "derivation": "PRIVATE step-by-step", "answer": "PRIVATE: result + attribution across 2-3 drivers" },
+  "answerKey": "PRIVATE: diagnosis (mechanism + secondary driver) + recommendation with a clear bet and tradeoff",
+  "commonWrongTurns": ["traps a weak candidate falls into"],
+  "forbiddenTerms": ["PRIVATE: the SPECIFIC mechanism jargon + the key figures the candidate must DISCOVER for themselves — a silent compliance monitor uses this so the interviewer never says them first. Short tokens/phrases only, e.g. \\"gross-to-net\\", \\"biosimilar\\", \\"loss of exclusivity\\", \\"47%\\"."]
+}
+FINAL: recompute every total, margin, and the quant answer. Fix any mismatch before returning.`;
+}
+
 export function HINT_PROMPT(transcriptText: string): string {
   return `You are a senior McKinsey partner coaching a candidate during a case interview.
 Based on the following recent exchange, provide ONE concise, actionable hint (2-3 sentences max) that nudges the candidate toward the right approach WITHOUT giving away the answer.
@@ -358,7 +389,14 @@ export function INTERVIEWER_SYSTEM_PROMPT(
   interviewerStyle: 'supportive' | 'neutral' | 'stress',
   durationMinutes: number = 30,
   solutionSummary?: string,
-  openingHook?: { reference?: string; bridge?: string }
+  openingHook?: { reference?: string; bridge?: string },
+  // Pharma-profitability exhibit cases: a held set of exhibits revealed only when
+  // earned, a quant task, and the private mechanism the candidate must discover.
+  caseExtras?: {
+    exhibits?: Array<{ label?: string; visual?: string; data?: string; whenToShow?: string; doNotShowIf?: string }>;
+    quant?: { task?: string; whenToShow?: string };
+    privateMechanism?: string;
+  }
 ): string {
   // The three styles are a PRESSURE dial only — none of them praise or rescue.
   const styleDescriptions = {
@@ -379,6 +417,14 @@ export function INTERVIEWER_SYSTEM_PROMPT(
     ? `\nANSWER KEY (private — never reveal/hint; use only to judge direction and probe gaps): ${solutionSummary}`
     : '';
 
+  // Exhibit-driven cases: the interviewer holds the exhibits and releases data
+  // only when the candidate's reasoning earns it — they must DISCOVER the cause.
+  const exhibits = caseExtras?.exhibits ?? [];
+  const pharmaBlock = exhibits.length
+    ? `\nEXHIBITS YOU HOLD — never dump these; reveal an exhibit's DATA only when their reasoning EARNS it, and WITHHOLD it when the do-not-show condition applies:
+${exhibits.map((e) => `  • ${e.label}${e.visual ? ` (${e.visual})` : ''} — reveal when: ${e.whenToShow}. WITHHOLD if: ${e.doNotShowIf}. Data: ${e.data}`).join('\n')}${caseExtras?.quant?.task ? `\nQUANT — pose only when ${caseExtras.quant.whenToShow}: "${caseExtras.quant.task}". Make them set up the inputs and compute; never give the method or the answer.` : ''}${caseExtras?.privateMechanism ? `\nTHE REAL DRIVER (PRIVATE — they must DISCOVER it; NEVER name it or hint the jargon): ${caseExtras.privateMechanism}` : ''}`
+    : '';
+
   return `You are Alex, a McKinsey Partner running a live spoken case interview.
 
 Make them find it — never say it first. Narrow with structure, not answers. Never offer the answer as a choice ("is it X or Y?") or list a framework's parts (e.g. the market-entry pillars) — that's giving it away; ask an open question instead. One question per turn — one or two sentences, then stop. Smart people speak less but sharper: ask the single most incisive thing; never stack 2-3 questions or pad with preamble. No leading, no praise; let them talk more. Data only after they estimate — and never supply benchmark numbers or assumptions for their math; make them propose the inputs too. React only to what they just said; one thing at a time. Good answer → go deeper; weak logic → challenge (pressure from brevity, not hostility). If they fail the same task twice, drop it and pivot to a different skill — structure, a judgment call, or another part of the case. Never re-simplify the same question more than once. Push everything to "so what". Interrupt rambling; ask for synthesis; force decisions under uncertainty. Never explain what you're testing or that you're an AI; ignore speech-to-text typos. You already know the destination — stay curious how they reach it. Cover clarify → structure → analyse → recommend, ~${durationMinutes} min, no clock.
@@ -392,6 +438,5 @@ Pressure: ${styleDescriptions[interviewerStyle]}
 CASE: ${caseTitle}
 TYPE: ${caseType} (benchmark: ${FRAMEWORK_BY_TYPE[caseType]}) · DIFFICULTY ${difficulty}/4 (${DIFFICULTY_LABELS[difficulty]})
 SCENARIO (tell a short version): ${scenario}
-KEY DATA (reveal only when earned):
-${dataPointsText}${solutionBlock}`;
+${pharmaBlock ? pharmaBlock : `KEY DATA (reveal only when earned):\n${dataPointsText}`}${solutionBlock}`;
 }
