@@ -203,6 +203,13 @@ export default function Report() {
   const metrics = a.communication?.fluency?.metrics ?? report.metrics ?? {};
   const progress: any[] = report.progress ?? [];
 
+  // Session integrity (spec §1): suppress scores on a CRITICAL signal, caution-banner
+  // + LOW confidence when FLAGGED.
+  const integrity = a.integrity ?? null;
+  const suppressed = integrity?.status === 'SUPPRESSED';
+  const flagged = integrity?.status === 'FLAGGED';
+  const confidence = suppressed || flagged ? 'Low' : (a.overall?.confidence ?? '—');
+
   const toggle = (set: Set<number>, i: number) => {
     const next = new Set(set);
     if (next.has(i)) next.delete(i); else next.add(i);
@@ -221,17 +228,53 @@ export default function Report() {
           </p>
         </div>
         <div className="flex items-center gap-5">
-          <div className={cn('px-3 py-1.5 rounded-full text-sm font-bold', READINESS_COLOR[readiness] ?? 'bg-surface-container text-primary')}>
-            {readiness}
-          </div>
-          <div className="text-right">
-            <div className="font-headline text-4xl font-extrabold text-primary leading-none">
-              {score10.toFixed(1)}<span className="text-xl text-secondary">/10</span>
+          {!suppressed && (
+            <div className={cn('px-3 py-1.5 rounded-full text-sm font-bold', READINESS_COLOR[readiness] ?? 'bg-surface-container text-primary')}>
+              {readiness}
             </div>
-            <div className="label-blueprint mt-1">Confidence: {a.overall?.confidence ?? '—'}</div>
+          )}
+          <div className="text-right">
+            {suppressed ? (
+              <div className="font-headline text-lg font-bold text-error leading-tight max-w-[12rem]">Scores withheld</div>
+            ) : (
+              <div className="font-headline text-4xl font-extrabold text-primary leading-none">
+                {score10.toFixed(1)}<span className="text-xl text-secondary">/10</span>
+              </div>
+            )}
+            <div className="label-blueprint mt-1">Confidence: {confidence}</div>
           </div>
         </div>
       </header>
+
+      {/* Session integrity banner (spec §1) */}
+      {integrity && (suppressed || flagged) && (
+        <div className={cn('rounded-xl border p-4 flex gap-3',
+          suppressed ? 'border-error/40 bg-error-container/30' : 'border-amber-300 bg-amber-50')}>
+          <AlertTriangle className={cn('w-5 h-5 shrink-0 mt-0.5', suppressed ? 'text-error' : 'text-amber-600')} />
+          <div className="space-y-2">
+            <p className={cn('text-sm font-bold', suppressed ? 'text-error' : 'text-amber-800')}>
+              {suppressed ? 'Session anomaly detected — scores withheld' : 'This session showed anomalous patterns'}
+            </p>
+            <p className="text-sm text-on-surface-variant leading-relaxed">
+              {integrity.banner || 'Scores below should be interpreted with caution and may not reflect true ability.'}
+            </p>
+            {Array.isArray(integrity.signals) && integrity.signals.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {integrity.signals.map((s: any, i: number) => (
+                  <span key={i} className={cn('text-[10px] font-bold px-2 py-0.5 rounded font-mono',
+                    s.severity === 'CRITICAL' ? 'bg-error-container text-on-error-container'
+                      : s.severity === 'HIGH' ? 'bg-amber-100 text-amber-800' : 'bg-surface-container text-secondary')}>
+                    {String(s.signal ?? '').replace(/_/g, ' ')} · {s.severity}
+                  </span>
+                ))}
+              </div>
+            )}
+            {integrity.dualTrack && (
+              <p className="text-xs text-on-surface-variant italic border-t border-outline-variant/20 pt-2">{integrity.dualTrack}</p>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Section nav */}
       <nav className="sticky top-20 z-10 bg-surface/90 backdrop-blur-sm -mx-1 px-1 py-2 flex gap-1 overflow-x-auto scrolling-log border-b border-outline-variant/15">
@@ -283,19 +326,45 @@ export default function Report() {
             <div className="space-y-3">
               {competencies.map((c, i) => {
                 const open = expandedComp.has(i);
+                const notAssessed = c.assessed === false || c.score == null;
                 return (
                   <div key={i} className="no-line-card overflow-hidden">
                     <button onClick={() => setExpandedComp((s) => toggle(s, i))} className="w-full p-4 flex items-center gap-4 text-left hover:bg-surface-container-low transition">
                       <ChevronDown className={cn('w-4 h-4 text-secondary transition-transform shrink-0', open && 'rotate-180')} />
                       <span className="font-bold text-sm text-primary w-48 shrink-0">{c.label}</span>
-                      <div className="flex-grow h-2 bg-surface-container-highest rounded-full overflow-hidden">
-                        <div className={cn('h-full', scoreColor(c.score))} style={{ width: `${(c.score ?? 0) * 10}%` }} />
-                      </div>
-                      <span className="font-headline font-bold text-primary w-12 text-right shrink-0">{c.score}/10</span>
+                      {notAssessed ? (
+                        <span className="flex-grow text-xs text-secondary italic">Not assessed — insufficient evidence</span>
+                      ) : suppressed ? (
+                        <span className="flex-grow text-xs text-error italic">withheld (session anomaly)</span>
+                      ) : (
+                        <div className="flex-grow h-2 bg-surface-container-highest rounded-full overflow-hidden">
+                          <div className={cn('h-full', scoreColor(c.score))} style={{ width: `${(c.score ?? 0) * 10}%` }} />
+                        </div>
+                      )}
+                      <span className="font-headline font-bold text-primary w-14 text-right shrink-0">
+                        {notAssessed ? 'N/A' : suppressed ? '—' : `${c.score}/10`}
+                      </span>
                     </button>
                     {open && (
                       <div className="px-5 pb-5 pl-12 space-y-3">
                         <p className="text-sm text-on-surface-variant leading-relaxed">{c.assessment}</p>
+                        {/* Anchor ladder: where you are vs the next level (spec §2) */}
+                        {!notAssessed && (c.currentAnchor || c.nextAnchor) && (
+                          <div className="space-y-1.5 bg-surface-container-low rounded-lg p-3">
+                            {c.currentAnchor && (
+                              <p className="text-xs leading-relaxed">
+                                <span className="font-bold text-amber-700">YOU ARE HERE{c.currentAnchor.level != null ? ` (${c.currentAnchor.level})` : ''}: </span>
+                                <span className="text-on-surface-variant">{c.currentAnchor.text}</span>
+                              </p>
+                            )}
+                            {c.nextAnchor && (
+                              <p className="text-xs leading-relaxed">
+                                <span className="font-bold text-secondary">NEXT LEVEL{c.nextAnchor.level != null ? ` (${c.nextAnchor.level})` : ''}: </span>
+                                <span className="text-secondary">{c.nextAnchor.text}</span>
+                              </p>
+                            )}
+                          </div>
+                        )}
                         <div className="space-y-1.5">
                           {(c.evidence ?? []).map((e: any, j: number) => (
                             <div key={j} className="flex gap-2 text-xs">
@@ -315,33 +384,89 @@ export default function Report() {
           {/* Communication */}
           <Section id="communication" title="Communication Quality">
             <div className="space-y-6">
-              {/* Grammar */}
-              <div className="no-line-card p-6">
-                <div className="flex items-center justify-between mb-3">
-                  <h4 className="font-bold text-primary">Grammar &amp; Correctness</h4>
-                  <span className="font-headline font-bold text-primary">{a.communication?.grammar?.score}/10</span>
-                </div>
-                <p className="text-sm text-on-surface-variant mb-4">{a.communication?.grammar?.summary}</p>
-                <div className="space-y-3">
-                  {(a.communication?.grammar?.issues ?? []).map((g: any, i: number) => (
-                    <div key={i} className="text-xs border-l-2 border-error/40 pl-3">
-                      <div className="font-mono text-on-tertiary-container">{g.timestamp} · <span className="text-error not-italic font-bold">{g.issue}</span></div>
-                      <div className="text-secondary line-through mt-0.5">“{g.statement}”</div>
-                      <div className="text-on-surface-variant mt-0.5">→ “{g.better}”</div>
+              {/* Communication Effectiveness (replaces Grammar — spec §4) */}
+              {a.communication?.effectiveness ? (
+                <div className="no-line-card p-6">
+                  <h4 className="font-bold text-primary mb-1">Communication Effectiveness</h4>
+                  <p className="text-[11px] text-secondary mb-4">What real interviewers track — leading with your answer, signposting the plan, and how cleanly you recover under pressure.</p>
+                  <div className="grid grid-cols-2 gap-4 mb-4">
+                    <div className="bg-surface-container-low rounded-lg p-3">
+                      <div className="font-headline font-bold text-lg text-primary">{a.communication.effectiveness.answerStructureRate ?? '—'}%</div>
+                      <div className="label-blueprint">Led with the answer</div>
                     </div>
-                  ))}
+                    <div className="bg-surface-container-low rounded-lg p-3">
+                      <div className="font-headline font-bold text-lg text-primary">{a.communication.effectiveness.signpostingRate ?? '—'}%</div>
+                      <div className="label-blueprint">Signposted the plan</div>
+                    </div>
+                  </div>
+                  {a.communication.effectiveness.summary && <p className="text-sm text-on-surface-variant mb-4">{a.communication.effectiveness.summary}</p>}
+                  {(a.communication.effectiveness.recoveryInstances ?? []).length > 0 && (
+                    <div className="space-y-2">
+                      <div className="label-blueprint">Recovery under pressure</div>
+                      {a.communication.effectiveness.recoveryInstances.map((r: any, i: number) => (
+                        <div key={i} className="text-xs flex gap-2">
+                          <span className="font-mono text-on-tertiary-container shrink-0">{r.timestamp}</span>
+                          <span className={cn('font-bold shrink-0 uppercase', r.type === 'clean' ? 'text-green-700' : r.type === 'freeze' ? 'text-error' : 'text-amber-600')}>{r.type}</span>
+                          <span className="text-secondary">{r.situation}{r.note ? ` — ${r.note}` : ''}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {(a.communication.clarityIssues ?? []).length > 0 && (
+                    <div className="mt-4 space-y-2 border-t border-outline-variant/15 pt-3">
+                      <div className="label-blueprint text-error">Clarity issues (would confuse an interviewer)</div>
+                      {a.communication.clarityIssues.map((g: any, i: number) => (
+                        <div key={i} className="text-xs border-l-2 border-error/40 pl-3">
+                          <div className="text-secondary">“{g.statement}” <span className="font-mono text-on-tertiary-container">{g.timestamp}</span></div>
+                          <div className="text-error mt-0.5">{g.issue}</div>
+                          <div className="text-on-surface-variant mt-0.5">→ “{g.better}”</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
-              </div>
+              ) : a.communication?.grammar ? (
+                /* legacy report shape */
+                <div className="no-line-card p-6">
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="font-bold text-primary">Grammar &amp; Correctness</h4>
+                    <span className="font-headline font-bold text-primary">{a.communication.grammar.score}/10</span>
+                  </div>
+                  <p className="text-sm text-on-surface-variant mb-4">{a.communication.grammar.summary}</p>
+                  <div className="space-y-3">
+                    {(a.communication.grammar.issues ?? []).map((g: any, i: number) => (
+                      <div key={i} className="text-xs border-l-2 border-error/40 pl-3">
+                        <div className="font-mono text-on-tertiary-container">{g.timestamp} · <span className="text-error not-italic font-bold">{g.issue}</span></div>
+                        <div className="text-secondary line-through mt-0.5">“{g.statement}”</div>
+                        <div className="text-on-surface-variant mt-0.5">→ “{g.better}”</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
 
-              {/* Fluency */}
+              {/* Fluency v2 */}
               <div className="no-line-card p-6">
                 <h4 className="font-bold text-primary mb-1">Fluency</h4>
-                <p className="text-[11px] text-secondary mb-4">Measured from the transcript &amp; timing (approximate — acoustic metrics arrive with audio analysis).</p>
+                <p className="text-[11px] text-secondary mb-4">Did your responses actually advance the case? Measured from the transcript &amp; timing.</p>
+                {/* v2 diagnostic rates lead */}
+                {(a.communication?.fluency?.coherenceRate != null || a.communication?.fluency?.firstResponseRate != null) && (
+                  <div className="grid grid-cols-2 gap-4 mb-4">
+                    <div className="bg-surface-container-low rounded-lg p-3">
+                      <div className="font-headline font-bold text-lg text-primary">{a.communication.fluency.coherenceRate ?? '—'}%</div>
+                      <div className="label-blueprint">Advanced the case</div>
+                    </div>
+                    <div className="bg-surface-container-low rounded-lg p-3">
+                      <div className="font-headline font-bold text-lg text-primary">{a.communication.fluency.firstResponseRate ?? '—'}%</div>
+                      <div className="label-blueprint">Answered on first try</div>
+                    </div>
+                  </div>
+                )}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4">
                   {[
                     ['Words/min', metrics.wordsPerMinute],
                     ['Filler words', metrics.fillerWordTotal],
-                    ['Concise rate', metrics.conciseAnswerRate != null ? `${metrics.conciseAnswerRate}%` : '—'],
+                    ['Concise rate', (metrics.substantiveConciseRate ?? metrics.conciseAnswerRate) != null ? `${metrics.substantiveConciseRate ?? metrics.conciseAnswerRate}%` : '—'],
                     ['Long pauses', metrics.longPauses],
                     ['Repeated phrases', metrics.repeatedPhrases],
                     ['Avg response', metrics.avgWordsPerResponse != null ? `${metrics.avgWordsPerResponse}w` : '—'],
@@ -353,10 +478,27 @@ export default function Report() {
                     </div>
                   ))}
                 </div>
+                {/* Pause distribution — WHERE they clustered, not just the count */}
+                {metrics.pauseDistribution && metrics.longPauses > 0 && (
+                  <p className="text-xs text-secondary mb-4">
+                    Pauses clustered: <span className="text-on-surface-variant font-medium">{metrics.pauseDistribution.early} early</span> · <span className="text-on-surface-variant font-medium">{metrics.pauseDistribution.mid} mid</span> · <span className="text-on-surface-variant font-medium">{metrics.pauseDistribution.late} late</span>
+                  </p>
+                )}
                 {(metrics.fillerWords ?? []).length > 0 && (
                   <div className="flex flex-wrap gap-2 mb-4">
                     {metrics.fillerWords.map((f: any, i: number) => (
                       <span key={i} className="text-xs bg-surface-container px-2 py-1 rounded-md text-on-surface-variant">“{f.word}” × {f.count}</span>
+                    ))}
+                  </div>
+                )}
+                {/* Most impactful repetitions with context */}
+                {(a.communication?.fluency?.topRepetitions ?? []).length > 0 && (
+                  <div className="space-y-1.5 mb-4">
+                    {a.communication.fluency.topRepetitions.map((r: any, i: number) => (
+                      <div key={i} className="text-xs flex gap-2">
+                        <span className="font-mono text-on-tertiary-container shrink-0">{r.timestamps}</span>
+                        <span className="text-secondary">“{r.phrase}” — {r.note}</span>
+                      </div>
                     ))}
                   </div>
                 )}
@@ -384,42 +526,51 @@ export default function Report() {
             </div>
           </Section>
 
-          {/* Time Management */}
+          {/* Time Management v2 — causal impact chain (spec §6) */}
           <Section id="time" title="Time Management">
-            <div className="no-line-card overflow-hidden">
-              <table className="w-full text-sm">
-                <thead className="bg-surface-container-low text-secondary">
-                  <tr className="text-left"><th className="p-3 font-medium">Stage</th><th className="p-3 font-medium">Spent</th><th className="p-3 font-medium">Recommended</th><th className="p-3 font-medium">Assessment</th></tr>
-                </thead>
-                <tbody>
-                  {(a.timeManagement ?? []).map((t: any, i: number) => {
-                    const bad = /short|brief|limited|insufficient|long/i.test(t.assessment ?? '');
-                    return (
-                      <tr key={i} className="border-t border-outline-variant/10">
-                        <td className="p-3 text-primary font-medium">{t.stage}</td>
-                        <td className="p-3 font-mono text-on-surface-variant">{t.timeSpent}</td>
-                        <td className="p-3 text-secondary">{t.recommended}</td>
-                        <td className={cn('p-3 font-medium', bad ? 'text-amber-600' : 'text-green-700')}>{t.assessment}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+            <div className="space-y-3">
+              {(a.timeManagement ?? []).map((t: any, i: number) => {
+                const bad = /short|brief|limited|insufficient|long/i.test(t.assessment ?? '');
+                return (
+                  <div key={i} className="no-line-card p-4">
+                    <div className="flex items-center gap-3 flex-wrap mb-1">
+                      <span className="text-primary font-bold text-sm">{t.stage}</span>
+                      <span className="font-mono text-xs text-on-surface-variant">{t.timeSpent}</span>
+                      <span className="text-xs text-secondary">vs {t.recommended}</span>
+                      <span className={cn('text-xs font-bold ml-auto', bad ? 'text-amber-600' : 'text-green-700')}>{t.assessment}</span>
+                    </div>
+                    {t.impactChain && <p className="text-sm text-on-surface-variant leading-relaxed mt-1">{t.impactChain}</p>}
+                  </div>
+                );
+              })}
             </div>
           </Section>
 
-          {/* Missed Opportunities */}
+          {/* Missed Opportunities v2 — four-part coaching format (spec §7) */}
           <Section id="missed" title="Missed Opportunities">
             <div className="space-y-4">
               {(a.missedOpportunities ?? []).map((m: any, i: number) => (
-                <div key={i} className="no-line-card p-5 border-l-4 border-amber-400">
-                  <div className="flex items-center gap-2 mb-2">
+                <div key={i} className="no-line-card p-5 border-l-4 border-amber-400 space-y-2">
+                  <div className="flex items-center gap-2">
                     <span className="font-mono text-xs text-on-tertiary-container">{m.timestamp}</span>
-                    <span className="text-xs font-bold text-primary">{m.situation}</span>
+                    {m.habitTag && <span className="text-[10px] text-secondary bg-surface-container-low px-1.5 py-0.5 rounded">{String(m.habitTag).replace(/_/g, ' ')}</span>}
                   </div>
-                  <p className="text-xs text-secondary mb-1">You: “{m.candidateResponse}”</p>
-                  <p className="text-sm text-error mb-1"><span className="font-bold">Missed:</span> {m.missed}</p>
-                  <p className="text-sm text-green-700"><span className="font-bold">Better:</span> {m.better}</p>
+                  {m.setup ? (
+                    <>
+                      <p className="text-sm text-on-surface-variant"><span className="font-bold text-primary">The setup: </span>{m.setup}</p>
+                      <p className="text-sm text-on-surface-variant"><span className="font-bold text-amber-700">Your move: </span>{m.yourMove}</p>
+                      <p className="text-sm text-on-surface-variant"><span className="font-bold text-error">The gap: </span>{m.gap}</p>
+                      <p className="text-sm text-on-surface-variant bg-surface-container-low rounded-lg p-3"><span className="font-bold text-green-700">Practice pattern: </span>{m.practicePattern}</p>
+                    </>
+                  ) : (
+                    /* legacy shape */
+                    <>
+                      {m.situation && <p className="text-xs font-bold text-primary">{m.situation}</p>}
+                      {m.candidateResponse && <p className="text-xs text-secondary">You: “{m.candidateResponse}”</p>}
+                      {m.missed && <p className="text-sm text-error"><span className="font-bold">Missed:</span> {m.missed}</p>}
+                      {m.better && <p className="text-sm text-green-700"><span className="font-bold">Better:</span> {m.better}</p>}
+                    </>
+                  )}
                 </div>
               ))}
             </div>
@@ -436,41 +587,72 @@ export default function Report() {
             </div>
           </Section>
 
-          {/* Ideal Answers */}
+          {/* Ideal Answers v2 — three-layer comparison + quality gate (spec §3) */}
           <Section id="ideal" title="Ideal Answer Comparison">
             <div className="space-y-5">
               {(a.idealAnswers ?? []).map((q: any, i: number) => (
                 <div key={i} className="no-line-card p-6 space-y-3">
-                  <p className="font-bold text-primary text-sm">{q.question}</p>
+                  <div className="flex items-start justify-between gap-3">
+                    <p className="font-bold text-primary text-sm">{q.question}</p>
+                    {q.similarityScore != null && (
+                      <span className="text-[10px] font-mono text-secondary shrink-0 mt-0.5" title="Similarity between your answer and the model answer">sim {q.similarityScore}</span>
+                    )}
+                  </div>
+                  {/* Layer 1: what it tests */}
+                  {q.skillTested && (
+                    <p className="text-xs text-on-tertiary-container"><span className="font-bold">What this tests: </span>{q.skillTested}</p>
+                  )}
                   <div className="bg-surface-container-low rounded-lg p-3">
                     <div className="label-blueprint mb-1">Your answer</div>
                     <p className="text-sm text-on-surface-variant">{q.candidateAnswer}</p>
                   </div>
-                  <p className="text-xs text-amber-700 italic">{q.assessment}</p>
-                  <div className="bg-green-50 border border-green-200 rounded-lg p-3">
-                    <div className="label-blueprint mb-1 text-green-700">Stronger answer</div>
-                    <p className="text-sm text-on-surface-variant">{q.strongerAnswer}</p>
-                  </div>
+                  {/* Layer 2: diagnosis (legacy: assessment) */}
+                  {(q.diagnosis || q.assessment) && (
+                    <p className="text-xs text-amber-700 italic">{q.diagnosis || q.assessment}</p>
+                  )}
+                  {/* Layer 3: model answer with reasoning — or "on target" when already strong */}
+                  {q.alreadyStrong ? (
+                    <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                      <div className="label-blueprint mb-1 text-green-700">Your response was on target ✓</div>
+                      <p className="text-sm text-on-surface-variant">{q.modelAnswer || q.strongerAnswer ? `A marginal improvement: ${q.modelAnswer || q.strongerAnswer}` : 'Strong as-is.'}</p>
+                    </div>
+                  ) : (
+                    <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                      <div className="label-blueprint mb-1 text-green-700">Model answer — with the reasoning</div>
+                      <p className="text-sm text-on-surface-variant">{q.modelAnswer || q.strongerAnswer}</p>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
           </Section>
 
-          {/* Improvement Plan */}
-          <Section id="plan" title="Priority Improvement Plan">
+          {/* Improvement Plan v2 — max 2 priorities, each with evidence/drill/criteria (spec §8) */}
+          <Section id="plan" title="Priority Improvement Plan" action={<span className="label-blueprint">two specific items beat four generic ones</span>}>
             <div className="space-y-3">
-              {(a.priorityPlan ?? []).map((p: any, i: number) => (
+              {((a.improvementPlan ?? a.priorityPlan) ?? []).slice(0, 2).map((p: any, i: number) => (
                 <div key={i} className="no-line-card p-4 flex gap-4 items-start">
                   <span className={cn('px-2 py-0.5 rounded text-xs font-bold shrink-0',
                     p.priority === 'P0' ? 'bg-error-container text-on-error-container' : p.priority === 'P1' ? 'bg-amber-100 text-amber-800' : 'bg-surface-container text-secondary')}>
-                    {p.priority}
+                    {p.priority ?? `#${i + 1}`}
                   </span>
                   <div className="flex-grow space-y-2">
                     <p className="text-sm font-bold text-primary">{p.action}</p>
-                    {p.detail && <p className="text-sm text-on-surface-variant leading-relaxed">{p.detail}</p>}
-                    {p.practiceMethod && (
+                    {/* v2: evidence excerpt; legacy: detail */}
+                    {(p.evidenceExcerpt || p.detail) && (
+                      <p className="text-sm text-on-surface-variant leading-relaxed">
+                        {p.evidenceExcerpt && <span className="font-bold text-on-tertiary-container">Evidence: </span>}
+                        {p.evidenceExcerpt || p.detail}
+                      </p>
+                    )}
+                    {(p.practiceDrill || p.practiceMethod) && (
                       <p className="text-xs text-secondary leading-relaxed">
-                        <span className="font-bold text-on-tertiary-container">Practice drill: </span>{p.practiceMethod}
+                        <span className="font-bold text-on-tertiary-container">Practice drill: </span>{p.practiceDrill || p.practiceMethod}
+                      </p>
+                    )}
+                    {p.completionCriteria && (
+                      <p className="text-xs text-secondary leading-relaxed">
+                        <span className="font-bold text-green-700">Done when: </span>{p.completionCriteria}
                       </p>
                     )}
                   </div>

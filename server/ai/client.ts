@@ -7,6 +7,24 @@ import { CASE_GENERATION_PROMPT, HINT_PROMPT, SCORING_PROMPT, EVALUATION_PROMPT,
 export const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
 
 const TEXT_MODEL = 'gpt-4o';
+const EMBED_MODEL = 'text-embedding-3-small';
+
+// Embed a batch of strings (one API call). Used by the report's ideal-answer
+// quality gate: the model answer must be substantively DIFFERENT from the
+// candidate's (cosine < 0.7), else it's a rephrase, not a teaching example.
+export async function embedTexts(texts: string[]): Promise<number[][]> {
+  if (texts.length === 0) return [];
+  const res = await openai.embeddings.create({ model: EMBED_MODEL, input: texts });
+  return res.data.map((d) => d.embedding as number[]);
+}
+
+export function cosineSimilarity(a: number[], b: number[]): number {
+  let dot = 0, na = 0, nb = 0;
+  const len = Math.min(a.length, b.length);
+  for (let i = 0; i < len; i++) { dot += a[i] * b[i]; na += a[i] * a[i]; nb += b[i] * b[i]; }
+  if (na === 0 || nb === 0) return 0;
+  return dot / (Math.sqrt(na) * Math.sqrt(nb));
+}
 
 async function chatJSON<T>(systemPrompt: string, userPrompt: string): Promise<T> {
   const response = await openai.chat.completions.create({
@@ -74,7 +92,7 @@ export async function generateEvaluationWithAI(ctx: EvaluationContext): Promise<
     ],
     response_format: { type: 'json_object' },
     temperature: 0.4,
-    max_tokens: 12000, // detailed per-competency + improvement-plan prose; headroom so JSON never truncates
+    max_tokens: 15000, // v2 schema is larger (integrity, anchors, 3-layer ideal answers, 4-part missed opps); headroom so JSON never truncates
   });
   const text = response.choices[0]?.message?.content ?? '{}';
   return JSON.parse(text) as Record<string, unknown>;

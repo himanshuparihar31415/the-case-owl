@@ -2,7 +2,7 @@ import { Report, IReport, OverallGrade } from '../../models/Report.js';
 import { Session, TranscriptEntry } from '../../models/Session.js';
 import { Case } from '../../models/Case.js';
 import { AppError } from '../../middleware/errorHandler.js';
-import { generateEvaluationWithAI } from '../../ai/client.js';
+import { generateEvaluationWithAI, embedTexts, cosineSimilarity } from '../../ai/client.js';
 import { EvaluationContext } from '../../ai/prompts.js';
 
 const DIFFICULTY_LABELS: Record<number, string> = {
@@ -50,10 +50,14 @@ function computeMetrics(transcript: TranscriptEntry[], startedAt: Date, duration
   let candidateSpeakingSec = 0;
   let longPauses = 0;
   let hintsUsed = 0;
+  // v2: where long pauses fell, so we can describe WHEN they clustered, not just count.
+  const pauseOffsets: number[] = [];
+  let lastOffset = 0;
 
   for (let i = 0; i < transcript.length; i++) {
     const t = transcript[i];
     const offset = t.timestamp ? t.timestamp.getTime() - start : 0;
+    if (offset > lastOffset) lastOffset = offset;
     const isHint = t.text.startsWith('[HINT]');
     if (isHint) hintsUsed++;
     lines.push(`[${fmtTime(offset)}] ${t.role.toUpperCase()}${isHint ? ' (HINT)' : ''}: ${t.text}`);
@@ -66,7 +70,7 @@ function computeMetrics(transcript: TranscriptEntry[], startedAt: Date, duration
         const gap = (t.timestamp.getTime() - transcript[i - 1].timestamp.getTime()) / 1000;
         const capped = Math.min(Math.max(gap, 0), 180);
         candidateSpeakingSec += capped;
-        if (gap > 3) longPauses++;
+        if (gap > 3) { longPauses++; pauseOffsets.push(offset); }
       }
     }
   }
@@ -96,6 +100,30 @@ function computeMetrics(transcript: TranscriptEntry[], startedAt: Date, duration
   const longestResponseWords = responses ? Math.max(...candidateWordCounts) : 0;
   const avgWordsPerResponse = responses ? Math.round(totalWords / responses) : 0;
 
+  // v2: concise rate over SUBSTANTIVE responses only — exclude acks/restarts
+  // (<4 words like "Got it", "Sure", "Hmm") that inflate the v1 rate.
+  const substantiveCounts = candidateWordCounts.filter((w) => w >= 4);
+  const substantiveResponses = substantiveCounts.length;
+  const substantiveConcise = substantiveCounts.filter((w) => w <= 60).length;
+  const substantiveConciseRate = substantiveResponses
+    ? Math.round((substantiveConcise / substantiveResponses) * 100)
+    : 0;
+
+  // v2: bucket long pauses into early/mid/late thirds of the interview.
+  const span = lastOffset || durationSeconds * 1000 || 1;
+  const pauseDistribution = { early: 0, mid: 0, late: 0 };
+  for (const off of pauseOffsets) {
+    const frac = off / span;
+    if (frac < 1 / 3) pauseDistribution.early++;
+    else if (frac < 2 / 3) pauseDistribution.mid++;
+    else pauseDistribution.late++;
+  }
+
+  // v2: rough % of case stages reached (premature-termination signal). A full
+  // case has the candidate speaking through clarify→structure→analysis→synthesis;
+  // ~6 substantive turns ≈ a complete traversal.
+  const stagesCompletedPct = Math.min(100, Math.round((substantiveResponses / 6) * 100));
+
   // WPM: candidate words over estimated speaking time (fallback to session duration).
   const speakingMin = candidateSpeakingSec > 0 ? candidateSpeakingSec / 60 : durationSeconds / 60;
   const wordsPerMinute = speakingMin > 0 ? Math.round(totalWords / speakingMin) : 0;
@@ -112,6 +140,10 @@ function computeMetrics(transcript: TranscriptEntry[], startedAt: Date, duration
       longestResponseWords,
       avgWordsPerResponse,
       longPauses,
+      substantiveConciseRate,
+      substantiveResponses,
+      pauseDistribution,
+      stagesCompletedPct,
     },
   };
 }
@@ -199,6 +231,25 @@ export async function generateReport(sessionId: string, userId: string): Promise
   analysis.difficultyLabel = difficultyLabel;
   analysis.durationLabel = durationLabel;
 
+  // Ideal-answer quality gate (spec 3.3): the model answer must be substantively
+  // DIFFERENT from the candidate's, not a rephrase. Embed both, measure cosine; if
+  // they're too similar (>= 0.7) the candidate's answer was already strong, so flip
+  // the UI to "on target — marginal improvement" framing rather than a fake "stronger".
+  const ideals: any[] = Array.isArray(analysis.idealAnswers) ? analysis.idealAnswers : [];
+  if (ideals.length > 0) {
+    try {
+      const pairs = ideals.flatMap((q) => [String(q?.candidateAnswer ?? ''), String(q?.modelAnswer ?? q?.strongerAnswer ?? '')]);
+      const vecs = await embedTexts(pairs);
+      ideals.forEach((q, i) => {
+        const sim = cosineSimilarity(vecs[i * 2] ?? [], vecs[i * 2 + 1] ?? []);
+        q.similarityScore = Math.round(sim * 100) / 100;
+        q.alreadyStrong = sim >= 0.7; // too similar to teach anything new
+      });
+    } catch (e) {
+      console.error('ideal-answer similarity gate failed (non-fatal):', e);
+    }
+  }
+
   // Derive legacy fields for analytics/dashboard compatibility.
   const overallScore = Math.round(((analysis.overall?.score ?? 5) as number) * 10);
   const overallGrade = DECISION_TO_GRADE[analysis.overall?.decision as string] ?? 'BORDERLINE';
@@ -221,15 +272,20 @@ export async function generateReport(sessionId: string, userId: string): Promise
   };
   const executiveSummary = (analysis.overall?.summary as string) ?? 'Evaluation complete.';
 
-  // Build progress trend from the user's prior reports + this one.
+  // Build progress trend from the user's prior reports + this one. Skip sessions
+  // whose scores were SUPPRESSED for integrity reasons — anomalous sessions
+  // shouldn't pollute the trend.
+  const notSuppressed = (an: any) => an?.integrity?.status !== 'SUPPRESSED';
   const prior = await Report.find({ userId })
     .sort({ generatedAt: 1 })
-    .select('overallScore analysis metrics generatedAt');
+    .select('overallScore analysis metrics generatedAt sessionId');
   const progress = [
-    ...prior.filter((r) => r.sessionId?.toString() !== sessionId).map((r) =>
-      buildProgressRow(r as any)
-    ),
-    buildProgressRow({ generatedAt: new Date(), overallScore, analysis, metrics }),
+    ...prior
+      .filter((r) => r.sessionId?.toString() !== sessionId && notSuppressed((r as any).analysis))
+      .map((r) => buildProgressRow(r as any)),
+    ...(notSuppressed(analysis)
+      ? [buildProgressRow({ generatedAt: new Date(), overallScore, analysis, metrics })]
+      : []),
   ];
 
   await Report.deleteOne({ sessionId, userId });

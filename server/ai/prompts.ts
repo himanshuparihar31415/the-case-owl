@@ -131,122 +131,164 @@ export interface EvaluationContext {
     longestResponseWords: number;
     avgWordsPerResponse: number;
     longPauses: number;
+    // v2: concise rate over SUBSTANTIVE responses only (acks/restarts excluded).
+    substantiveConciseRate: number;
+    substantiveResponses: number;
+    // v2: where long pauses clustered across the interview (early/mid/late thirds).
+    pauseDistribution: { early: number; mid: number; late: number };
+    // v2: % of case stages reached (for the premature-termination integrity signal).
+    stagesCompletedPct: number;
   };
 }
 
 export function EVALUATION_PROMPT(ctx: EvaluationContext): string {
-  const fillerList = ctx.fluencyMetrics.fillerWords.length
-    ? ctx.fluencyMetrics.fillerWords.map((f) => `"${f.word}" — ${f.count}`).join(', ')
+  const m = ctx.fluencyMetrics;
+  const fillerList = m.fillerWords.length
+    ? m.fillerWords.map((f) => `"${f.word}" — ${f.count}`).join(', ')
     : 'none detected';
 
-  return `You are a demanding, evidence-driven McKinsey case interview evaluator writing a post-interview report for the CANDIDATE. Your job is to be HONEST and SPECIFIC, not encouraging. Never inflate scores. Never use vague praise like "good communication" without quoting evidence. Every judgement must be backed by a timestamp from the transcript.
+  return `You are a demanding, evidence-driven McKinsey case interview evaluator writing a post-interview report for the CANDIDATE. Be HONEST and SPECIFIC, never encouraging-for-its-own-sake. Never inflate scores. Never praise vaguely without quoting evidence. Every judgement must cite a real timestamp from the transcript.
 
 CASE: "${ctx.caseTitle}" (${ctx.caseType})
 DIFFICULTY: ${ctx.difficultyLabel}
 DURATION: ${ctx.durationLabel}
 HINTS THE CANDIDATE REQUESTED: ${ctx.hintsUsed}
 
-TIMESTAMPED TRANSCRIPT (each line is "[mm:ss] ROLE: text"; lines marked [HINT] are coaching hints the candidate received — treat heavy hint reliance as a negative signal):
+TIMESTAMPED TRANSCRIPT (each line is "[mm:ss] ROLE: text"; [HINT] lines are coaching hints — heavy reliance is a negative signal):
 ${ctx.timestampedTranscript}
 
-PRE-COMPUTED COMMUNICATION METRICS (these are measured from the transcript — USE them, do not contradict or re-estimate them):
-- Approx words per minute: ${ctx.fluencyMetrics.wordsPerMinute}
-- Filler words total: ${ctx.fluencyMetrics.fillerWordTotal} (${fillerList})
-- Repeated phrases: ${ctx.fluencyMetrics.repeatedPhrases}
-- Concise-answer rate: ${ctx.fluencyMetrics.conciseAnswerRate}%
-- Longest response: ~${ctx.fluencyMetrics.longestResponseWords} words
-- Average response length: ${ctx.fluencyMetrics.avgWordsPerResponse} words
-- Long pauses (>3s before answering): ${ctx.fluencyMetrics.longPauses}
+PRE-COMPUTED METRICS (measured from the transcript — USE, do not re-estimate):
+- Words per minute: ${m.wordsPerMinute}
+- Filler words: ${m.fillerWordTotal} (${fillerList})
+- Repeated phrases: ${m.repeatedPhrases}
+- Concise-answer rate (substantive responses only): ${m.substantiveConciseRate}% over ${m.substantiveResponses} substantive responses
+- Longest response: ~${m.longestResponseWords} words; avg ${m.avgWordsPerResponse} words
+- Long pauses (>3s): ${m.longPauses} total — clustered early:${m.pauseDistribution.early} mid:${m.pauseDistribution.mid} late:${m.pauseDistribution.late}
+- Case stages reached: ~${m.stagesCompletedPct}%
 
-Return ONLY valid JSON matching this exact schema. All scores are on a 0–10 scale. Cite real timestamps that appear in the transcript ("mm:ss"). If the candidate barely engaged, score low (2–4) and say why.
+Return ONLY valid JSON matching this EXACT schema. Scores are 0–10. Cite real "mm:ss" timestamps. If the candidate barely engaged, score low (2–4) and say why.
 
 {
+  "integrity": {
+    // Run integrity detection BEFORE judging skill. Inspect for these signals:
+    //  - quality_variance (HIGH): response quality swings wildly (e.g. gibberish then expert-level) — std-dev of per-response quality > ~2.5/10
+    //  - language_switching (HIGH): candidate uses 2+ languages not established at start
+    //  - fourth_wall_break (CRITICAL): candidate references the interview system/AI, asks for answers, or meta-questions about detection
+    //  - response_looping (MEDIUM): same semantic content repeated 3+ times across consecutive responses
+    //  - premature_termination (MEDIUM): candidate stopped before any synthesis with <40% of stages reached
+    //  - incoherent_fragments (MEDIUM): 3+ single-word/gibberish/incoherent responses
+    "signals": [
+      { "signal": "fourth_wall_break", "severity": "CRITICAL" | "HIGH" | "MEDIUM", "timestamp": "mm:ss", "detail": "what fired this, quoting the moment" }
+    ],                                            // [] if the session is clean
+    "status": "NORMAL" | "FLAGGED" | "SUPPRESSED",
+    // Rule: 0-1 signals AND no CRITICAL => NORMAL. 2+ signals (no CRITICAL) => FLAGGED. ANY CRITICAL => SUPPRESSED.
+    "banner": "string or null — if FLAGGED/SUPPRESSED, one sentence for a caution banner naming the patterns; else null",
+    "dualTrack": "string or null — ONLY when quality_variance fired: name the transition timestamp and describe quality before vs after (e.g. 'Responses before 4:10 were vague; after, suddenly expert — may indicate external assistance.'); else null"
+  },
   "overall": {
-    "score": number,                          // 0-10, one decimal allowed
-    "readiness": "Not ready" | "Needs practice" | "Interview ready" | "Strong candidate",
+    "score": number, "readiness": "Not ready" | "Needs practice" | "Interview ready" | "Strong candidate",
     "decision": "Strong Hire" | "Hire" | "Borderline" | "No Hire",
-    "confidence": "High" | "Medium" | "Low",   // your confidence in this assessment given transcript length
-    "summary": "string — 2-4 sentences, honest executive summary. Name concrete weaknesses.",
-    "primaryStrengths": ["string", "string"],
-    "criticalGaps": ["string", "string"],
-    "hintDependencyNote": "string — one line on how reliant they were on hints"
+    "confidence": "High" | "Medium" | "Low",
+    "summary": "string — 2-4 honest sentences naming concrete weaknesses.",
+    "primaryStrengths": ["string", "string"], "criticalGaps": ["string", "string"],
+    "hintDependencyNote": "string — one line on hint reliance"
   },
   "competencies": [
-    // EXACTLY these 8 keys, in this order:
-    // problemUnderstanding, structuring, quantitative, businessJudgment, hypothesis, communication, synthesis, executivePresence
+    // EXACTLY these 8 keys, in order: problemUnderstanding, structuring, quantitative, businessJudgment, hypothesis, communication, synthesis, executivePresence
     {
-      "key": "problemUnderstanding",
-      "label": "Problem Understanding",
-      "score": number,                         // 0-10
-      "assessment": "string — a DETAILED analysis of 4-6 sentences (NOT one line). Cover: (1) what the candidate actually did on this competency, quoting/paraphrasing a specific moment; (2) what was strong about it; (3) the specific weakness or gap, with evidence; (4) why this matters in a real interview and how it affected the score; (5) what a top-scoring candidate would have done differently. Be concrete — reference real timestamps and the candidate's actual words, not generic advice.",
-      "evidence": [ { "timestamp": "mm:ss", "note": "what happened at this moment" } ]  // 1-3 items, at least 1
+      "key": "problemUnderstanding", "label": "Problem Understanding",
+      "assessed": true,                          // FALSE if fewer than 2 relevant transcript moments exist for this competency
+      "score": number,                           // 0-10; if assessed=false, use null
+      "evidenceCount": number,                   // how many relevant moments you found
+      "currentAnchor": { "level": number, "text": "string — concrete behavioural anchor describing what the candidate did AT THIS LEVEL (their 'you are here')" },
+      "nextAnchor": { "level": number, "text": "string — the anchor for the NEXT level up: the specific behaviour that would raise the score" },
+      "assessment": "string — 4-6 sentences: what they did (quote a moment), what was strong, the specific gap with evidence, why it matters, and what a top candidate does differently.",
+      "evidence": [ { "timestamp": "mm:ss", "note": "what happened" } ]
     }
-    // ... 7 more
+    // ... 7 more. Score = the highest anchor the candidate CONSISTENTLY hit (>=60% of relevant moments), not a one-off.
   ],
   "communication": {
-    "grammar": {
-      "score": number,                         // 0-10
-      "summary": "string — what the recurring grammar issues were",
-      "issues": [
-        { "timestamp": "mm:ss", "statement": "candidate's actual words", "issue": "the grammar/clarity problem", "better": "a corrected version" }
-      ]                                          // 2-5 real examples pulled from the transcript
+    // v2: judge what real interviewers care about. Do NOT flag natural spoken language ("Got it", "basically" as a transition, acknowledgments). Only note a clarity issue if it would genuinely confuse a McKinsey interviewer.
+    "effectiveness": {
+      "answerStructureRate": number,             // 0-100: % of substantive responses that led with the conclusion BEFORE the reasoning (top-down)
+      "signpostingRate": number,                 // 0-100: % of analysis segments where they previewed their plan ("I want to check X, Y, Z") before executing
+      "summary": "string — what their answer structure & signposting reveal; the #1 communication lever for them",
+      "recoveryInstances": [                      // each time they were stuck/challenged
+        { "timestamp": "mm:ss", "situation": "what challenged them", "type": "clean" | "ramble" | "freeze", "note": "how they handled it" }
+      ]
     },
+    "clarityIssues": [                            // ONLY genuine confusion/misinterpretation risks — usually 0-2; [] if none
+      { "timestamp": "mm:ss", "statement": "their words", "issue": "why it confuses", "better": "a clearer version" }
+    ],
     "fluency": {
       "summary": "string — interpret the pre-computed metrics honestly",
-      "observations": [ { "timestamp": "mm:ss", "note": "fluency observation (pause, repetition, or a strong fluent moment)" } ]  // 2-4
+      "coherenceRate": number,                   // 0-100: % of responses that ADVANCED the case vs stalled/repeated/deflected
+      "firstResponseRate": number,               // 0-100: when asked a new question, how often the FIRST attempt actually answered it (vs needing follow-up)
+      "topRepetitions": [                          // the 3 most impactful repetitions WITH context (or [] if none)
+        { "timestamps": "mm:ss–mm:ss", "phrase": "what they kept saying", "note": "why it mattered — e.g. rephrased without advancing" }
+      ],
+      "observations": [ { "timestamp": "mm:ss", "note": "fluency observation incl. WHERE pauses clustered" } ]
     },
     "vocabulary": {
-      "assessment": "string — was business vocabulary precise or generic?",
-      "weakExample": "string — a weak/generic phrase the candidate used",
-      "betterExample": "string — a sharper, more specific rewrite"
+      "assessment": "string — precise or generic business vocabulary?",
+      "weakExample": "string", "betterExample": "string"
     }
   },
   "transcript": [
-    // The KEY candidate turns only (6-12 of them), as an evidence layer. Do NOT include every turn.
+    // KEY candidate/interviewer turns only (6-12), as an evidence layer. NOT every turn.
     {
-      "timestamp": "mm:ss",
-      "role": "candidate" | "interviewer",
-      "text": "the turn text (may be trimmed to the relevant part)",
+      "timestamp": "mm:ss", "role": "candidate" | "interviewer", "text": "turn text (may be trimmed)",
+      "momentum": "GREEN" | "YELLOW" | "RED",    // GREEN: candidate driving; YELLOW: interviewer redirecting; RED: stalling/repeating/freezing
+      "intent": "string or null — for INTERVIEWER turns only: what skill the question probed, e.g. 'Quantitative decomposition'; else null",
       "markers": [ { "type": "strength" | "issue", "note": "string" } ],
-      "tags": ["Structuring", "HypothesisDrivenThinking", "Communication", "Quantitative", "BusinessJudgment", "Synthesis", "Grammar", "MissedOpportunity"]  // pick the relevant ones
+      "tags": ["Structuring","HypothesisDrivenThinking","Communication","Quantitative","BusinessJudgment","Synthesis","MissedOpportunity"]
     }
   ],
   "missedOpportunities": [
+    // v2 four-part coaching format. 3-5 items.
     {
-      "timestamp": "mm:ss", "situation": "what was being discussed", "candidateResponse": "what they said/did",
-      "missed": "what they missed", "better": "the stronger approach",
+      "timestamp": "mm:ss",
+      "setup": "string — what the interviewer asked and the HIDDEN test behind it (what skill they were probing)",
+      "yourMove": "string — what the candidate actually did and what it signalled",
+      "gap": "string — the SPECIFIC cognitive step skipped (not 'missed strategic implications' but the precise missing move)",
+      "practicePattern": "string — a repeatable mental checklist for this type of question, with a drill",
       "habitTag": "rush_structuring" | "invent_number" | "skip_validation" | "clarity" | "no_hypothesis" | "shallow_risk" | "weak_synthesis"
-      // Categorise the underlying behaviour so it can be tracked across sessions:
-      // rush_structuring = jumped to specifics before framing; invent_number = stated a figure/assumption with no basis;
-      // skip_validation = didn't sanity-check/validate a number; clarity = unclear/fragmented communication;
-      // no_hypothesis = answered without forming/testing a hypothesis; shallow_risk = named risks without sizing them;
-      // weak_synthesis = recommendation/close lacked a clear decision + support.
     }
-  ],                                             // 3-5
-  "idealAnswers": [
-    { "question": "a major question the interviewer asked", "candidateAnswer": "summary of what the candidate said", "assessment": "honest critique", "strongerAnswer": "a model answer" }
-  ],                                             // 2-3 for the biggest questions
-  "timeManagement": [
-    { "stage": "Understanding the problem", "timeSpent": "m:ss", "recommended": "2-3 min", "assessment": "Too short" | "Appropriate" | "Too long" | "Insufficient depth" | "Too brief" | "Too limited" }
-    // Estimate stage boundaries from the timestamps. Stages: Understanding the problem, Structuring, Analysis, Risk assessment, Final recommendation.
   ],
-  "hintDependency": {
-    "assessment": "string — what their hint usage reveals about their gaps",
-    "independentRate": number                    // 0-100, your estimate of % of progress made without prompting
-  },
-  "doneWell": ["string", "string", "string"],    // concrete, with implicit or explicit timestamp references
-  "needsImprovement": ["string", "string", "string"],
-  "priorityPlan": [
+  "idealAnswers": [
+    // v2 three-layer comparison. 2-3 for the biggest questions. The modelAnswer MUST be substantively different and show internal reasoning, not a rephrase.
     {
-      "priority": "P0" | "P1" | "P2",
-      "action": "string — a clear, specific headline for what to fix (one line)",
-      "detail": "string — a DETAILED explanation of 4-6 sentences (NOT one line): the exact gap observed in THIS interview with a timestamp/example, why it costs points in a real case interview, what 'good' looks like concretely, and the impact of fixing it. Make it personal to this candidate, not generic.",
-      "practiceMethod": "string — a concrete, step-by-step drill described in 2-3 sentences: what to practise, how to do it, and how to know they've improved."
+      "question": "the interviewer question",
+      "candidateAnswer": "what the candidate actually said",
+      "skillTested": "string — Layer 1: the cognitive skill being probed (not the topic)",
+      "diagnosis": "string — Layer 2: the precise missing cognitive step in their response (not 'be more concise')",
+      "modelAnswer": "string — Layer 3: the ideal answer WITH the visible reasoning chain (the technique named + the first step walked through + the hypothesis and why)"
     }
-  ]                                              // 4-6, ordered by priority
+  ],
+  "timeManagement": [
+    // Stages: Understanding the problem, Structuring, Analysis, Risk assessment, Final recommendation.
+    {
+      "stage": "string", "timeSpent": "m:ss", "recommended": "2-3 min",
+      "assessment": "Too short" | "Appropriate" | "Too long" | "Insufficient depth" | "Too brief" | "Too limited",
+      "impactChain": "string — v2: connect this time allocation to a SPECIFIC downstream consequence with evidence (e.g. 'You spent 5 extra min restating prior analysis, not adding insight — use Action→Reason→Risk to finish in 60-90s.'). If time was fine but depth wasn't, say so."
+    }
+  ],
+  "hintDependency": { "assessment": "string", "independentRate": number },
+  "doneWell": ["string","string","string"],
+  "needsImprovement": ["string","string","string"],
+  "improvementPlan": [
+    // v2: MAXIMUM 2 priorities. If more gaps exist, pick the 2 with highest downstream impact (fixing them partially fixes others). Two specific items beat four generic ones.
+    {
+      "priority": "P0" | "P1",
+      "action": "string — specific headline for what to fix",
+      "evidenceExcerpt": "string — a SPECIFIC transcript excerpt with timestamp showing the gap (e.g. 'At 4:11 you said \\"...\\" and calculated without stating what you expected; the interviewer redirected you at 4:45.')",
+      "practiceDrill": "string — a specific cognitive pattern to drill (e.g. 'Before any calc, say out loud: I expect X because Y, let me verify.')",
+      "completionCriteria": "string — a MEASURABLE target (e.g. 'Record 5 cases; 80%+ of quant steps preceded by an explicit hypothesis.')"
+    }
+  ]
 }
 
-Scoring guidance (0-10): 0-3 = poor/failed, 4-5 = below bar, 6-7 = borderline/acceptable, 8-9 = strong, 10 = exceptional. Decision mapping: Strong Hire ≥ 8, Hire 6.5–7.9, Borderline 5–6.4, No Hire < 5. If a strong answer only emerged AFTER hints, lower the relevant competency score and note it. Be the evaluator a candidate needs, not the one they want.`;
+Scoring (0-10): 0-3 poor/failed, 4-5 below bar, 6-7 borderline, 8-9 strong, 10 exceptional. Decision: Strong Hire ≥8, Hire 6.5-7.9, Borderline 5-6.4, No Hire <5. If a strong answer only emerged AFTER hints, lower the score and note it. When integrity status is SUPPRESSED, still fill in scores honestly (the report layer handles suppression). Be the evaluator a candidate needs, not the one they want.`;
 }
 
 export interface ProgressInsightContext {
