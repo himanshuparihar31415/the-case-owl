@@ -231,6 +231,17 @@ export async function generateReport(sessionId: string, userId: string): Promise
   analysis.difficultyLabel = difficultyLabel;
   analysis.durationLabel = durationLabel;
 
+  // Enforce the integrity policy deterministically (don't trust the model's own
+  // status field): SUPPRESS scores only when a CRITICAL signal fired AND there's a
+  // corroborating second signal; FLAG at 2+ signals; otherwise NORMAL. This keeps a
+  // single incidental meta-comment ("are you an AI?") from nuking the whole report.
+  if (analysis.integrity && Array.isArray(analysis.integrity.signals)) {
+    const sigs = analysis.integrity.signals as any[];
+    const critical = sigs.filter((s) => s?.severity === 'CRITICAL').length;
+    analysis.integrity.status =
+      critical >= 1 && sigs.length >= 2 ? 'SUPPRESSED' : sigs.length >= 2 ? 'FLAGGED' : 'NORMAL';
+  }
+
   // Ideal-answer quality gate (spec 3.3): the model answer must be substantively
   // DIFFERENT from the candidate's, not a rephrase. Embed both, measure cosine; if
   // they're too similar (>= 0.7) the candidate's answer was already strong, so flip

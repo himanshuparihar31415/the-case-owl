@@ -170,18 +170,32 @@ Return ONLY valid JSON matching this EXACT schema. Scores are 0–10. Cite real 
 
 {
   "integrity": {
-    // Run integrity detection BEFORE judging skill. Inspect for these signals:
-    //  - quality_variance (HIGH): response quality swings wildly (e.g. gibberish then expert-level) — std-dev of per-response quality > ~2.5/10
-    //  - language_switching (HIGH): candidate uses 2+ languages not established at start
-    //  - fourth_wall_break (CRITICAL): candidate references the interview system/AI, asks for answers, or meta-questions about detection
-    //  - response_looping (MEDIUM): same semantic content repeated 3+ times across consecutive responses
-    //  - premature_termination (MEDIUM): candidate stopped before any synthesis with <40% of stages reached
-    //  - incoherent_fragments (MEDIUM): 3+ single-word/gibberish/incoherent responses
+    // Default is NORMAL. This layer ONLY catches sessions that are genuinely not a
+    // good-faith attempt — be conservative and require CLEAR, repeated evidence.
+    // A nervous, weak, brief, or rambling candidate is NORMAL, not anomalous.
+    // Signals (only include one if the evidence is unambiguous):
+    //  - fourth_wall_break (severity HIGH; CRITICAL only if egregious): candidate
+    //    PERSISTENTLY tries to extract the answer or get outside/AI help to solve the
+    //    case, or repeatedly derails to meta-questions. A SINGLE passing "are you an
+    //    AI?", a joke, or one offhand meta-comment they drop and move on from is NOT a
+    //    break — do not fire it.
+    //  - quality_variance (HIGH): quality swings so wildly it suggests outside help
+    //    feeding answers (e.g. gibberish then suddenly expert), not normal warming-up.
+    //  - language_switching (HIGH): candidate genuinely conducts the case in 2+
+    //    languages not established at start (not a stray foreign word).
+    //  - response_looping (MEDIUM): the SAME content repeated 3+ times, going nowhere.
+    //  - premature_termination (MEDIUM): quit before any synthesis with <40% of stages.
+    //  - incoherent_fragments (MEDIUM): 3+ single-word/gibberish/incoherent responses.
     "signals": [
       { "signal": "fourth_wall_break", "severity": "CRITICAL" | "HIGH" | "MEDIUM", "timestamp": "mm:ss", "detail": "what fired this, quoting the moment" }
-    ],                                            // [] if the session is clean
+    ],                                            // [] for an ordinary session — this is the common case
     "status": "NORMAL" | "FLAGGED" | "SUPPRESSED",
-    // Rule: 0-1 signals AND no CRITICAL => NORMAL. 2+ signals (no CRITICAL) => FLAGGED. ANY CRITICAL => SUPPRESSED.
+    // Rule (bias toward NORMAL): NORMAL unless there are 2+ well-evidenced signals.
+    // FLAGGED = 2+ signals (caution banner + lower confidence, scores still shown).
+    // SUPPRESSED is RARE — only when there is unambiguous evidence the result is
+    // meaningless: a CRITICAL fourth_wall_break (sustained answer-extraction / an
+    // outside agent feeding answers) AND at least one other signal. A lone incidental
+    // meta-comment must stay NORMAL.
     "banner": "string or null — if FLAGGED/SUPPRESSED, one sentence for a caution banner naming the patterns; else null",
     "dualTrack": "string or null — ONLY when quality_variance fired: name the transition timestamp and describe quality before vs after (e.g. 'Responses before 4:10 were vague; after, suddenly expert — may indicate external assistance.'); else null"
   },
