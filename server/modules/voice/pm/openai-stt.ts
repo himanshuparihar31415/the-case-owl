@@ -50,18 +50,25 @@ export class OpenAiStt extends EventEmitter {
     this.ws = ws;
 
     ws.on('open', () => {
-      // Configure the transcription session. PCM16 @ 24kHz matches the browser
-      // capture format the rest of the app already uses.
+      // Configure the transcription session. GA Realtime uses the standard
+      // `session.update` event (NOT transcription_session.update) with the nested
+      // audio schema — same shape as the full Realtime path, just type
+      // 'transcription' and input-only. PCM @ 24kHz matches the browser capture.
       ws.send(JSON.stringify({
-        type: 'transcription_session.update',
+        type: 'session.update',
         session: {
-          input_audio_format: 'pcm16',
-          input_audio_transcription: { model: 'gpt-4o-transcribe' },
-          turn_detection: {
-            type: 'server_vad',
-            threshold: this.vad.threshold,
-            prefix_padding_ms: this.vad.prefixPaddingMs,
-            silence_duration_ms: this.vad.silenceDurationMs,
+          type: 'transcription',
+          audio: {
+            input: {
+              format: { type: 'audio/pcm', rate: 24000 },
+              transcription: { model: 'gpt-4o-transcribe' },
+              turn_detection: {
+                type: 'server_vad',
+                threshold: this.vad.threshold,
+                prefix_padding_ms: this.vad.prefixPaddingMs,
+                silence_duration_ms: this.vad.silenceDurationMs,
+              },
+            },
           },
         },
       }));
@@ -73,6 +80,8 @@ export class OpenAiStt extends EventEmitter {
       const type = String(event.type ?? '');
 
       switch (type) {
+        case 'session.created':
+        case 'session.updated':
         case 'transcription_session.created':
         case 'transcription_session.updated':
           if (!this.ready) {
