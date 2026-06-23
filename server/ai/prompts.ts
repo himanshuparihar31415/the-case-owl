@@ -81,11 +81,18 @@ Return ONLY valid JSON:
   "situation": "3-4 neutral sentences: company, flat-revenue/falling-margin setup, CEO's ask. No framing the answer.",
   "privateMechanismNote": "the real driver, in your own words — withheld from candidate",
   "exhibits": [
-    { "id": number, "label": "", "visual": "table|chart|spoken", "data": "the reconciled numbers (as a compact readable string the interviewer can read aloud)",
+    { "id": number,                 // 1-based; the interviewer passes this to show_exhibit
+      "label": "", "visual": "table|chart|spoken",
+      "data": "the reconciled numbers as a compact readable string the interviewer can read aloud",
+      "render": "chart" | "table" | "spoken",   // how the candidate sees it on screen
+      "chartType": "line" | "bar",              // only when render=chart
+      "xKey": "the category-axis field name present in every chartData row, e.g. \\"year\\"",  // only when render=chart
+      "series": [ { "key": "revenue", "label": "Revenue ($B)" } ],  // numeric series to plot; only when render=chart
+      "chartData": [ { "year": "Y1", "revenue": 3.2, "grossMarginPct": 72 } ],  // rows; numbers MUST equal the 'data' string; only when render=chart
       "whenToShow": "the conversational state that earns it (not a time)",
       "doNotShowIf": "when showing it would give the answer away",
       "insight": "PRIVATE: what it reveals" }
-  ],  // ${exhibitCount} exhibits; include a 5-yr P&L, a revenue-by-line mix exhibit, and the mechanism exhibit
+  ],  // ${exhibitCount} exhibits; include a 5-yr P&L and a revenue-by-line mix exhibit as render="chart" (line for the P&L trend, bar for the mix), plus the mechanism exhibit. The 'data' string and 'chartData' MUST carry identical numbers.
   "quant": { "task": "", "whenToShow": "", "derivation": "PRIVATE step-by-step", "answer": "PRIVATE: result + attribution across 2-3 drivers" },
   "answerKey": "PRIVATE: diagnosis (mechanism + secondary driver) + recommendation with a clear bet and tradeoff",
   "commonWrongTurns": ["traps a weak candidate falls into"],
@@ -393,7 +400,7 @@ export function INTERVIEWER_SYSTEM_PROMPT(
   // Pharma-profitability exhibit cases: a held set of exhibits revealed only when
   // earned, a quant task, and the private mechanism the candidate must discover.
   caseExtras?: {
-    exhibits?: Array<{ label?: string; visual?: string; data?: string; whenToShow?: string; doNotShowIf?: string }>;
+    exhibits?: Array<{ id?: number; label?: string; visual?: string; render?: string; data?: string; whenToShow?: string; doNotShowIf?: string }>;
     quant?: { task?: string; whenToShow?: string };
     privateMechanism?: string;
   }
@@ -422,7 +429,8 @@ export function INTERVIEWER_SYSTEM_PROMPT(
   const exhibits = caseExtras?.exhibits ?? [];
   const pharmaBlock = exhibits.length
     ? `\nEXHIBITS YOU HOLD — never dump these; reveal an exhibit's DATA only when their reasoning EARNS it, and WITHHOLD it when the do-not-show condition applies:
-${exhibits.map((e) => `  • ${e.label}${e.visual ? ` (${e.visual})` : ''} — reveal when: ${e.whenToShow}. WITHHOLD if: ${e.doNotShowIf}. Data: ${e.data}`).join('\n')}${caseExtras?.quant?.task ? `\nQUANT — pose only when ${caseExtras.quant.whenToShow}: "${caseExtras.quant.task}". Make them set up the inputs and compute; never give the method or the answer.` : ''}${caseExtras?.privateMechanism ? `\nTHE REAL DRIVER (PRIVATE — they must DISCOVER it; NEVER name it or hint the jargon): ${caseExtras.privateMechanism}` : ''}`
+${exhibits.map((e, i) => `  • #${e.id ?? i + 1} ${e.label}${e.visual ? ` (${e.visual})` : ''} — reveal when: ${e.whenToShow}. WITHHOLD if: ${e.doNotShowIf}. Data: ${e.data}`).join('\n')}
+When you reveal a chart/table exhibit, FIRST call the show_exhibit tool with its number (exhibitId) so it appears on the candidate's screen, THEN talk them through it. For spoken exhibits, just say the figures — no tool call. Never call it before they've earned the exhibit or when its do-not-show condition applies.${caseExtras?.quant?.task ? `\nQUANT — pose only when ${caseExtras.quant.whenToShow}: "${caseExtras.quant.task}". Make them set up the inputs and compute; never give the method or the answer.` : ''}${caseExtras?.privateMechanism ? `\nTHE REAL DRIVER (PRIVATE — they must DISCOVER it; NEVER name it or hint the jargon): ${caseExtras.privateMechanism}` : ''}`
     : '';
 
   return `You are Alex, a McKinsey Partner running a live spoken case interview.

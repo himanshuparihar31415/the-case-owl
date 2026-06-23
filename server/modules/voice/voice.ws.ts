@@ -121,6 +121,11 @@ async function handleConnection(clientWs: WebSocket, req: IncomingMessage): Prom
 
     // Silent supervisor (observe-only for now): flags leading / fed-data per turn.
     const forbidden = buildForbiddenList(caseDoc);
+    // Pharma exhibit cases: the interviewer can call show_exhibit(id) to render a
+    // chart/table on the candidate's screen when they earn it. Map id → exhibit.
+    const exhibitsById = new Map<number, NonNullable<typeof caseDoc.exhibits>[number]>();
+    (caseDoc.exhibits ?? []).forEach((e, i) => exhibitsById.set(typeof e?.id === 'number' ? e.id : i + 1, e));
+    const hasExhibits = exhibitsById.size > 0;
     const candidateHistory: string[] = [];
     const flaggedTerms = new Set<string>(); // dedupe: flag each term once per session
     // GA Realtime emits BOTH the namespaced (response.output_audio_transcript.done)
@@ -200,6 +205,21 @@ async function handleConnection(clientWs: WebSocket, req: IncomingMessage): Prom
           // (high tended to pack 2-3 questions + long sentences into one turn).
           reasoning: { effort: 'medium' },
           output_modalities: ['audio'],
+          // Exhibit cases only: let the interviewer surface a chart/table on the
+          // candidate's screen when they earn it (handled in response.function_call_arguments.done).
+          ...(hasExhibits ? {
+            tools: [{
+              type: 'function',
+              name: 'show_exhibit',
+              description: "Display a case exhibit (chart or table) on the candidate's screen once they have earned it. Call this BEFORE discussing the exhibit.",
+              parameters: {
+                type: 'object',
+                properties: { exhibitId: { type: 'number', description: 'the exhibit number (#id) to reveal' } },
+                required: ['exhibitId'],
+              },
+            }],
+            tool_choice: 'auto',
+          } : {}),
           audio: {
             input: {
               format: { type: 'audio/pcm', rate: 24000 },
@@ -259,6 +279,36 @@ async function handleConnection(clientWs: WebSocket, req: IncomingMessage): Prom
             // buffered AI audio immediately so the AI doesn't talk over them.
             sendToClient(clientWs, { type: 'speech_started' });
             break;
+
+          case 'response.function_call_arguments.done': {
+            // The interviewer called show_exhibit — push the exhibit to the client,
+            // return a tool result, and let it continue speaking about the exhibit.
+            // (Only show_exhibit is registered, so don't hard-require event.name.)
+            if (event.name && event.name !== 'show_exhibit') break;
+            let exhibitId: number | undefined;
+            try { exhibitId = JSON.parse(event.arguments || '{}').exhibitId; } catch { /* bad args */ }
+            const ex = exhibitId != null ? exhibitsById.get(Number(exhibitId)) : undefined;
+            if (ex && greetingDone) {
+              sendToClient(clientWs, {
+                type: 'exhibit',
+                exhibit: {
+                  id: (ex as Record<string, unknown>).id, label: ex.label, visual: ex.visual,
+                  render: (ex as Record<string, unknown>).render, chartType: (ex as Record<string, unknown>).chartType,
+                  xKey: (ex as Record<string, unknown>).xKey, series: (ex as Record<string, unknown>).series,
+                  chartData: (ex as Record<string, unknown>).chartData, data: ex.data,
+                },
+              });
+            }
+            // Hand the result back and prompt the interviewer to keep talking.
+            try {
+              openaiWs.send(JSON.stringify({
+                type: 'conversation.item.create',
+                item: { type: 'function_call_output', call_id: event.call_id, output: ex ? `Exhibit ${exhibitId} is now on the candidate's screen.` : `No exhibit ${exhibitId} exists.` },
+              }));
+              openaiWs.send(JSON.stringify({ type: 'response.create' }));
+            } catch { /* socket closed */ }
+            break;
+          }
           // GA emits response.output_audio.delta; some snapshots still emit
           // the legacy response.audio.delta — accept both.
           case 'response.output_audio.delta':

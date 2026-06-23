@@ -2,11 +2,71 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
   MicOff, Mic, PhoneOff, Lightbulb, AlertCircle, Loader2,
   FileText, NotebookPen, MessageSquare, Search, ArrowDown,
-  Bookmark, HelpCircle, Eraser, ListTree,
+  Bookmark, HelpCircle, Eraser, ListTree, BarChart3,
 } from 'lucide-react';
+import {
+  LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
+} from 'recharts';
 import { cn } from '@/src/lib/utils';
 import { useNavigate, useParams } from 'react-router-dom';
 import { api, getWsUrl } from '@/src/lib/api';
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
+const EXHIBIT_COLORS = ['#002046', '#08aae4', '#ba1a1a', '#1FA971', '#E0922F'];
+
+// A revealed case exhibit — a recharts line/bar when the generator gave structured
+// chartData, otherwise the readable data string as a table-ish block.
+function ExhibitCard({ ex }: { ex: any }) {
+  const isChart = ex.render === 'chart' && Array.isArray(ex.chartData) && ex.chartData.length > 0;
+  const xKey = ex.xKey || 'x';
+  const series: Array<{ key: string; label?: string }> = isChart
+    ? (Array.isArray(ex.series) && ex.series.length
+        ? ex.series
+        : Object.keys(ex.chartData[0]).filter((k) => k !== xKey).map((k) => ({ key: k })))
+    : [];
+  return (
+    <div className="rounded-lg border border-outline-variant/20 bg-surface-container-lowest p-3">
+      <div className="flex items-center gap-2 mb-2">
+        <BarChart3 className="w-3.5 h-3.5 text-on-tertiary-container shrink-0" />
+        <span className="text-xs font-bold text-primary">{ex.label || `Exhibit ${ex.id ?? ''}`}</span>
+      </div>
+      {isChart ? (
+        <>
+          <ResponsiveContainer width="100%" height={170}>
+            {ex.chartType === 'bar' ? (
+              <BarChart data={ex.chartData} margin={{ top: 4, right: 4, bottom: 0, left: -16 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#EEF1F6" vertical={false} />
+                <XAxis dataKey={xKey} tick={{ fontSize: 10 }} />
+                <YAxis tick={{ fontSize: 10 }} />
+                <Tooltip contentStyle={{ fontSize: 11, borderRadius: 8, border: 'none', boxShadow: '0 6px 18px rgba(11,31,58,.12)' }} />
+                {series.map((s, i) => <Bar key={s.key} dataKey={s.key} name={s.label || s.key} fill={EXHIBIT_COLORS[i % EXHIBIT_COLORS.length]} radius={[2, 2, 0, 0]} />)}
+              </BarChart>
+            ) : (
+              <LineChart data={ex.chartData} margin={{ top: 4, right: 6, bottom: 0, left: -16 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#EEF1F6" vertical={false} />
+                <XAxis dataKey={xKey} tick={{ fontSize: 10 }} />
+                <YAxis tick={{ fontSize: 10 }} />
+                <Tooltip contentStyle={{ fontSize: 11, borderRadius: 8, border: 'none', boxShadow: '0 6px 18px rgba(11,31,58,.12)' }} />
+                {series.map((s, i) => <Line key={s.key} type="monotone" dataKey={s.key} name={s.label || s.key} stroke={EXHIBIT_COLORS[i % EXHIBIT_COLORS.length]} strokeWidth={2} dot={{ r: 2 }} />)}
+              </LineChart>
+            )}
+          </ResponsiveContainer>
+          {series.length > 0 && (
+            <div className="flex flex-wrap gap-x-3 gap-y-1 mt-1.5">
+              {series.map((s, i) => (
+                <span key={s.key} className="flex items-center gap-1 text-[10px] text-secondary">
+                  <i className="w-2 h-2 rounded-full" style={{ background: EXHIBIT_COLORS[i % EXHIBIT_COLORS.length] }} />{s.label || s.key}
+                </span>
+              ))}
+            </div>
+          )}
+        </>
+      ) : (
+        <p className="text-xs text-on-surface-variant whitespace-pre-line font-mono leading-relaxed">{ex.data}</p>
+      )}
+    </div>
+  );
+}
 
 interface TranscriptEntry {
   role: 'interviewer' | 'candidate';
@@ -79,6 +139,8 @@ export default function Session() {
   const [isAiSpeaking, setIsAiSpeaking] = useState(false);
   const [micMuted, setMicMuted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  // Exhibits the interviewer has revealed (pharma cases) — accumulate in the brief.
+  const [exhibits, setExhibits] = useState<any[]>([]);
 
   // Workspace / layout state
   const [scratchpad, setScratchpad] = useState('');
@@ -305,6 +367,14 @@ export default function Session() {
             // Candidate started talking — cut off any buffered AI audio.
             flushPlayback();
             break;
+          case 'exhibit':
+            // Interviewer revealed an exhibit — add it to the brief (dedupe by id).
+            setExhibits((prev) => {
+              const ex = (msg as any).exhibit;
+              if (!ex || prev.some((p) => p.id != null && p.id === ex.id)) return prev;
+              return [...prev, ex];
+            });
+            break;
           case 'transcript_delta':
             setLiveText((prev) => prev + (msg.text as string));
             break;
@@ -442,7 +512,7 @@ export default function Session() {
               <h2 className="font-headline font-bold text-lg text-primary mb-2">{caseDoc.title}</h2>
               <p className="text-sm text-on-surface-variant leading-relaxed whitespace-pre-line">{caseDoc.scenario}</p>
             </div>
-            {caseDoc.keyDataPoints.length > 0 ? (
+            {caseDoc.keyDataPoints.length > 0 && (
               <div>
                 <label className="label-blueprint mb-3 block">Key Data &amp; Exhibits</label>
                 <div className="space-y-3">
@@ -454,7 +524,19 @@ export default function Session() {
                   ))}
                 </div>
               </div>
-            ) : (
+            )}
+
+            {/* Exhibits revealed by the interviewer accumulate here as they're earned. */}
+            {exhibits.length > 0 && (
+              <div>
+                <label className="label-blueprint mb-3 block">Exhibits</label>
+                <div className="space-y-3">
+                  {exhibits.map((ex, i) => <React.Fragment key={ex.id ?? i}><ExhibitCard ex={ex} /></React.Fragment>)}
+                </div>
+              </div>
+            )}
+
+            {caseDoc.keyDataPoints.length === 0 && exhibits.length === 0 && (
               <div className="rounded-lg bg-surface-container-low p-4 border border-outline-variant/15">
                 <label className="label-blueprint mb-1.5 block">Exhibits &amp; data</label>
                 <p className="text-xs text-on-surface-variant leading-relaxed">
