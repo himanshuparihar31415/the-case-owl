@@ -2,7 +2,7 @@ import OpenAI from 'openai';
 import { env } from '../config/env.js';
 import { CaseType, Industry } from '../models/Case.js';
 import { TranscriptEntry } from '../models/Session.js';
-import { CASE_GENERATION_PROMPT, PHARMA_PROFITABILITY_CASE_PROMPT, EXHIBIT_CASE_PROMPT, PharmaTheme, HINT_PROMPT, SCORING_PROMPT, EVALUATION_PROMPT, EvaluationContext, PROGRESS_INSIGHT_PROMPT, ProgressInsightContext } from './prompts.js';
+import { CASE_GENERATION_PROMPT, PHARMA_PROFITABILITY_CASE_PROMPT, EXHIBIT_CASE_PROMPT, PharmaTheme, PRODUCT_CASE_PROMPT, GUESSTIMATE_PROMPT, ProductFormat, HINT_PROMPT, SCORING_PROMPT, EVALUATION_PROMPT, EvaluationContext, PROGRESS_INSIGHT_PROMPT, ProgressInsightContext } from './prompts.js';
 
 export const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
 
@@ -113,6 +113,45 @@ export async function generateExhibitCaseWithAI(type: CaseType, industry: Indust
     'You are a McKinsey case designer. The numbers must reconcile. Return only valid JSON.',
     EXHIBIT_CASE_PROMPT(type, industry, difficulty)
   );
+}
+
+// Product-case & guesstimate generators (PM / estimation modules).
+export interface ModuleCase {
+  title: string;
+  difficulty?: number;
+  prompt: string;
+  openingHook?: { reference: string; bridge: string };
+  privateGuide?: string;
+  answerKey?: string;
+  commonWrongTurns?: string[];
+}
+
+export async function generateProductCaseWithAI(format: ProductFormat, difficulty: number): Promise<ModuleCase> {
+  const response = await openai.chat.completions.create({
+    model: TEXT_MODEL,
+    messages: [
+      { role: 'system', content: 'You are a senior product-management interviewer. Return only valid JSON.' },
+      { role: 'user', content: PRODUCT_CASE_PROMPT(format, difficulty) },
+    ],
+    response_format: { type: 'json_object' },
+    temperature: 0.6,
+    max_tokens: 3000,
+  });
+  return JSON.parse(response.choices[0]?.message?.content ?? '{}') as ModuleCase;
+}
+
+export async function generateGuesstimateWithAI(difficulty: number): Promise<ModuleCase> {
+  const response = await openai.chat.completions.create({
+    model: TEXT_MODEL,
+    messages: [
+      { role: 'system', content: 'You are an interviewer creating a market-sizing guesstimate. The math must reconcile. Return only valid JSON.' },
+      { role: 'user', content: GUESSTIMATE_PROMPT(difficulty) },
+    ],
+    response_format: { type: 'json_object' },
+    temperature: 0.6,
+    max_tokens: 3000,
+  });
+  return JSON.parse(response.choices[0]?.message?.content ?? '{}') as ModuleCase;
 }
 
 export async function generateHintWithAI(transcript: TranscriptEntry[]): Promise<string> {

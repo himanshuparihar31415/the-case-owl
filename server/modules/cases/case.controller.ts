@@ -80,11 +80,20 @@ export async function getCaseById(req: AuthRequest, res: Response, next: NextFun
 
 export async function generateCase(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
   try {
-    const { type, industry, difficulty } = req.body;
-    if (!type || !industry || !difficulty) {
-      throw new AppError(400, 'type, industry, and difficulty are required');
+    const { module, type, industry, difficulty, productFormat } = req.body;
+    const diff = Number(difficulty);
+    if (!diff) throw new AppError(400, 'difficulty is required');
+
+    let c;
+    if (module === 'product') {
+      const fmt = (productFormat ?? 'design') as 'design' | 'strategy' | 'rootcause' | 'prioritization';
+      c = await caseService.generateProductCase(fmt, diff);
+    } else if (module === 'guesstimate') {
+      c = await caseService.generateGuesstimate(diff);
+    } else {
+      if (!type || !industry) throw new AppError(400, 'type and industry are required for a consulting case');
+      c = await caseService.generateCase(type as CaseType, industry as Industry, diff);
     }
-    const c = await caseService.generateCase(type as CaseType, industry as Industry, Number(difficulty));
     res.status(201).json({ case: c });
   } catch (err) {
     next(err);

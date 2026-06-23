@@ -1,7 +1,7 @@
 import { Case, ICase, CaseType, Industry } from '../../models/Case.js';
 import { AppError } from '../../middleware/errorHandler.js';
-import { generatePharmaProfitabilityCaseWithAI, generateExhibitCaseWithAI, ExhibitCase } from '../../ai/client.js';
-import { PharmaTheme } from '../../ai/prompts.js';
+import { generatePharmaProfitabilityCaseWithAI, generateExhibitCaseWithAI, generateProductCaseWithAI, generateGuesstimateWithAI, ExhibitCase } from '../../ai/client.js';
+import { PharmaTheme, ProductFormat } from '../../ai/prompts.js';
 
 interface CaseFilter {
   type?: CaseType;
@@ -115,6 +115,48 @@ export async function generateCase(
     : await generateExhibitCaseWithAI(type, industry, difficulty);
 
   return Case.create(mapExhibitCase(g, type, industry, difficulty));
+}
+
+// Product-management interview case. Stored under module='product'; the live prompt
+// (PRODUCT_INTERVIEWER_PROMPT) and tailored scoring are selected by module downstream.
+export async function generateProductCase(format: ProductFormat, difficulty: number): Promise<ICase> {
+  const g = await generateProductCaseWithAI(format, difficulty);
+  return Case.create({
+    title: g.title,
+    module: 'product',
+    subType: format,
+    difficulty,
+    description: (g.prompt ?? '').slice(0, 300),
+    scenario: g.prompt ?? '',
+    keyDataPoints: [],
+    questions: [],
+    plausibleSolution: g.answerKey,
+    answerKey: g.answerKey,
+    privateMechanismNote: g.privateGuide, // reused as the interviewer's private guide
+    commonWrongTurns: g.commonWrongTurns ?? [],
+    openingHook: g.openingHook,
+    isSeeded: false,
+  });
+}
+
+// Guesstimate / market-sizing drill. Stored under module='guesstimate'.
+export async function generateGuesstimate(difficulty: number): Promise<ICase> {
+  const g = await generateGuesstimateWithAI(difficulty);
+  return Case.create({
+    title: g.title,
+    module: 'guesstimate',
+    subType: 'guesstimate',
+    difficulty,
+    description: (g.prompt ?? '').slice(0, 300),
+    scenario: g.prompt ?? '',
+    keyDataPoints: [],
+    questions: [],
+    plausibleSolution: g.answerKey,
+    answerKey: g.answerKey,
+    privateMechanismNote: g.privateGuide,
+    commonWrongTurns: g.commonWrongTurns ?? [],
+    isSeeded: false,
+  });
 }
 
 export async function seedCases(): Promise<number> {

@@ -5,7 +5,7 @@ import WebSocketNode from 'ws';
 import { env } from '../../config/env.js';
 import { Session } from '../../models/Session.js';
 import { Case } from '../../models/Case.js';
-import { INTERVIEWER_SYSTEM_PROMPT } from '../../ai/prompts.js';
+import { INTERVIEWER_SYSTEM_PROMPT, PRODUCT_INTERVIEWER_PROMPT, GUESSTIMATE_INTERVIEWER_PROMPT, ProductFormat } from '../../ai/prompts.js';
 import { appendTranscript, settleSession } from '../sessions/session.service.js';
 import { CaseType } from '../../models/Case.js';
 import { buildForbiddenList, deterministicCheck } from './supervisor.js';
@@ -84,25 +84,41 @@ async function handleConnection(clientWs: WebSocket, req: IncomingMessage): Prom
       return;
     }
 
-    // Build system prompt
-    const systemPrompt = INTERVIEWER_SYSTEM_PROMPT(
-      caseDoc.title,
-      caseDoc.scenario,
-      caseDoc.keyDataPoints,
-      caseDoc.type as CaseType,
-      session.config.difficulty,
-      session.config.interviewerStyle,
-      session.reservedMinutes && session.reservedMinutes > 0
-        ? session.reservedMinutes
-        : (session.config.durationMinutes || 45),
-      caseDoc.plausibleSolution,
-      caseDoc.openingHook,
-      // Pharma-profitability exhibit cases: hand the interviewer the exhibits to
-      // release only when earned, the quant task, and the private mechanism.
-      (caseDoc.exhibits && caseDoc.exhibits.length)
-        ? { exhibits: caseDoc.exhibits, quant: caseDoc.quant, privateMechanism: caseDoc.privateMechanismNote }
-        : undefined
-    );
+    // Build the system prompt for this module (consulting case / product / guesstimate).
+    const minutes = session.reservedMinutes && session.reservedMinutes > 0
+      ? session.reservedMinutes
+      : (session.config.durationMinutes || 45);
+    const style = session.config.interviewerStyle;
+    let systemPrompt: string;
+    if (caseDoc.module === 'product') {
+      systemPrompt = PRODUCT_INTERVIEWER_PROMPT(
+        (caseDoc.subType as ProductFormat) || 'design',
+        caseDoc.scenario, session.config.difficulty, style, minutes,
+        caseDoc.answerKey ?? caseDoc.plausibleSolution, caseDoc.privateMechanismNote, caseDoc.openingHook
+      );
+    } else if (caseDoc.module === 'guesstimate') {
+      systemPrompt = GUESSTIMATE_INTERVIEWER_PROMPT(
+        caseDoc.scenario, session.config.difficulty, style, minutes,
+        caseDoc.answerKey ?? caseDoc.plausibleSolution, caseDoc.privateMechanismNote
+      );
+    } else {
+      systemPrompt = INTERVIEWER_SYSTEM_PROMPT(
+        caseDoc.title,
+        caseDoc.scenario,
+        caseDoc.keyDataPoints,
+        caseDoc.type as CaseType,
+        session.config.difficulty,
+        style,
+        minutes,
+        caseDoc.plausibleSolution,
+        caseDoc.openingHook,
+        // Pharma-profitability exhibit cases: hand the interviewer the exhibits to
+        // release only when earned, the quant task, and the private mechanism.
+        (caseDoc.exhibits && caseDoc.exhibits.length)
+          ? { exhibits: caseDoc.exhibits, quant: caseDoc.quant, privateMechanism: caseDoc.privateMechanismNote }
+          : undefined
+      );
+    }
 
     // Fail fast if no API key configured
     if (!env.OPENAI_API_KEY) {

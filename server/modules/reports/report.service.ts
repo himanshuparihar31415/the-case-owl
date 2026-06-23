@@ -208,13 +208,15 @@ export async function generateReport(sessionId: string, userId: string): Promise
     session.transcript, session.startedAt, durationSeconds
   );
 
-  const difficultyLabel = `${DIFFICULTY_LABELS[session.config.difficulty] ?? 'Intermediate'} ${caseDoc.type} case`;
+  const kindLabel = caseDoc.type ?? caseDoc.module ?? 'case';
+  const difficultyLabel = `${DIFFICULTY_LABELS[session.config.difficulty] ?? 'Intermediate'} ${kindLabel} ${caseDoc.module === 'guesstimate' ? '' : 'case'}`.trim();
   const durationLabel = `${Math.floor(durationSeconds / 60)}m ${durationSeconds % 60}s`;
 
   const analysis: any = await generateEvaluationWithAI({
     timestampedTranscript,
     caseTitle: caseDoc.title,
-    caseType: caseDoc.type,
+    caseType: kindLabel,
+    module: caseDoc.module ?? 'case',
     difficultyLabel,
     durationLabel,
     hintsUsed,

@@ -22,9 +22,24 @@ const styleMap: Record<string, string> = {
   'Stress Interview': 'stress',
 };
 
+type Module = 'case' | 'product' | 'guesstimate';
+const MODULES: { id: Module; label: string; desc: string }[] = [
+  { id: 'case', label: 'Consulting Case', desc: 'Profitability, market entry, M&A & more' },
+  { id: 'product', label: 'Product Case', desc: 'PM interview: design, strategy, metrics' },
+  { id: 'guesstimate', label: 'Guesstimate', desc: 'Market sizing & estimation' },
+];
+const PRODUCT_FORMATS: { id: string; label: string; desc: string }[] = [
+  { id: 'design', label: 'Product Design', desc: 'Design or improve a product for a user segment.' },
+  { id: 'strategy', label: 'Product Strategy', desc: 'Should we build/enter X? What’s the roadmap?' },
+  { id: 'rootcause', label: 'Root-cause / Metrics', desc: 'A metric moved — diagnose it / define success metrics.' },
+  { id: 'prioritization', label: 'Execution / Prioritization', desc: 'Prioritize features under constraints.' },
+];
+
 export default function Config() {
   const navigate = useNavigate();
   const location = useLocation();
+  const [module, setModule] = useState<Module>('case');
+  const [productFormat, setProductFormat] = useState('design');
   const [selectedArchetype, setSelectedArchetype] = useState('market_entry');
   const [selectedIndustry, setSelectedIndustry] = useState('Pharma');
   const [difficulty, setDifficulty] = useState(3);
@@ -48,6 +63,23 @@ export default function Config() {
     setError('');
     setNeedsPlan(false);
     try {
+      const styleVal = styleMap[interviewerStyle] ?? 'neutral';
+
+      // Product & guesstimate modules: generate + start, then navigate.
+      if (module === 'product' || module === 'guesstimate') {
+        const body = module === 'product'
+          ? { module: 'product', productFormat, difficulty }
+          : { module: 'guesstimate', difficulty };
+        const { case: c } = await api.post<{ case: { _id: string } }>('/cases/generate', body);
+        const caseType = module === 'product' ? `product:${productFormat}` : 'guesstimate';
+        const s = await api.post<{ session: { _id: string } }>('/sessions', {
+          caseId: c._id,
+          config: { difficulty, industry: 'general', caseType, interviewerStyle: styleVal, durationMinutes: 45 },
+        });
+        navigate(`/session/${s.session._id}`);
+        return;
+      }
+
       let caseId: string;
 
       if (importMode === 'custom') {
@@ -115,6 +147,19 @@ export default function Config() {
         </p>
       </header>
 
+      {/* Module selector */}
+      <div className="grid grid-cols-3 gap-2.5">
+        {MODULES.map((mod) => (
+          <button key={mod.id} type="button" onClick={() => setModule(mod.id)}
+            className={cn('flex flex-col items-start gap-0.5 p-3.5 rounded-xl border text-left transition-all',
+              module === mod.id ? 'border-on-tertiary-container bg-on-tertiary-container/10' : 'border-outline-variant/25 bg-surface-container-lowest hover:border-on-tertiary-container/50')}>
+            <span className="font-headline font-bold text-sm text-primary">{mod.label}</span>
+            <span className="text-[11px] text-secondary leading-snug">{mod.desc}</span>
+          </button>
+        ))}
+      </div>
+
+      {module === 'case' && (<>
       {/* Case type */}
       <section>
         <label className="label-blueprint mb-3 block">Case type</label>
@@ -162,6 +207,36 @@ export default function Config() {
           ))}
         </div>
       </section>
+      </>)}
+
+      {module === 'product' && (
+        <section>
+          <label className="label-blueprint mb-3 block">Product case format</label>
+          <div className="grid grid-cols-2 gap-2.5">
+            {PRODUCT_FORMATS.map((f) => (
+              <button key={f.id} type="button" onClick={() => setProductFormat(f.id)}
+                className={cn('flex flex-col items-start gap-1 p-3.5 rounded-xl border text-left transition-all',
+                  productFormat === f.id ? 'border-on-tertiary-container bg-on-tertiary-container/10 shadow-sm' : 'border-outline-variant/25 bg-surface-container-lowest hover:border-on-tertiary-container/50')}>
+                <span className="font-headline font-bold text-sm text-primary">{f.label}</span>
+                <span className="text-[11px] text-secondary leading-snug">{f.desc}</span>
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {module === 'guesstimate' && (
+        <section>
+          <div className="rounded-lg bg-surface-container-low p-4 border border-outline-variant/15">
+            <label className="label-blueprint mb-1.5 block">Guesstimate</label>
+            <p className="text-xs text-on-surface-variant leading-relaxed">
+              We&apos;ll generate a fresh market-sizing question at your chosen difficulty. Lay out a structure,
+              state your own assumptions, do the math out loud, and sanity-check the result — the interviewer
+              won&apos;t hand you the numbers.
+            </p>
+          </div>
+        </section>
+      )}
 
       {/* Difficulty + Style */}
       <section className="grid sm:grid-cols-2 gap-8">
@@ -203,7 +278,8 @@ export default function Config() {
         </div>
       </section>
 
-      {/* Case source */}
+      {/* Case source (consulting only) */}
+      {module === 'case' && (
       <section>
         <label className="label-blueprint mb-3 block">Case source</label>
         <div className="grid grid-cols-2 gap-2.5">
@@ -285,6 +361,7 @@ export default function Config() {
           </div>
         )}
       </section>
+      )}
 
       {/* Action bar */}
       <div className="flex items-center justify-between gap-4 pt-6 border-t border-outline-variant/20">

@@ -3,10 +3,16 @@ import mongoose, { Document, Schema } from 'mongoose';
 export type CaseType = 'profitability' | 'market_entry' | 'ma' | 'growth' | 'pricing' | 'operations';
 export type Industry = 'tech' | 'cpg' | 'pharma' | 'finance' | 'energy' | 'automotive' | 'retail';
 
+export type InterviewModule = 'case' | 'product' | 'guesstimate';
+
 export interface ICase extends Document {
   title: string;
-  type: CaseType;
-  industry: Industry;
+  // 'case' = consulting case (uses `type`/`industry`); 'product'/'guesstimate'
+  // are the PM & estimation modules (use `subType` instead of `type`).
+  module: InterviewModule;
+  subType?: string; // product format ('design'|'strategy'|'rootcause'|'prioritization') or guesstimate tag
+  type?: CaseType;
+  industry?: Industry;
   difficulty: number;
   description: string;
   scenario: string;
@@ -36,14 +42,15 @@ export interface ICase extends Document {
 const CaseSchema = new Schema<ICase>(
   {
     title: { type: String, required: true },
+    module: { type: String, enum: ['case', 'product', 'guesstimate'], default: 'case', index: true },
+    subType: { type: String },
+    // Optional: consulting cases set these; product/guesstimate modules don't.
     type: {
       type: String,
-      required: true,
       enum: ['profitability', 'market_entry', 'ma', 'growth', 'pricing', 'operations'],
     },
     industry: {
       type: String,
-      required: true,
       enum: ['tech', 'cpg', 'pharma', 'finance', 'energy', 'automotive', 'retail'],
     },
     difficulty: { type: Number, required: true, min: 1, max: 4 },
