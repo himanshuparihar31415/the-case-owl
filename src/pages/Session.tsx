@@ -16,7 +16,7 @@ const EXHIBIT_COLORS = ['#002046', '#08aae4', '#ba1a1a', '#1FA971', '#E0922F'];
 
 // A revealed case exhibit — a recharts line/bar when the generator gave structured
 // chartData, otherwise the readable data string as a table-ish block.
-function ExhibitCard({ ex }: { ex: any }) {
+function ExhibitCard({ ex, large = false }: { ex: any; large?: boolean }) {
   const isChart = ex.render === 'chart' && Array.isArray(ex.chartData) && ex.chartData.length > 0;
   const xKey = ex.xKey || 'x';
   const series: Array<{ key: string; label?: string }> = isChart
@@ -27,12 +27,12 @@ function ExhibitCard({ ex }: { ex: any }) {
   return (
     <div className="rounded-lg border border-outline-variant/20 bg-surface-container-lowest p-3">
       <div className="flex items-center gap-2 mb-2">
-        <BarChart3 className="w-3.5 h-3.5 text-on-tertiary-container shrink-0" />
-        <span className="text-xs font-bold text-primary">{ex.label || `Exhibit ${ex.id ?? ''}`}</span>
+        <BarChart3 className={cn('text-on-tertiary-container shrink-0', large ? 'w-4 h-4' : 'w-3.5 h-3.5')} />
+        <span className={cn('font-bold text-primary', large ? 'text-sm' : 'text-xs')}>{ex.label || `Exhibit ${ex.id ?? ''}`}</span>
       </div>
       {isChart ? (
         <>
-          <ResponsiveContainer width="100%" height={170}>
+          <ResponsiveContainer width="100%" height={large ? 300 : 170}>
             {ex.chartType === 'bar' ? (
               <BarChart data={ex.chartData} margin={{ top: 4, right: 4, bottom: 0, left: -16 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#EEF1F6" vertical={false} />
@@ -141,6 +141,10 @@ export default function Session() {
   const [submitting, setSubmitting] = useState(false);
   // Exhibits the interviewer has revealed (pharma cases) — accumulate in the brief.
   const [exhibits, setExhibits] = useState<any[]>([]);
+  // A freshly-revealed exhibit is spotlighted center-screen for a few seconds,
+  // then docks into the brief on the left (recentId briefly highlights it there).
+  const [spotlight, setSpotlight] = useState<any | null>(null);
+  const [recentId, setRecentId] = useState<any>(null);
 
   // Workspace / layout state
   const [scratchpad, setScratchpad] = useState('');
@@ -186,6 +190,19 @@ export default function Session() {
     const saved = localStorage.getItem(`scratchpad_${sessionId}`);
     if (saved) setScratchpad(saved);
   }, [sessionId]);
+
+  // Spotlight an exhibit for a few seconds, then let it dock into the brief.
+  useEffect(() => {
+    if (!spotlight) return;
+    const t = setTimeout(() => setSpotlight(null), 6000);
+    return () => clearTimeout(t);
+  }, [spotlight]);
+  // Fade the "just docked" highlight on the left card.
+  useEffect(() => {
+    if (recentId == null) return;
+    const t = setTimeout(() => setRecentId(null), 2500);
+    return () => clearTimeout(t);
+  }, [recentId]);
 
   const updateScratchpad = useCallback((value: string) => {
     setScratchpad(value);
@@ -367,14 +384,15 @@ export default function Session() {
             // Candidate started talking — cut off any buffered AI audio.
             flushPlayback();
             break;
-          case 'exhibit':
-            // Interviewer revealed an exhibit — add it to the brief (dedupe by id).
-            setExhibits((prev) => {
-              const ex = (msg as any).exhibit;
-              if (!ex || prev.some((p) => p.id != null && p.id === ex.id)) return prev;
-              return [...prev, ex];
-            });
+          case 'exhibit': {
+            // Interviewer revealed an exhibit — spotlight it, then dock to the brief.
+            const ex = (msg as any).exhibit;
+            if (!ex) break;
+            setExhibits((prev) => (prev.some((p) => p.id != null && p.id === ex.id) ? prev : [...prev, ex]));
+            setSpotlight(ex);
+            setRecentId(ex.id ?? null);
             break;
+          }
           case 'transcript_delta':
             setLiveText((prev) => prev + (msg.text as string));
             break;
@@ -531,7 +549,11 @@ export default function Session() {
               <div>
                 <label className="label-blueprint mb-3 block">Exhibits</label>
                 <div className="space-y-3">
-                  {exhibits.map((ex, i) => <React.Fragment key={ex.id ?? i}><ExhibitCard ex={ex} /></React.Fragment>)}
+                  {exhibits.map((ex, i) => (
+                    <div key={ex.id ?? i} className={cn('rounded-lg transition-all duration-500', ex.id != null && ex.id === recentId && 'ring-2 ring-on-tertiary-container ring-offset-2 ring-offset-surface')}>
+                      <ExhibitCard ex={ex} />
+                    </div>
+                  ))}
                 </div>
               </div>
             )}
@@ -869,6 +891,28 @@ export default function Session() {
 
       {loadError && (
         <div className="shrink-0 text-center text-red-500 text-sm">{loadError}</div>
+      )}
+
+      {/* Exhibit spotlight — center-screen for a few seconds, then docks to the brief */}
+      {spotlight && (
+        <div
+          onClick={() => setSpotlight(null)}
+          className="fixed inset-0 z-[70] flex items-center justify-center bg-primary/40 backdrop-blur-sm p-4 animate-in fade-in duration-200"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="bg-surface-container-lowest rounded-2xl shadow-2xl p-6 w-[min(640px,94vw)] max-h-[85vh] overflow-y-auto"
+          >
+            <div className="flex items-center justify-between mb-4">
+              <span className="label-blueprint text-on-tertiary-container">New exhibit</span>
+              <button onClick={() => setSpotlight(null)} className="text-xs font-semibold text-secondary hover:text-primary">Dismiss</button>
+            </div>
+            <ExhibitCard ex={spotlight} large />
+            <p className="text-[11px] text-secondary mt-4 text-center flex items-center justify-center gap-1.5">
+              <ArrowDown className="w-3 h-3" /> Docking to your Case Brief on the left…
+            </p>
+          </div>
+        </div>
       )}
     </div>
   );
