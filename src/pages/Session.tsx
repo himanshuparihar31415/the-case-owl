@@ -387,6 +387,7 @@ export default function Session() {
           case 'exhibit': {
             // Interviewer revealed an exhibit — spotlight it, then dock to the brief.
             const ex = (msg as any).exhibit;
+            console.log('[exhibit] received frame', ex); // TEMP DIAGNOSTIC
             if (!ex) break;
             setExhibits((prev) => (prev.some((p) => p.id != null && p.id === ex.id) ? prev : [...prev, ex]));
             setSpotlight(ex);

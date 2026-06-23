@@ -298,6 +298,13 @@ async function handleConnection(clientWs: WebSocket, req: IncomingMessage): Prom
       try {
         const event = JSON.parse(data.toString());
 
+        // TEMP DIAGNOSTIC: surface any function/tool-call-related event so we can
+        // see whether the model attempts show_exhibit and in which event shape.
+        if (typeof event.type === 'string' && (event.type.includes('function') || event.item?.type === 'function_call')) {
+          console.log('[exhibit-debug]', event.type, 'name=', event.name ?? event.item?.name,
+            'call_id=', event.call_id ?? event.item?.call_id, 'args=', (event.arguments ?? event.item?.arguments ?? '').toString().slice(0, 120));
+        }
+
         switch (event.type) {
           case 'session.updated':
             // Session is configured — tell the client to bring its audio pipeline
