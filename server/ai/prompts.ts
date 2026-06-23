@@ -16,6 +16,65 @@ const FRAMEWORK_BY_TYPE: Record<CaseType, string> = {
   operations: 'Process mapping, bottleneck identification, capacity analysis, root cause diagnosis',
 };
 
+// The hidden "crux" each case type hangs on — the real answer the candidate must
+// DISCOVER from exhibits, never handed to them. Generalizes the pharma framework.
+const CRUX_BY_TYPE: Record<CaseType, string> = {
+  profitability: 'A flat or modestly-changing top line hiding a margin/profit problem. The decline traces to ONE primary driver (a specific cost line, price/discount erosion, mix shift, channel/volume shift, or another genuine mechanism — vary it) plus one secondary driver.',
+  market_entry: 'Whether to enter is genuinely non-obvious: an attractive-looking market with a poor company fit or a hidden structural barrier, OR an unattractive-looking one with a real wedge. ONE decisive factor (competitive, regulatory, or economics reality) flips the answer, plus one secondary consideration.',
+  ma: 'Whether the deal thesis holds. The headline synergy/rationale is partly an illusion — ONE reality (overstated synergy, integration risk, customer/asset overlap, valuation gap) undercuts it, plus one secondary risk. A disciplined candidate finds the real number.',
+  growth: 'Which growth lever actually pays. The obvious lever is constrained or dilutive; ONE lever (a segment, channel, product, or geography) has the real ROI, gated by ONE binding constraint (capacity, unit economics, CAC/retention).',
+  pricing: 'The real value-capture gap: current pricing leaves money on the table OR a proposed change destroys value. ONE reality (elasticity, willingness-to-pay by segment, competitor response, or cost-to-serve) determines the right move, plus one secondary effect.',
+  operations: 'The true root-cause bottleneck. The visible symptom is downstream of ONE real constraint (a process step, capacity imbalance, demand variability, or quality/defect driver) plus one secondary contributor — fixing the obvious symptom won\'t work.',
+};
+
+const EXHIBITS_BY_TYPE: Record<CaseType, string> = {
+  profitability: 'a 5-yr P&L trend (line chart), a revenue/cost mix breakdown (bar chart), and the driver exhibit',
+  market_entry: 'market size & growth (line or bar chart), competitive landscape/share (bar chart), and a company-fit/economics exhibit',
+  ma: 'standalone target financials, a synergy build-up (bar chart), and an overlap/integration-risk exhibit',
+  growth: 'growth by segment/channel (bar chart), unit economics by lever, and a capacity/constraint exhibit',
+  pricing: 'current price–volume by segment, competitor price benchmarking (bar chart), and a willingness-to-pay / cost-to-serve exhibit',
+  operations: 'throughput/utilization by process step (bar chart), a capacity-vs-demand trend (line chart), and a cost/defect driver breakdown',
+};
+
+// Shared exhibit JSON spec (used by every exhibit-based generator).
+const EXHIBIT_JSON_SPEC = `{ "id": number,                 // 1-based; the interviewer passes this to show_exhibit
+      "label": "", "visual": "table|chart|spoken",
+      "data": "the reconciled numbers as a compact readable string the interviewer can read aloud",
+      "render": "chart" | "table" | "spoken",
+      "chartType": "line" | "bar",              // only when render=chart
+      "xKey": "the category-axis field name present in every chartData row, e.g. \\"year\\"",  // only when render=chart
+      "series": [ { "key": "revenue", "label": "Revenue ($B)" } ],  // numeric series to plot; only when render=chart
+      "chartData": [ { "year": "Y1", "revenue": 3.2, "grossMarginPct": 72 } ],  // rows; numbers MUST equal the 'data' string; only when render=chart
+      "whenToShow": "the LIGHT trigger that earns it — a hypothesis or structure pointing here, or a reasoned request. Be generous: in a normal case most exhibits come out when asked for with a reason.",
+      "doNotShowIf": "RARE — only if this single exhibit hands over the diagnosis outright. Usually empty/'—'. A direct request after a hypothesis is NOT a reason to withhold.",
+      "insight": "PRIVATE: what it reveals" }`;
+
+// Generalized exhibit-based generator for ALL case types — same rigorous framework
+// as the pharma case (neutral prompt, a private crux discovered via earned
+// exhibits, reconciled numbers, a quant, an answer key) parametrized by type.
+export function EXHIBIT_CASE_PROMPT(type: CaseType, industry: Industry, difficulty: number): string {
+  const exhibitCount = difficulty <= 1 ? '3' : difficulty >= 4 ? '5' : '3-4';
+  return `You are a McKinsey case designer. Generate ONE realistic, internally-consistent ${DIFFICULTY_LABELS[difficulty]} ${type} case for the ${industry} industry, as JSON.
+THE NUMBERS MUST RECONCILE: totals = sum of their lines, margins = profit/revenue, and the quant answer is derivable from the exhibits. Use realistic magnitudes for ${industry}.
+THE CRUX (the real answer the candidate must DISCOVER — keep PRIVATE; the situation they hear is neutral and names no cause): ${CRUX_BY_TYPE[type]}
+Benchmark structure for this type (a strong candidate builds toward it — never hand it over): ${FRAMEWORK_BY_TYPE[type]}.
+The mechanism/answer jargon stays PRIVATE — the candidate discovers it from the exhibits.
+Return ONLY valid JSON:
+{
+  "title": "company + one-line, neutral problem",
+  "difficulty": ${difficulty},
+  "situation": "3-4 NEUTRAL sentences: company, the setup, the exec's ask. Name no cause, frame no answer.",
+  "openingHook": { "reference": "a REAL, recent (~last 2 yrs) and well-known ${industry} development/trend you are confident actually happened, phrased so an interviewer could casually ask 'have you been following…'. One short clause. If unsure it's real, use a broad TRUE industry trend instead of inventing a headline.", "bridge": "one natural sentence pivoting from it into this case without announcing it" },
+  "privateMechanismNote": "the real driver/answer in your own words — withheld from the candidate",
+  "exhibits": [ ${EXHIBIT_JSON_SPEC} ],  // ${exhibitCount} exhibits; include ${EXHIBITS_BY_TYPE[type]}; make 2 of them render="chart" (chartData numbers MUST equal the 'data' string)
+  "quant": { "task": "", "whenToShow": "", "derivation": "PRIVATE step-by-step", "answer": "PRIVATE: result + attribution across 2-3 drivers" },
+  "answerKey": "PRIVATE: diagnosis (the crux + secondary driver) + recommendation with a clear bet and a tradeoff",
+  "commonWrongTurns": ["traps a weak candidate falls into"],
+  "forbiddenTerms": ["PRIVATE: the SPECIFIC jargon + key figures the candidate must DISCOVER — a silent compliance monitor uses these so the interviewer never says them first. Short tokens/phrases only."]
+}
+FINAL: recompute every total, margin, and the quant answer. Fix any mismatch before returning.`;
+}
+
 export function CASE_GENERATION_PROMPT(type: CaseType, industry: Industry, difficulty: number): string {
   return `You are a McKinsey case interview designer. Create a realistic ${DIFFICULTY_LABELS[difficulty]} difficulty ${type} case for the ${industry} industry.
 

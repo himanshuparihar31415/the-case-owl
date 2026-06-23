@@ -2,7 +2,7 @@ import OpenAI from 'openai';
 import { env } from '../config/env.js';
 import { CaseType, Industry } from '../models/Case.js';
 import { TranscriptEntry } from '../models/Session.js';
-import { CASE_GENERATION_PROMPT, PHARMA_PROFITABILITY_CASE_PROMPT, PharmaTheme, HINT_PROMPT, SCORING_PROMPT, EVALUATION_PROMPT, EvaluationContext, PROGRESS_INSIGHT_PROMPT, ProgressInsightContext } from './prompts.js';
+import { CASE_GENERATION_PROMPT, PHARMA_PROFITABILITY_CASE_PROMPT, EXHIBIT_CASE_PROMPT, PharmaTheme, HINT_PROMPT, SCORING_PROMPT, EVALUATION_PROMPT, EvaluationContext, PROGRESS_INSIGHT_PROMPT, ProgressInsightContext } from './prompts.js';
 
 export const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
 
@@ -70,32 +70,49 @@ export async function generateCaseWithAI(type: CaseType, industry: Industry, dif
   );
 }
 
-export interface PharmaProfitabilityCase {
+// The exhibit/quant case shape produced by both the generalized and the pharma
+// generators. openingHook is produced by the generalized generator (pharma omits it).
+export interface ExhibitCase {
   title: string;
   difficulty?: number;
   situation: string;
+  openingHook?: { reference: string; bridge: string };
   privateMechanismNote?: string;
-  exhibits?: Array<{ id?: number; label?: string; visual?: string; data?: string; whenToShow?: string; doNotShowIf?: string; insight?: string }>;
+  exhibits?: Array<{ id?: number; label?: string; visual?: string; render?: string; chartType?: string; xKey?: string; series?: unknown; chartData?: unknown; data?: string; whenToShow?: string; doNotShowIf?: string; insight?: string }>;
   quant?: { task?: string; whenToShow?: string; derivation?: string; answer?: string };
   answerKey?: string;
   commonWrongTurns?: string[];
   forbiddenTerms?: string[];
 }
 
-// Specialized pharma-profitability generator (exhibit/quant schema). Larger
-// output + low temperature so the numbers reconcile.
-export async function generatePharmaProfitabilityCaseWithAI(difficulty: number, theme: PharmaTheme): Promise<PharmaProfitabilityCase> {
+async function generateExhibitCaseJSON(systemPrompt: string, userPrompt: string): Promise<ExhibitCase> {
   const response = await openai.chat.completions.create({
     model: TEXT_MODEL,
     messages: [
-      { role: 'system', content: 'You are a McKinsey pharma case designer. The numbers must reconcile. Return only valid JSON.' },
-      { role: 'user', content: PHARMA_PROFITABILITY_CASE_PROMPT(difficulty, theme) },
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userPrompt },
     ],
     response_format: { type: 'json_object' },
     temperature: 0.5,
-    max_tokens: 6000,
+    max_tokens: 6000, // reconciled exhibits + quant derivation; headroom so JSON never truncates
   });
-  return JSON.parse(response.choices[0]?.message?.content ?? '{}') as PharmaProfitabilityCase;
+  return JSON.parse(response.choices[0]?.message?.content ?? '{}') as ExhibitCase;
+}
+
+// Specialized pharma-profitability generator (tuned).
+export async function generatePharmaProfitabilityCaseWithAI(difficulty: number, theme: PharmaTheme): Promise<ExhibitCase> {
+  return generateExhibitCaseJSON(
+    'You are a McKinsey pharma case designer. The numbers must reconcile. Return only valid JSON.',
+    PHARMA_PROFITABILITY_CASE_PROMPT(difficulty, theme)
+  );
+}
+
+// Generalized exhibit-based generator for every other type/industry.
+export async function generateExhibitCaseWithAI(type: CaseType, industry: Industry, difficulty: number): Promise<ExhibitCase> {
+  return generateExhibitCaseJSON(
+    'You are a McKinsey case designer. The numbers must reconcile. Return only valid JSON.',
+    EXHIBIT_CASE_PROMPT(type, industry, difficulty)
+  );
 }
 
 export async function generateHintWithAI(transcript: TranscriptEntry[]): Promise<string> {
