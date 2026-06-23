@@ -87,6 +87,7 @@ interface SessionData {
   config: {
     difficulty: number;
     interviewerStyle: string;
+    caseType?: string;
   };
 }
 
@@ -488,6 +489,10 @@ export default function Session() {
   };
 
   const caseDoc = sessionData?.caseId;
+  // Product & guesstimate are free-flowing — the consulting stage arc doesn't apply.
+  const ct = sessionData?.config?.caseType;
+  const moduleKind: 'case' | 'product' | 'guesstimate' =
+    ct?.startsWith('product') ? 'product' : ct === 'guesstimate' ? 'guesstimate' : 'case';
 
   // Derived: the current question = AI's live turn, else its last spoken turn.
   const lastInterviewer = [...transcript].reverse()
@@ -777,26 +782,33 @@ export default function Session() {
           </h1>
         </div>
 
-        {/* Progress indicator */}
-        <div className="hidden md:flex items-center gap-2 shrink-0">
-          {STAGES.map((s, i) => (
-            <React.Fragment key={s}>
-              <div className={cn(
-                "flex items-center gap-1.5",
-                i <= stageIndex ? "text-on-tertiary-container" : "text-secondary/40"
-              )}>
-                <span className={cn(
-                  "w-2 h-2 rounded-full",
-                  i < stageIndex ? "bg-on-tertiary-container"
-                    : i === stageIndex ? "bg-on-tertiary-container animate-pulse"
-                      : "bg-outline-variant"
-                )} />
-                <span className="text-[11px] font-medium whitespace-nowrap">{s}</span>
-              </div>
-              {i < STAGES.length - 1 && <div className="w-5 h-px bg-outline-variant/50" />}
-            </React.Fragment>
-          ))}
-        </div>
+        {/* Progress indicator — consulting only; product & guesstimate are free-flowing */}
+        {moduleKind === 'case' ? (
+          <div className="hidden md:flex items-center gap-2 shrink-0">
+            {STAGES.map((s, i) => (
+              <React.Fragment key={s}>
+                <div className={cn(
+                  "flex items-center gap-1.5",
+                  i <= stageIndex ? "text-on-tertiary-container" : "text-secondary/40"
+                )}>
+                  <span className={cn(
+                    "w-2 h-2 rounded-full",
+                    i < stageIndex ? "bg-on-tertiary-container"
+                      : i === stageIndex ? "bg-on-tertiary-container animate-pulse"
+                        : "bg-outline-variant"
+                  )} />
+                  <span className="text-[11px] font-medium whitespace-nowrap">{s}</span>
+                </div>
+                {i < STAGES.length - 1 && <div className="w-5 h-px bg-outline-variant/50" />}
+              </React.Fragment>
+            ))}
+          </div>
+        ) : (
+          <div className="hidden md:flex items-center gap-1.5 shrink-0 text-secondary">
+            <span className="w-2 h-2 rounded-full bg-on-tertiary-container animate-pulse" />
+            <span className="text-[11px] font-medium">{moduleKind === 'guesstimate' ? 'Guesstimate' : 'Product'} · free-flowing</span>
+          </div>
+        )}
 
         {/* Focus modes (desktop) */}
         <div className="hidden lg:flex items-center gap-1 bg-surface-container rounded-lg p-1 shrink-0">

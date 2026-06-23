@@ -247,6 +247,11 @@ export function EVALUATION_PROMPT(ctx: EvaluationContext): string {
   const evalModule = ctx.module ?? 'case';
   const comps = COMPETENCIES_BY_MODULE[evalModule];
   const kind = evalModule === 'product' ? 'product management' : evalModule === 'guesstimate' ? 'estimation / guesstimate' : 'McKinsey case';
+  const stagesHint = evalModule === 'product'
+    ? 'FREE-FLOWING — segment by the phases that ACTUALLY occurred (e.g. Clarifying, Users/segments, Goal & metrics, Solutioning, Prioritization, Recommendation); include only the ones that happened, in order. There is NO fixed arc — do not invent stages.'
+    : evalModule === 'guesstimate'
+    ? 'FREE-FLOWING — segment by what actually happened (e.g. Structure, Assumptions, Calculation, Sanity-check). Minimal clarifying is expected here — do NOT penalize a fast start or treat missing "understanding/recommendation" stages as a gap.'
+    : 'Stages: Understanding the problem, Structuring, Analysis, Risk assessment, Final recommendation.';
 
   return `You are a demanding, evidence-driven ${kind} interview evaluator writing a post-interview report for the CANDIDATE. Be HONEST and SPECIFIC, never encouraging-for-its-own-sake. Never inflate scores. Never praise vaguely without quoting evidence. Every judgement must cite a real timestamp from the transcript.
 
@@ -382,7 +387,7 @@ Return ONLY valid JSON matching this EXACT schema. Scores are 0–10. Cite real 
     }
   ],
   "timeManagement": [
-    // Stages: Understanding the problem, Structuring, Analysis, Risk assessment, Final recommendation.
+    // ${stagesHint}
     {
       "stage": "string", "timeSpent": "m:ss", "recommended": "2-3 min",
       "assessment": "Too short" | "Appropriate" | "Too long" | "Insufficient depth" | "Too brief" | "Too limited",
@@ -580,7 +585,7 @@ export function PRODUCT_INTERVIEWER_PROMPT(
   const hookOpen = openingHook?.reference ? ` Open some light small talk: ask whether they've been following ${openingHook.reference}, WAIT for and react to their answer, then ease in${openingHook.bridge ? ` ("${openingHook.bridge}")` : ''}.` : '';
   return `You are a senior Product Manager running a live spoken PM interview (${f.label}).
 ${sharedInterviewerRules(durationMinutes)}${hookOpen}
-METHOD: make them OWN the structure — don't hand it over. Push them to clarify scope, name the user segment(s) and their pain, state the goal/success metric BEFORE solutions, generate options, PRIORITIZE with explicit reasoning, weigh tradeoffs, and land a clear recommendation. Challenge vague "users want X" with "which users, and how do you know?". Good move → go deeper; hand-wave → press. You already know what great looks like — stay curious how they get there.
+METHOD: this is FREE-FLOWING — don't force a rigid stage order or over-clarify; follow their lead and just make sure the key dimensions get covered: the user segment(s) and their real pain, the goal/success metric before solutions, options, explicit PRIORITIZATION with reasoning, tradeoffs, and a clear recommendation. Make them OWN the structure — don't hand it over. Challenge vague "users want X" with "which users, and how do you know?". Good move → go deeper; hand-wave → press. You already know what great looks like — stay curious how they get there.
 Pressure: ${STYLE_PRESSURE[interviewerStyle]}
 
 PROMPT (pose a short version, then let them drive): ${prompt}${guide ? `\nPRIVATE GUIDE (never reveal; use to probe gaps): ${guide}` : ''}${answerKey ? `\nANSWER KEY (private — never reveal/hint): ${answerKey}` : ''}`;
@@ -594,10 +599,11 @@ export function GUESSTIMATE_INTERVIEWER_PROMPT(
 ): string {
   return `You are an interviewer running a live spoken GUESSTIMATE / market-sizing drill.
 ${sharedInterviewerRules(durationMinutes)}
-METHOD: make them lay out a STRUCTURE before any number (top-down or bottom-up), state each assumption explicitly and justify it (THEY pick the numbers — never feed them an assumption), do the arithmetic out loud step by step, and SANITY-CHECK the final figure. If they ask for a genuine anchor fact (a real population/rate) with a reason, you may confirm a reasonable value — but never hand them the final answer or the method. Catch arithmetic slips by asking them to re-check, don't correct for them. Drive them to a single final number + a sanity check.
+METHOD: this is FREE-FLOWING — keep clarifying to a MINIMUM (guesstimates need little setup; answer one or two scoping questions briefly, then push them to go — don't interrogate). Make them lay out a STRUCTURE before any number (top-down or bottom-up), state and justify each assumption (THEY pick the numbers — never feed an assumption), do the arithmetic out loud, and SANITY-CHECK the result. Don't correct slips — ask them to re-check. Drive to a single final number.
+AT THE END — once they've committed to a number and sanity-checked it (or time's nearly up) — REVEAL the reference figure and reasonable range and say briefly how their estimate compares. That closing reveal is the payoff; do it only at the end, never mid-drill.
 Pressure: ${STYLE_PRESSURE[interviewerStyle]}
 
-QUESTION: ${prompt}${guide ? `\nPRIVATE GUIDE (never reveal): ${guide}` : ''}${answerKey ? `\nANSWER KEY (private — never reveal the number or method): ${answerKey}` : ''}`;
+QUESTION: ${prompt}${guide ? `\nPRIVATE GUIDE (use privately): ${guide}` : ''}${answerKey ? `\nANSWER KEY (private during the drill; reveal the reference figure + range only at the END as feedback — never the method mid-drill): ${answerKey}` : ''}`;
 }
 
 // Per-module evaluation competencies (key, label, focus). Consulting keys match
