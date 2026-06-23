@@ -7,6 +7,9 @@ const envSchema = z.object({
   JWT_SECRET: z.string().min(16).default('dev_secret_change_in_production_32chars'),
   JWT_EXPIRES_IN: z.string().default('7d'),
   OPENAI_API_KEY: z.string().optional(),
+  // PM pipeline (STT→LLM→TTS) TTS config. STT + LLM reuse OPENAI_API_KEY.
+  OPENAI_TTS_MODEL: z.string().default('gpt-4o-mini-tts'),
+  OPENAI_TTS_VOICE: z.string().default('cedar'),
   APP_URL: z.string().default('http://localhost:5050'),
   FRONTEND_URL: z.string().default('http://localhost:5173'),
   // Razorpay — set in local .env (untracked) and Railway dashboard vars. Never commit.

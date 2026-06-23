@@ -5,10 +5,11 @@ import WebSocketNode from 'ws';
 import { env } from '../../config/env.js';
 import { Session } from '../../models/Session.js';
 import { Case } from '../../models/Case.js';
-import { INTERVIEWER_SYSTEM_PROMPT, PRODUCT_INTERVIEWER_PROMPT, GUESSTIMATE_INTERVIEWER_PROMPT, ProductFormat } from '../../ai/prompts.js';
+import { INTERVIEWER_SYSTEM_PROMPT, GUESSTIMATE_INTERVIEWER_PROMPT } from '../../ai/prompts.js';
 import { appendTranscript, settleSession } from '../sessions/session.service.js';
 import { CaseType } from '../../models/Case.js';
 import { buildForbiddenList, deterministicCheck } from './supervisor.js';
+import { handlePmPipeline } from './pm/pm.pipeline.js';
 
 // gpt-4o-realtime-preview-* were all shut down 2026-05-07. gpt-realtime-2 (released
 // 2026-05-07) is the current top realtime voice model — GPT-5-class reasoning,
@@ -89,14 +90,24 @@ async function handleConnection(clientWs: WebSocket, req: IncomingMessage): Prom
       ? session.reservedMinutes
       : (session.config.durationMinutes || 45);
     const style = session.config.interviewerStyle;
-    let systemPrompt: string;
+
+    // PM (product) module runs on the STT→LLM→TTS pipeline instead of the
+    // all-in-one Realtime conversation model. Branch here and return; case &
+    // guesstimate stay on the Realtime path below.
     if (caseDoc.module === 'product') {
-      systemPrompt = PRODUCT_INTERVIEWER_PROMPT(
-        (caseDoc.subType as ProductFormat) || 'design',
-        caseDoc.scenario, session.config.difficulty, style, minutes,
-        caseDoc.answerKey ?? caseDoc.plausibleSolution, caseDoc.privateMechanismNote, caseDoc.openingHook
-      );
-    } else if (caseDoc.module === 'guesstimate') {
+      if (!env.OPENAI_API_KEY) {
+        sendToClient(clientWs, { type: 'error', message: 'OPENAI_API_KEY is not configured on the server' });
+        clientWs.close();
+        return;
+      }
+      handlePmPipeline({ clientWs, session, caseDoc, sessionId, minutes, style });
+      return;
+    }
+
+    // NOTE: product (PM) is handled above by the pipeline and returns early —
+    // only case & guesstimate reach this Realtime branch.
+    let systemPrompt: string;
+    if (caseDoc.module === 'guesstimate') {
       systemPrompt = GUESSTIMATE_INTERVIEWER_PROMPT(
         caseDoc.scenario, session.config.difficulty, style, minutes,
         caseDoc.answerKey ?? caseDoc.plausibleSolution, caseDoc.privateMechanismNote
