@@ -11,6 +11,9 @@ export interface ICase extends Document {
   // are the PM & estimation modules (use `subType` instead of `type`).
   module: InterviewModule;
   subType?: string; // product format ('design'|'strategy'|'rootcause'|'prioritization') or guesstimate tag
+  // PM module: the single neutral question the interviewer poses (§12.1.2).
+  // Falls back to `scenario` when absent. Other PM authoring fields land in P6.
+  prompt?: string;
   type?: CaseType;
   industry?: Industry;
   difficulty: number;
@@ -44,6 +47,7 @@ const CaseSchema = new Schema<ICase>(
     title: { type: String, required: true },
     module: { type: String, enum: ['case', 'product', 'guesstimate'], default: 'case', index: true },
     subType: { type: String },
+    prompt: { type: String },
     // Optional: consulting cases set these; product/guesstimate modules don't.
     type: {
       type: String,

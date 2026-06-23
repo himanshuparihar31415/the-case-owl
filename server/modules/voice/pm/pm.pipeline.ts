@@ -1,11 +1,12 @@
 import { WebSocket } from 'ws';
-import { openai } from '../../../ai/client.js';
-import { PRODUCT_INTERVIEWER_PROMPT, ProductFormat } from '../../../ai/prompts.js';
+import { ProductFormat } from '../../../ai/prompts.js';
 import { appendTranscript, settleSession } from '../../sessions/session.service.js';
 import { Case } from '../../../models/Case.js';
 import { Session } from '../../../models/Session.js';
 import { OpenAiStt } from './openai-stt.js';
 import { streamTts, TtsHandle } from './openai-tts.js';
+import { PmState } from './pm.state.js';
+import { pmTurn, PmTurnSystemArgs } from './pm.turn.js';
 
 type CaseDoc = InstanceType<typeof Case>;
 type SessionDoc = InstanceType<typeof Session>;
@@ -19,26 +20,37 @@ interface PmPipelineArgs {
   style: 'supportive' | 'neutral' | 'stress';
 }
 
-const LLM_MODEL = 'gpt-4o';
-
-// PM interviewer pipeline: STT (OpenAI transcription) → LLM (gpt-4o) → TTS
-// (gpt-4o-mini-tts). This is the P1 skeleton — it proves the full audio
-// round-trip + barge-in with a simple text turn. The structured per-turn
-// assessment + state machine layer onto this in P2/P3.
+// PM interviewer pipeline: STT (OpenAI transcription) → LLM (gpt-4o, structured
+// dual-purpose turn) → TTS (gpt-4o-mini-tts). Each candidate turn yields the
+// interviewer's spoken reply AND a structured assessment, which we persist live
+// (§7) and feed into the compact state object (§8) for the next turn.
 export function handlePmPipeline(args: PmPipelineArgs): void {
   const { clientWs, session, caseDoc, sessionId, minutes, style } = args;
 
-  const systemPrompt = PRODUCT_INTERVIEWER_PROMPT(
-    (caseDoc.subType as ProductFormat) || 'design',
-    caseDoc.scenario, session.config.difficulty, style, minutes,
-    caseDoc.answerKey ?? caseDoc.plausibleSolution, caseDoc.privateMechanismNote, caseDoc.openingHook,
-  );
+  const format = (caseDoc.subType as ProductFormat) || 'design';
+  const startedAt = Date.now();
 
-  // Conversation history fed to the LLM each turn. P3 swaps this for the compact
-  // state object + last-5-turns compression; for P1 we keep the full thread.
-  const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
-    { role: 'system', content: systemPrompt },
-  ];
+  // Static system args (product context + private guide) reused every turn.
+  const systemArgs: PmTurnSystemArgs = {
+    format,
+    productContext: caseDoc.scenario,
+    prompt: caseDoc.prompt ?? caseDoc.scenario,
+    interviewerStyle: style,
+    durationMinutes: minutes,
+    guide: caseDoc.privateMechanismNote ?? undefined,
+    answerKey: caseDoc.answerKey ?? caseDoc.plausibleSolution ?? undefined,
+    openingHook: caseDoc.openingHook,
+  };
+
+  const state = new PmState({
+    product: caseDoc.scenario,
+    prompt: caseDoc.prompt ?? caseDoc.scenario,
+    format,
+    difficulty: session.config.difficulty,
+  });
+
+  // Live-accumulated assessment artifacts, flushed to the Session on close.
+  const turnAssessments: unknown[] = [];
 
   const stt = new OpenAiStt();
   let currentTts: TtsHandle | null = null;
@@ -55,25 +67,52 @@ export function handlePmPipeline(args: PmPipelineArgs): void {
     try { clientWs.close(4008, 'Time cap reached'); } catch { /* noop */ }
   }, minutes * 60 * 1000);
 
+  let flushed = false;
+  const flushState = (): void => {
+    if (flushed) return;
+    flushed = true;
+    Session.updateOne({ _id: sessionId }, {
+      $set: {
+        interviewType: 'pm',
+        turnAssessments,
+        stateObject: state.snapshot(),
+        stageTransitions: state.getStageTransitions(),
+      },
+    }).catch((e) => console.error('PM flushState failed:', e));
+  };
+
   const cleanup = (): void => {
     clearTimeout(capTimer);
     currentTts?.abort();
     stt.close();
+    flushState();
   };
 
-  // Run one interviewer turn: call the LLM, stream the reply to TTS, persist it.
-  const runInterviewerTurn = async (): Promise<void> => {
+  // Run one interviewer turn: structured LLM call → persist assessment + advance
+  // state → stream the spoken reply to TTS. `transcript` is the candidate's last
+  // utterance; for the opening turn it's a synthetic cue and isOpening=true.
+  const runInterviewerTurn = async (transcript: string, isOpening = false): Promise<void> => {
     if (llmBusy || clientWs.readyState !== WebSocket.OPEN) return;
     llmBusy = true;
     try {
-      const completion = await openai.chat.completions.create({
-        model: LLM_MODEL,
-        messages,
-        max_tokens: 300,
+      const elapsedMin = Math.round((Date.now() - startedAt) / 60000);
+      const result = await pmTurn({
+        system: systemArgs,
+        stateBlock: state.serialize(),
+        recentTurns: state.recentTurnsText(),
+        transcript,
+        elapsedMin,
+        totalMin: minutes,
       });
-      const reply = completion.choices[0]?.message?.content?.trim() ?? '';
+      const reply = result.response.trim();
       if (!reply) return;
-      messages.push({ role: 'assistant', content: reply });
+
+      // Live assessment + state machine update (skip the meaningless opening one).
+      if (!isOpening) {
+        turnAssessments.push({ t: new Date().toISOString(), ...result.turn_assessment, next_action: result.next_action });
+        state.applyTurn(result.turn_assessment.response_quality, result.state_update);
+      }
+      state.recordTurn('interviewer', reply);
 
       // Persist + display the interviewer turn.
       sendToClient(clientWs, { type: 'transcript', role: 'interviewer', text: reply });
@@ -121,11 +160,11 @@ export function handlePmPipeline(args: PmPipelineArgs): void {
 
   stt.on('final', (text: string) => {
     if (!text.trim()) return;
-    messages.push({ role: 'user', content: text });
+    state.recordTurn('candidate', text);
     sendToClient(clientWs, { type: 'transcript', role: 'candidate', text });
     appendTranscript(sessionId, { role: 'candidate', text, timestamp: new Date() })
       .catch((e) => console.error('appendTranscript (candidate) failed:', e));
-    void runInterviewerTurn();
+    void runInterviewerTurn(text);
   });
 
   stt.on('error', (message: string) => {
@@ -149,8 +188,7 @@ export function handlePmPipeline(args: PmPipelineArgs): void {
     if (message.type === 'audio_live') {
       // Mic + speaker pipeline is live — fire the opening interviewer turn so it
       // lands in a live pipeline (mirrors the Realtime greeting gate).
-      messages.push({ role: 'user', content: '[The candidate just joined. Greet them warmly, do a quick audio check, then present the prompt.]' });
-      void runInterviewerTurn();
+      void runInterviewerTurn('[The candidate just joined. Do a quick audio check, then once confirmed greet them and present the prompt.]', true);
     } else if (message.type === 'audio_chunk') {
       // Gate candidate audio until the greeting finishes so mic-startup noise
       // doesn't false-trigger VAD before the interviewer has spoken.

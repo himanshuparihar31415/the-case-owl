@@ -26,6 +26,15 @@ export interface ISession extends Document {
   scratchpad?: string;
   // Silent-supervisor compliance flags (admin-only). Mixed array.
   supervisorFlags?: unknown[];
+  // PM pipeline (product module) artifacts — additive, written live by the
+  // STT→LLM→TTS engine, consumed by the PM report writer. All optional.
+  interviewType?: 'pm' | 'consulting';
+  turnAssessments?: unknown[];   // per-turn structured assessments (§7.2)
+  stateObject?: unknown;          // final compact state snapshot (§8.2/§16)
+  stageTransitions?: unknown[];   // §7.3
+  thinkingPauses?: unknown[];     // §7.3 (positive signal)
+  reprompts?: unknown[];          // §7.3
+  integrityFlags?: unknown[];     // §13
   // Credits (minutes) held for this session at start; settled (consumed +
   // released) exactly once when the session ends or is abandoned.
   reservedMinutes?: number;
@@ -61,6 +70,14 @@ const SessionSchema = new Schema<ISession>(
     scratchpad: { type: String },
     // Silent-supervisor flags (LED / FED_DATA) — admin-only debug/compliance.
     supervisorFlags: { type: [Schema.Types.Mixed], default: [] },
+    // PM pipeline artifacts (product module). Flexible Mixed — no migration.
+    interviewType: { type: String, enum: ['pm', 'consulting'] },
+    turnAssessments: { type: [Schema.Types.Mixed], default: undefined },
+    stateObject: { type: Schema.Types.Mixed },
+    stageTransitions: { type: [Schema.Types.Mixed], default: undefined },
+    thinkingPauses: { type: [Schema.Types.Mixed], default: undefined },
+    reprompts: { type: [Schema.Types.Mixed], default: undefined },
+    integrityFlags: { type: [Schema.Types.Mixed], default: undefined },
     reservedMinutes: { type: Number, default: 0 },
     settled: { type: Boolean, default: false },
     startedAt: { type: Date, default: Date.now },
