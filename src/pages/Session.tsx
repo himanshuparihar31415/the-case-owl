@@ -442,7 +442,7 @@ export default function Session() {
               <h2 className="font-headline font-bold text-lg text-primary mb-2">{caseDoc.title}</h2>
               <p className="text-sm text-on-surface-variant leading-relaxed whitespace-pre-line">{caseDoc.scenario}</p>
             </div>
-            {caseDoc.keyDataPoints.length > 0 && (
+            {caseDoc.keyDataPoints.length > 0 ? (
               <div>
                 <label className="label-blueprint mb-3 block">Key Data &amp; Exhibits</label>
                 <div className="space-y-3">
@@ -453,6 +453,15 @@ export default function Session() {
                     </div>
                   ))}
                 </div>
+              </div>
+            ) : (
+              <div className="rounded-lg bg-surface-container-low p-4 border border-outline-variant/15">
+                <label className="label-blueprint mb-1.5 block">Exhibits &amp; data</label>
+                <p className="text-xs text-on-surface-variant leading-relaxed">
+                  Like a real interview, the data isn&apos;t laid out for you. Your interviewer holds the
+                  exhibits and will share figures as your analysis earns them — structure your approach,
+                  then <span className="text-primary font-medium">ask for the numbers you need</span>.
+                </p>
               </div>
             )}
           </>
