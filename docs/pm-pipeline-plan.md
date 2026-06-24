@@ -194,7 +194,7 @@ New prompt `PM_CASE_PROMPT(format, difficulty)` in `prompts.ts` (§12.1.1–12.1
 - **P1 — Pipeline skeleton**: `openai-stt.ts`, `openai-tts.ts`, `pm.pipeline.ts` echoing a fixed greeting end-to-end (mic→STT→LLM→TTS→speaker). Verify audio round-trip + barge-in. (No new keys.)
 - **P2 — Conversation engine**: `pm.turn.ts` + structured JSON + §9 personality. Verify natural multi-turn PM convo.
 - **P3 — State + integrity**: `pm.state.ts` (machine, coherence, compression) + `pm.integrity.ts`. Verify state object stays small over 30 min.
-- **P4 — Filler + latency**: filler clips, thinking-pause handling, latency tuning.
+- **P4 — Latency tuning + thinking-pause handling** (filler audio DROPPED — it interrupts the natural cadence; rely on the deliberate STT→LLM→TTS pause instead). Robust barge-in: only abort the interviewer on a sustained candidate utterance, not a stray VAD blip.
 - **P5 — Evaluation/report**: PM report branch + `Report.tsx` sections.
 - **P6 — Case authoring**: `generatePmCaseWithAI` + Config wiring.
 - **P7 — Cutover**: feature-flag product→pipeline, remove temp diagnostics, docs.

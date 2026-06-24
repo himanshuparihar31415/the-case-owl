@@ -83,6 +83,7 @@ export function handlePmPipeline(args: PmPipelineArgs): void {
 
   const cleanup = (): void => {
     clearTimeout(capTimer);
+    if (bargeInTimer) { clearTimeout(bargeInTimer); bargeInTimer = null; }
     currentTts?.abort();
     stt.close();
     flushState();
@@ -149,13 +150,30 @@ export function handlePmPipeline(args: PmPipelineArgs): void {
     sendToClient(clientWs, { type: 'transcript_delta', role: 'candidate', text });
   });
 
+  // Barge-in is gated behind a short sustained-speech window so a stray VAD blip
+  // (a cough, a keystroke, brief room noise) doesn't truncate the interviewer's
+  // question. We only cut the interviewer off if speech persists past the window.
+  // (Candidates must be on headphones — otherwise the interviewer's own TTS loops
+  // into the mic as sustained "speech" and self-interrupts.)
+  const BARGE_IN_MS = 450;
+  let bargeInTimer: ReturnType<typeof setTimeout> | null = null;
+  const clearBargeIn = (): void => { if (bargeInTimer) { clearTimeout(bargeInTimer); bargeInTimer = null; } };
+
   stt.on('speechStarted', () => {
-    // Barge-in: candidate started talking while the interviewer was speaking.
-    if (speaking && currentTts) {
-      currentTts.abort();
-      speaking = false;
-      sendToClient(clientWs, { type: 'speech_started' });
-    }
+    if (!speaking || !currentTts || bargeInTimer) return;
+    bargeInTimer = setTimeout(() => {
+      bargeInTimer = null;
+      if (speaking && currentTts) {
+        currentTts.abort();
+        speaking = false;
+        sendToClient(clientWs, { type: 'speech_started' });
+      }
+    }, BARGE_IN_MS);
+  });
+
+  stt.on('speechStopped', () => {
+    // Speech ended before the window elapsed → a blip, not a real interruption.
+    clearBargeIn();
   });
 
   stt.on('final', (text: string) => {
