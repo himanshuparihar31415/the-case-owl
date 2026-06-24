@@ -4,7 +4,7 @@ import { appendTranscript, settleSession } from '../../sessions/session.service.
 import { Case } from '../../../models/Case.js';
 import { Session } from '../../../models/Session.js';
 import { OpenAiStt } from './openai-stt.js';
-import { streamTts, TtsHandle } from './openai-tts.js';
+import { streamTts, TtsHandle } from './elevenlabs-tts.js';
 import { PmState } from './pm.state.js';
 import { pmTurn, PmTurnSystemArgs } from './pm.turn.js';
 
