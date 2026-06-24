@@ -237,8 +237,12 @@ export default function Session() {
     if (!ctx) return;
     try {
       const raw = atob(base64);
-      const bytes = new Uint8Array(raw.length);
-      for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+      // Drop a lone trailing byte if the chunk is odd-length — Int16Array requires
+      // an even byte count or it throws (silently dropping the whole chunk).
+      const usable = raw.length - (raw.length % 2);
+      if (usable <= 0) return;
+      const bytes = new Uint8Array(usable);
+      for (let i = 0; i < usable; i++) bytes[i] = raw.charCodeAt(i);
       const int16 = new Int16Array(bytes.buffer);
       const float32 = new Float32Array(int16.length);
       for (let i = 0; i < int16.length; i++) float32[i] = int16[i] / 32768;

@@ -46,14 +46,28 @@ export function streamTts(text: string, onChunk: (base64Pcm: string) => void): T
       throw new Error(`TTS request failed (${res.status}): ${detail.slice(0, 200)}`);
     }
 
+    // OpenAI streams raw PCM16 in arbitrary byte-sized chunks — a chunk can end
+    // mid-sample (odd length). The browser decodes via Int16Array, which THROWS
+    // on an odd-length buffer (dropping that chunk) and mis-aligns everything
+    // after a split sample → garbled / breaking audio. So we buffer, emit only
+    // sample-aligned (even-length) slices, carry the leftover odd byte forward,
+    // and coalesce to ~50ms so we don't spray hundreds of tiny AudioBuffers.
+    const MIN_EMIT_BYTES = 2400; // 50ms @ 24kHz mono 16-bit (2 bytes/sample)
+    let carry = Buffer.alloc(0);
     const reader = res.body.getReader();
     for (;;) {
       const { done: streamDone, value } = await reader.read();
       if (streamDone) break;
-      if (value && value.length) {
-        onChunk(Buffer.from(value).toString('base64'));
-      }
+      if (!value || !value.length) continue;
+      carry = carry.length ? Buffer.concat([carry, Buffer.from(value)]) : Buffer.from(value);
+      if (carry.length < MIN_EMIT_BYTES) continue;
+      const aligned = carry.length - (carry.length % 2); // largest even-length prefix
+      onChunk(carry.subarray(0, aligned).toString('base64'));
+      carry = aligned < carry.length ? Buffer.from(carry.subarray(aligned)) : Buffer.alloc(0);
     }
+    // Flush the tail (drop a lone trailing odd byte — inaudible).
+    const tail = carry.length - (carry.length % 2);
+    if (tail > 0) onChunk(carry.subarray(0, tail).toString('base64'));
   })();
 
   // Swallow the AbortError so barge-in doesn't surface as an unhandled rejection;
