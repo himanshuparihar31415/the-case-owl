@@ -156,8 +156,9 @@ export function handlePmPipeline(args: PmPipelineArgs): void {
         greetingDone = true;
       }
     } catch (err) {
+      const detail = String((err as { message?: string })?.message ?? err);
       console.error('PM interviewer turn failed:', err);
-      sendToClient(clientWs, { type: 'error', message: 'Interviewer turn failed' });
+      sendToClient(clientWs, { type: 'error', message: `Interviewer turn failed: ${detail}` });
     } finally {
       llmBusy = false;
     }

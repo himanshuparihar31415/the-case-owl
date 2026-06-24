@@ -54,7 +54,9 @@ const PM_TURN_SCHEMA = {
         properties: {
           case_stage: { type: 'string' },
           question_intent: { type: 'string' },
-          response_quality: { type: 'integer', minimum: 1, maximum: 10 },
+          // NOTE: OpenAI strict structured outputs reject minimum/maximum — the
+          // 1-10 range lives in the description instead.
+          response_quality: { type: 'integer', description: 'quality of the candidate answer, 1 (poor) to 10 (excellent)' },
           did_answer_question: { type: 'boolean' },
           skills_demonstrated: { type: 'array', items: { type: 'string' } },
           skills_missing: { type: 'array', items: { type: 'string' } },
