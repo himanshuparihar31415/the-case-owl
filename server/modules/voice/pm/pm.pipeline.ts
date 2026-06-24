@@ -55,8 +55,20 @@ export function handlePmPipeline(args: PmPipelineArgs): void {
   const stt = new OpenAiStt();
   let currentTts: TtsHandle | null = null;
   let greetingDone = false;
-  let speaking = false;       // is the interviewer's TTS currently streaming?
+  let speaking = false;       // is the interviewer's audio still playing on the client?
   let llmBusy = false;        // guard against overlapping turns
+
+  // The interviewer audio is fully synthesized then sent in one burst, but the
+  // browser keeps PLAYING it for `duration` afterward. We hold `speaking` true
+  // for the real playback duration (estimated from PCM byte count) so barge-in
+  // and turn pacing track what the candidate actually hears, not when bytes left
+  // the server. `endPlayback` resolves the wait early on barge-in.
+  let playbackTimer: ReturnType<typeof setTimeout> | null = null;
+  let playbackResolve: (() => void) | null = null;
+  const endPlayback = (): void => {
+    if (playbackTimer) { clearTimeout(playbackTimer); playbackTimer = null; }
+    if (playbackResolve) { const r = playbackResolve; playbackResolve = null; r(); }
+  };
 
   // HARD STOP: kill the session at its reserved minute cap (server-authoritative,
   // never trusts the client). Mirrors the Realtime path.
@@ -84,6 +96,7 @@ export function handlePmPipeline(args: PmPipelineArgs): void {
   const cleanup = (): void => {
     clearTimeout(capTimer);
     if (bargeInTimer) { clearTimeout(bargeInTimer); bargeInTimer = null; }
+    endPlayback();
     currentTts?.abort();
     stt.close();
     flushState();
@@ -120,13 +133,22 @@ export function handlePmPipeline(args: PmPipelineArgs): void {
       appendTranscript(sessionId, { role: 'interviewer', text: reply, timestamp: new Date() })
         .catch((e) => console.error('appendTranscript (interviewer) failed:', e));
 
-      // Speak it.
+      // Synthesize + send the audio, then hold `speaking` for the real playback
+      // duration so barge-in works while the candidate is actually hearing it.
       speaking = true;
+      let pcmBytes = 0; // decoded PCM byte count, for the playback-duration estimate
       currentTts = streamTts(reply, (chunk) => {
+        pcmBytes += (chunk.length * 3) >> 2; // base64 → bytes (≈, ignoring padding)
         if (clientWs.readyState === WebSocket.OPEN) sendToClient(clientWs, { type: 'audio_chunk', data: chunk });
       });
       try {
-        await currentTts.done;
+        await currentTts.done; // all chunks sent to the client
+        // PCM16 @ 24kHz mono = 48000 bytes/sec. Pad a little for scheduling tail.
+        const durationMs = (pcmBytes / 48000) * 1000 + 150;
+        await new Promise<void>((resolve) => {
+          playbackResolve = resolve;
+          playbackTimer = setTimeout(endPlayback, durationMs);
+        });
       } finally {
         speaking = false;
         currentTts = null;
@@ -160,13 +182,13 @@ export function handlePmPipeline(args: PmPipelineArgs): void {
   const clearBargeIn = (): void => { if (bargeInTimer) { clearTimeout(bargeInTimer); bargeInTimer = null; } };
 
   stt.on('speechStarted', () => {
-    if (!speaking || !currentTts || bargeInTimer) return;
+    if (!speaking || bargeInTimer) return;
     bargeInTimer = setTimeout(() => {
       bargeInTimer = null;
-      if (speaking && currentTts) {
-        currentTts.abort();
-        speaking = false;
-        sendToClient(clientWs, { type: 'speech_started' });
+      if (speaking) {
+        currentTts?.abort();
+        sendToClient(clientWs, { type: 'speech_started' }); // client flushes queued audio
+        endPlayback(); // resolve the playback wait → frees the turn
       }
     }, BARGE_IN_MS);
   });
