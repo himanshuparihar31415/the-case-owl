@@ -1,6 +1,6 @@
 import { Case, ICase, CaseType, Industry } from '../../models/Case.js';
 import { AppError } from '../../middleware/errorHandler.js';
-import { generatePharmaProfitabilityCaseWithAI, generateExhibitCaseWithAI, generateProductCaseWithAI, generateGuesstimateWithAI, ExhibitCase } from '../../ai/client.js';
+import { generatePharmaProfitabilityCaseWithAI, generateExhibitCaseWithAI, generateProductCaseWithAI, generateGuesstimateWithAI, extractCaseFromTranscript, ExhibitCase, ExtractedCase } from '../../ai/client.js';
 import { PharmaTheme, ProductFormat } from '../../ai/prompts.js';
 
 interface CaseFilter {
@@ -43,19 +43,45 @@ export async function listMyCases(userId: string, limit = 12, page = 1): Promise
   return { cases, total };
 }
 
+// Create a custom case from raw uploaded material (pasted text / PDF text / a
+// full interview transcript). We RECONSTRUCT it into the same exhibit-rich
+// schema generated cases use — neutral candidate-facing prompt, the fact base as
+// earned exhibits, a private answer/logic spine — so it presents and interviews
+// like a real case instead of dumping raw text into the scenario.
 export async function createCustomCase(
   userId: string,
   data: {
-    title: string;
-    scenario: string;
+    title?: string;
+    scenario: string; // raw uploaded material
     description?: string;
     type?: CaseType;
     industry?: Industry;
     difficulty?: number;
   }
 ): Promise<ICase> {
+  let extracted: ExtractedCase | null = null;
+  try {
+    extracted = await extractCaseFromTranscript(data.scenario);
+  } catch (err) {
+    console.error('Custom case extraction failed; falling back to raw scenario:', err);
+  }
+
+  // If extraction succeeded, store the structured case; otherwise fall back to
+  // the old raw-text behavior so an import never hard-fails.
+  if (extracted && extracted.situation) {
+    const type = (data.type ?? extracted.type ?? 'profitability') as CaseType;
+    const industry = (data.industry ?? extracted.industry ?? 'tech') as Industry;
+    const difficulty = data.difficulty ?? extracted.difficulty ?? 2;
+    return Case.create({
+      ...mapExhibitCase(extracted, type, industry, difficulty),
+      title: data.title || extracted.title || 'Imported case',
+      isCustom: true,
+      createdBy: userId,
+    });
+  }
+
   return Case.create({
-    title: data.title,
+    title: data.title || 'Imported case',
     scenario: data.scenario,
     description: data.description ?? data.scenario.slice(0, 300),
     type: data.type ?? 'operations',

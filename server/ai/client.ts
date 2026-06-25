@@ -2,7 +2,7 @@ import OpenAI from 'openai';
 import { env } from '../config/env.js';
 import { CaseType, Industry } from '../models/Case.js';
 import { TranscriptEntry } from '../models/Session.js';
-import { CASE_GENERATION_PROMPT, PHARMA_PROFITABILITY_CASE_PROMPT, EXHIBIT_CASE_PROMPT, PharmaTheme, PRODUCT_CASE_PROMPT, GUESSTIMATE_PROMPT, ProductFormat, HINT_PROMPT, SCORING_PROMPT, EVALUATION_PROMPT, EvaluationContext, PROGRESS_INSIGHT_PROMPT, ProgressInsightContext } from './prompts.js';
+import { CASE_GENERATION_PROMPT, PHARMA_PROFITABILITY_CASE_PROMPT, EXHIBIT_CASE_PROMPT, EXTRACT_CASE_PROMPT, PharmaTheme, PRODUCT_CASE_PROMPT, GUESSTIMATE_PROMPT, ProductFormat, HINT_PROMPT, SCORING_PROMPT, EVALUATION_PROMPT, EvaluationContext, PROGRESS_INSIGHT_PROMPT, ProgressInsightContext } from './prompts.js';
 
 export const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
 
@@ -113,6 +113,30 @@ export async function generateExhibitCaseWithAI(type: CaseType, industry: Indust
     'You are a McKinsey case designer. The numbers must reconcile. Return only valid JSON.',
     EXHIBIT_CASE_PROMPT(type, industry, difficulty)
   );
+}
+
+// A reconstructed custom case carries the same exhibit shape PLUS the type/
+// industry/difficulty inferred from the uploaded source.
+export interface ExtractedCase extends ExhibitCase {
+  type?: CaseType;
+  industry?: Industry;
+}
+
+// Reconstruct a structured, exhibit-rich case from raw uploaded material
+// (pasted text, PDF text, or a full interview transcript) — faithful to the
+// source, neutral candidate-facing prompt, fact base as earned exhibits.
+export async function extractCaseFromTranscript(rawText: string): Promise<ExtractedCase> {
+  const response = await openai.chat.completions.create({
+    model: TEXT_MODEL,
+    messages: [
+      { role: 'system', content: 'You reconstruct structured case-interview cases from raw uploads. Be FAITHFUL to the source — never invent figures it does not support. Return only valid JSON.' },
+      { role: 'user', content: EXTRACT_CASE_PROMPT(rawText) },
+    ],
+    response_format: { type: 'json_object' },
+    temperature: 0.3, // low — faithful extraction, not creative generation
+    max_tokens: 6000,
+  });
+  return JSON.parse(response.choices[0]?.message?.content ?? '{}') as ExtractedCase;
 }
 
 // Product-case & guesstimate generators (PM / estimation modules).

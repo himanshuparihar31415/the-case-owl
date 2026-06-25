@@ -75,6 +75,46 @@ Return ONLY valid JSON:
 FINAL: recompute every total, margin, and the quant answer. Fix any mismatch before returning.`;
 }
 
+// Reconstruct a STRUCTURED case from raw user-uploaded material (a pasted case,
+// a PDF, or a full interview transcript). The source is ONE path; the live
+// interviewer must handle a NEW candidate taking a different path — so we extract
+// the underlying case STRUCTURE (neutral prompt + the fact base the interviewer
+// reveals when earned + exhibits + the answer/logic), NOT a script to replay.
+// FAITHFUL: every figure must come from (or directly follow from) the source —
+// never invent numbers that aren't grounded in it. Unstated specifics are left
+// to the interviewer to improvise consistently at runtime.
+export function EXTRACT_CASE_PROMPT(rawText: string): string {
+  return `You are a McKinsey case designer. Below is raw material a user uploaded — it may be a case prompt, a case document, or a FULL interview transcript (interviewer + candidate). Reconstruct it into ONE structured, internally-consistent case as JSON.
+
+CRITICAL RULES:
+- The uploaded transcript is just ONE walk through the case. Extract the underlying STRUCTURE so a different candidate taking a different path can still be interviewed — do NOT produce a script to replay.
+- FAITHFUL TO THE SOURCE: use only facts and numbers that appear in, or follow directly from, the source. NEVER fabricate figures, drivers, or a root cause the source doesn't support. If the source lacks something, omit it (the live interviewer improvises consistent details at runtime) — do not invent key data.
+- The "situation" the candidate HEARS is NEUTRAL — only the opening setup and the ask (e.g. "a chartered-plane operator in India with declining profits — evaluate"). It must NOT contain the revealed data, the analysis, or the answer.
+- Capture EVERY material fact the source reveals as an exhibit entry with a "whenToShow" trigger — these are what the interviewer discloses only when the candidate earns them. Turn quantitative facts into render="chart" or "table" exhibits (FAITHFUL numbers); keep qualitative facts as render="spoken".
+- Infer the real root cause / logic spine from the source and keep it PRIVATE.
+
+Return ONLY valid JSON:
+{
+  "title": "company/context + one-line neutral problem",
+  "type": "one of: profitability | market_entry | ma | growth | pricing | operations (best fit)",
+  "industry": "one of: tech | cpg | pharma | finance | energy | automotive | retail (best fit; use closest)",
+  "difficulty": 1-4 (estimate from depth/complexity),
+  "situation": "3-4 NEUTRAL sentences the interviewer opens with: context + the ask. No revealed data, no answer.",
+  "openingHook": { "reference": "a REAL broad TRUE trend relevant to this industry (only if confident); else a generic industry framing", "bridge": "one sentence pivoting into the case" },
+  "privateMechanismNote": "PRIVATE: the real driver/root cause and the logic spine, in your own words, as evidenced by the source",
+  "exhibits": [ ${EXHIBIT_JSON_SPEC} ],  // ONE entry per material fact the source reveals; make the quantitative ones render="chart"/"table" with FAITHFUL numbers, qualitative ones render="spoken"
+  "quant": { "task": "any explicit calculation the case asks for (else omit)", "whenToShow": "", "derivation": "PRIVATE steps from the source", "answer": "PRIVATE result" },
+  "answerKey": "PRIVATE: the diagnosis (root cause + secondary drivers) and the recommendation the source builds toward",
+  "commonWrongTurns": ["traps / dead-ends a weak candidate falls into on this case"],
+  "forbiddenTerms": ["PRIVATE: the specific figures + jargon the candidate must DISCOVER (so the interviewer never says them first) — short tokens only"]
+}
+
+RAW UPLOADED MATERIAL:
+"""
+${rawText.slice(0, 12000)}
+"""`;
+}
+
 export function CASE_GENERATION_PROMPT(type: CaseType, industry: Industry, difficulty: number): string {
   return `You are a McKinsey case interview designer. Create a realistic ${DIFFICULTY_LABELS[difficulty]} difficulty ${type} case for the ${industry} industry.
 

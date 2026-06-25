@@ -50,12 +50,12 @@ export async function createCustomCase(req: AuthRequest, res: Response, next: Ne
       scenario = req.body.scenario;
     }
 
-    if (!req.body.title || !scenario) {
-      throw new AppError(400, 'title and scenario (or a PDF file) are required');
+    if (!scenario) {
+      throw new AppError(400, 'scenario text or a PDF file is required');
     }
 
     const c = await caseService.createCustomCase(req.userId!, {
-      title: req.body.title,
+      title: req.body.title, // optional — extraction infers a title if omitted
       scenario,
       description: req.body.description,
       type: req.body.type as CaseType | undefined,

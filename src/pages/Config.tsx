@@ -83,8 +83,8 @@ export default function Config() {
       let caseId: string;
 
       if (importMode === 'custom') {
-        // Validate custom input
-        if (!customTitle.trim()) throw new Error('Case title is required.');
+        // Validate custom input. Title is optional — we reconstruct the case from
+        // the upload and infer a title if you don't give one.
         if (customInputType === 'text' && !customScenario.trim()) throw new Error('Scenario text is required.');
         if (customInputType === 'pdf' && !customFile) throw new Error('Please select a PDF file.');
 
@@ -92,14 +92,14 @@ export default function Config() {
         if (customInputType === 'pdf' && customFile) {
           const fd = new FormData();
           fd.append('file', customFile);
-          fd.append('title', customTitle.trim());
+          if (customTitle.trim()) fd.append('title', customTitle.trim());
           fd.append('type', selectedArchetype);
           fd.append('industry', selectedIndustry.toLowerCase());
           fd.append('difficulty', String(difficulty));
           result = await api.postForm<{ case: { _id: string; type: string; industry: string } }>('/cases/custom', fd);
         } else {
           result = await api.post<{ case: { _id: string; type: string; industry: string } }>('/cases/custom', {
-            title: customTitle.trim(),
+            title: customTitle.trim() || undefined,
             scenario: customScenario.trim(),
             type: selectedArchetype,
             industry: selectedIndustry.toLowerCase(),
