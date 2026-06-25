@@ -264,7 +264,7 @@ async function handleConnection(clientWs: WebSocket, req: IncomingMessage): Prom
           // Reasoning effort for gpt-realtime-2 (minimal|low|medium|high|xhigh;
           // default low). 'medium' keeps it sharp but less verbose than 'high'
           // (high tended to pack 2-3 questions + long sentences into one turn).
-          reasoning: { effort: 'low' },
+          reasoning: { effort: 'high' },
           output_modalities: ['audio'],
           // Exhibit cases only: let the interviewer surface a chart/table on the
           // candidate's screen when they earn it (handled in response.function_call_arguments.done).
