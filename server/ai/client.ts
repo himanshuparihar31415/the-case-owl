@@ -184,13 +184,18 @@ export async function buildReferenceTree(casePackage: string): Promise<Record<st
   const response = await openai.chat.completions.create({
     model: TEXT_MODEL,
     messages: [
-      { role: 'system', content: 'You build MECE case reference trees (answer keys) for an interview platform. Return only valid JSON.' },
+      { role: 'system', content: 'You build MECE case reference trees (answer keys) for an interview platform. Keep every field terse so the whole tree fits in one response. Return only valid JSON.' },
       { role: 'user', content: REFERENCE_TREE_PROMPT(casePackage) },
     ],
     response_format: { type: 'json_object' },
     temperature: 0.3,
-    max_tokens: 14000, // 40-55 nodes of nested JSON
+    max_tokens: 16384, // gpt-4o output cap; slim node schema keeps 40-55 nodes within it
   });
+  // Guard against a truncated/over-cap response (finish_reason 'length') — a cut
+  // JSON would throw on parse and we'd cache nothing; surface it clearly instead.
+  if (response.choices[0]?.finish_reason === 'length') {
+    throw new Error('reference tree exceeded the output limit (truncated) — tree not built');
+  }
   return JSON.parse(response.choices[0]?.message?.content ?? '{}') as Record<string, unknown>;
 }
 
@@ -205,8 +210,11 @@ export async function buildEvaluationTree(referenceTreeJson: string, transcript:
     ],
     response_format: { type: 'json_object' },
     temperature: 0.3,
-    max_tokens: 16000,
+    max_tokens: 16384,
   });
+  if (response.choices[0]?.finish_reason === 'length') {
+    throw new Error('evaluation overlay exceeded the output limit (truncated)');
+  }
   return JSON.parse(response.choices[0]?.message?.content ?? '{}') as Record<string, unknown>;
 }
 

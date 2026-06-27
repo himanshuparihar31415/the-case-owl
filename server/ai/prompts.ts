@@ -765,18 +765,15 @@ CASE PACKAGE:
 ${casePackage.slice(0, 14000)}
 """
 
-NODE STRUCTURE (nested JSON):
+NODE STRUCTURE (nested JSON) — keep every field TERSE; this whole tree must fit in one response without truncation, so do not write long sentences:
 {
   "id": "2.1.3",                 // hierarchical
   "label": "<=30 chars",
   "depth": 4,                     // 0 at root, +1 per level
   "status": "correct" | "explored_wrong" | "dead_end" | "neutral",
-  "candidate_signal": "PATTERN of what the candidate might say/ask that maps here (fuzzy-matchable, not an exact phrase)",
-  "exhibit_trigger": "which exhibit+layer to share here, e.g. 'C-surface' or 'C-probing-1' (or null)",
-  "probing_unlock": "deeper data unlocked only if they ask a sharp follow-up (or null)",
-  "interviewer_action": "specific plain-English instruction: 'Share Exhibit C surface' not 'provide data'",
-  "nudge_if_stuck": "a natural question to ask if they stall here — 'what's driving that?' not 'have you considered biologics?'",
-  "redirect_if_wrong": "ONLY on explored_wrong/dead_end: the exact redirect question from the wrong-answers list (else null)",
+  "candidate_signal": "SHORT pattern of what the candidate says/asks that maps here (a few words, fuzzy-matchable)",
+  "exhibit_trigger": "exhibit+layer to share here, e.g. 'C-surface' or 'C-probing-1' (or null)",
+  "redirect_if_wrong": "ONLY on explored_wrong/dead_end: a SHORT redirect question (else null)",
   "children": [ ... ]
 }
 
@@ -786,13 +783,12 @@ BUILD RULES:
 1. Root (depth 0) = the CEO's question as a diagnostic ("where is margin going, and what do we do?"). Split into diagnosis first, prescription second.
 2. Level 1 = 3-4 MECE buckets (for profitability: Revenue / Cost / Mix-portfolio / External). Level 2 = components (Cost→COGS/SG&A/R&D/Other; Revenue→price/volume/mix). Level 3+ = case-specific, each tied to a specific exhibit/data layer.
 3. EVERY solution move must be reachable by a "correct" path reaching depth 5+; map each move explicitly to one path.
-4. EVERY wrong answer must appear as an explored_wrong/dead_end node placed where a candidate would naturally hit it, with redirect_if_wrong taken from the wrong-answers list.
-5. EVERY exhibit (surface and probing) must appear as an exhibit_trigger or probing_unlock on at least one node — no orphan exhibits.
-6. nudge_if_stuck gets progressively more specific deeper in the tree (general → pointed → "want to see the breakdown?").
-7. candidate_signal must be DISTINCT across nodes — two nodes must not fire on the same statement; merge or disambiguate if they could.
-8. 40-55 nodes total. Correct path reaches depth 7-8 on at least 2 branches (unit economics / build-vs-buy / NPV grounded in exhibit data).
+4. EVERY wrong answer must appear as an explored_wrong/dead_end node placed where a candidate would naturally hit it, with a short redirect_if_wrong from the wrong-answers list.
+5. EVERY exhibit must appear as an exhibit_trigger on at least one node — no orphan exhibits.
+6. candidate_signal must be DISTINCT across nodes — two nodes must not fire on the same statement; merge or disambiguate if they could.
+7. 40-55 nodes total. Correct path reaches depth 7-8 on at least 2 branches (unit economics / build-vs-buy / NPV grounded in exhibit data). Keep labels and signals short so the FULL tree fits — never stop early or drop branches to save space.
 
-Return ONLY valid JSON: the root node with nested children.`;
+Return ONLY valid JSON: the root node with nested children. Emit the COMPLETE tree — do not truncate.`;
 }
 
 // Stage 3: overlay the candidate's actual journey (from the transcript) onto the
