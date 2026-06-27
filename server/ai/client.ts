@@ -2,7 +2,7 @@ import OpenAI from 'openai';
 import { env } from '../config/env.js';
 import { CaseType, Industry } from '../models/Case.js';
 import { TranscriptEntry } from '../models/Session.js';
-import { CASE_GENERATION_PROMPT, PHARMA_PROFITABILITY_CASE_PROMPT, EXHIBIT_CASE_PROMPT, EXTRACT_CASE_PROMPT, PharmaTheme, PRODUCT_CASE_PROMPT, GUESSTIMATE_PROMPT, ProductFormat, HINT_PROMPT, SCORING_PROMPT, EVALUATION_PROMPT, EvaluationContext, PROGRESS_INSIGHT_PROMPT, ProgressInsightContext } from './prompts.js';
+import { CASE_GENERATION_PROMPT, PHARMA_PROFITABILITY_CASE_PROMPT, EXHIBIT_CASE_PROMPT, EXTRACT_CASE_PROMPT, REFERENCE_TREE_PROMPT, POST_INTERVIEW_TREE_PROMPT, PharmaTheme, PRODUCT_CASE_PROMPT, GUESSTIMATE_PROMPT, ProductFormat, HINT_PROMPT, SCORING_PROMPT, EVALUATION_PROMPT, EvaluationContext, PROGRESS_INSIGHT_PROMPT, ProgressInsightContext } from './prompts.js';
 
 export const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
 
@@ -176,6 +176,38 @@ export async function generateGuesstimateWithAI(difficulty: number): Promise<Mod
     max_tokens: 3000,
   });
   return JSON.parse(response.choices[0]?.message?.content ?? '{}') as ModuleCase;
+}
+
+// Stage 2: build the private MECE reference tree (answer key) from a case
+// package. Returns the root node (nested JSON). Used by the evaluator.
+export async function buildReferenceTree(casePackage: string): Promise<Record<string, unknown>> {
+  const response = await openai.chat.completions.create({
+    model: TEXT_MODEL,
+    messages: [
+      { role: 'system', content: 'You build MECE case reference trees (answer keys) for an interview platform. Return only valid JSON.' },
+      { role: 'user', content: REFERENCE_TREE_PROMPT(casePackage) },
+    ],
+    response_format: { type: 'json_object' },
+    temperature: 0.3,
+    max_tokens: 14000, // 40-55 nodes of nested JSON
+  });
+  return JSON.parse(response.choices[0]?.message?.content ?? '{}') as Record<string, unknown>;
+}
+
+// Stage 3: overlay the candidate's actual journey onto the reference tree.
+// Returns { tree, summary }.
+export async function buildEvaluationTree(referenceTreeJson: string, transcript: string): Promise<Record<string, unknown>> {
+  const response = await openai.chat.completions.create({
+    model: TEXT_MODEL,
+    messages: [
+      { role: 'system', content: 'You are an honest case-interview evaluator overlaying a candidate journey onto a reference tree. No inflation. Return only valid JSON.' },
+      { role: 'user', content: POST_INTERVIEW_TREE_PROMPT(referenceTreeJson, transcript) },
+    ],
+    response_format: { type: 'json_object' },
+    temperature: 0.3,
+    max_tokens: 16000,
+  });
+  return JSON.parse(response.choices[0]?.message?.content ?? '{}') as Record<string, unknown>;
 }
 
 export async function generateHintWithAI(transcript: TranscriptEntry[]): Promise<string> {

@@ -33,6 +33,9 @@ export interface ICase extends Document {
   exhibits?: Array<{ id?: number; label?: string; visual?: string; data?: string; whenToShow?: string; doNotShowIf?: string; insight?: string }>;
   quant?: { task?: string; whenToShow?: string; derivation?: string; answer?: string };
   privateMechanismNote?: string;
+  // Stage-2 reference tree (MECE answer key) — generated lazily at first report,
+  // cached here so it's reused across this case's sessions. Private. (consulting)
+  referenceTree?: unknown;
   answerKey?: string;
   commonWrongTurns?: string[];
   forbiddenTerms?: string[]; // mechanism jargon + key figures the candidate must self-discover (supervisor)
@@ -69,6 +72,7 @@ const CaseSchema = new Schema<ICase>(
     exhibits: { type: Schema.Types.Mixed },
     quant: { type: Schema.Types.Mixed },
     privateMechanismNote: { type: String },
+    referenceTree: { type: Schema.Types.Mixed },
     answerKey: { type: String },
     commonWrongTurns: { type: [String] },
     forbiddenTerms: { type: [String] },

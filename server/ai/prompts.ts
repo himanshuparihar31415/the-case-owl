@@ -747,3 +747,98 @@ CANDIDATE JUST SAID:
 
 Respond with the JSON (response + turn_assessment + next_action + state_update).`;
 }
+
+// ============================================================================
+// CASE TREES (consulting) — Stage 2 (reference tree, answer key) + Stage 3
+// (post-interview evaluation tree). The reference tree is the private map the
+// evaluator scores against; the eval tree overlays the candidate's actual
+// journey onto it. Built lazily at report time (see report.service).
+// ============================================================================
+
+// Stage 2: build the MECE reference tree (answer key) from a completed case
+// package. Private — the candidate never sees it. Used to score the interview.
+export function REFERENCE_TREE_PROMPT(casePackage: string): string {
+  return `You are the answer-key builder for "The Case Owl" AI interviewer. You're given a completed consulting case package (brief, exhibits with their data, solution moves, common wrong answers). Build a MECE REFERENCE TREE: the private map the evaluator scores the live interview against. The candidate never sees it.
+
+CASE PACKAGE:
+"""
+${casePackage.slice(0, 14000)}
+"""
+
+NODE STRUCTURE (nested JSON):
+{
+  "id": "2.1.3",                 // hierarchical
+  "label": "<=30 chars",
+  "depth": 4,                     // 0 at root, +1 per level
+  "status": "correct" | "explored_wrong" | "dead_end" | "neutral",
+  "candidate_signal": "PATTERN of what the candidate might say/ask that maps here (fuzzy-matchable, not an exact phrase)",
+  "exhibit_trigger": "which exhibit+layer to share here, e.g. 'C-surface' or 'C-probing-1' (or null)",
+  "probing_unlock": "deeper data unlocked only if they ask a sharp follow-up (or null)",
+  "interviewer_action": "specific plain-English instruction: 'Share Exhibit C surface' not 'provide data'",
+  "nudge_if_stuck": "a natural question to ask if they stall here — 'what's driving that?' not 'have you considered biologics?'",
+  "redirect_if_wrong": "ONLY on explored_wrong/dead_end: the exact redirect question from the wrong-answers list (else null)",
+  "children": [ ... ]
+}
+
+STATUS TAGS: correct = on the ideal solution path. explored_wrong = plausible path a smart candidate tries that ultimately misses something (1-2 levels deep before its miss; populate redirect_if_wrong). dead_end = reveals a fundamental misunderstanding (populate redirect_if_wrong). neutral = valid optional context, not penalised if skipped.
+
+BUILD RULES:
+1. Root (depth 0) = the CEO's question as a diagnostic ("where is margin going, and what do we do?"). Split into diagnosis first, prescription second.
+2. Level 1 = 3-4 MECE buckets (for profitability: Revenue / Cost / Mix-portfolio / External). Level 2 = components (Cost→COGS/SG&A/R&D/Other; Revenue→price/volume/mix). Level 3+ = case-specific, each tied to a specific exhibit/data layer.
+3. EVERY solution move must be reachable by a "correct" path reaching depth 5+; map each move explicitly to one path.
+4. EVERY wrong answer must appear as an explored_wrong/dead_end node placed where a candidate would naturally hit it, with redirect_if_wrong taken from the wrong-answers list.
+5. EVERY exhibit (surface and probing) must appear as an exhibit_trigger or probing_unlock on at least one node — no orphan exhibits.
+6. nudge_if_stuck gets progressively more specific deeper in the tree (general → pointed → "want to see the breakdown?").
+7. candidate_signal must be DISTINCT across nodes — two nodes must not fire on the same statement; merge or disambiguate if they could.
+8. 40-55 nodes total. Correct path reaches depth 7-8 on at least 2 branches (unit economics / build-vs-buy / NPV grounded in exhibit data).
+
+Return ONLY valid JSON: the root node with nested children.`;
+}
+
+// Stage 3: overlay the candidate's actual journey (from the transcript) onto the
+// reference tree. Produces the eval tree + summary metrics shown after the case.
+export function POST_INTERVIEW_TREE_PROMPT(referenceTreeJson: string, transcript: string): string {
+  return `You are the evaluator for "The Case Owl". An interview just ended. Overlay what the candidate ACTUALLY did onto the reference tree (the pre-built answer key). Be honest — no inflation.
+
+REFERENCE TREE (answer key):
+"""
+${referenceTreeJson.slice(0, 16000)}
+"""
+
+INTERVIEW TRANSCRIPT (candidate + interviewer, with timestamps; exhibits shared appear inline):
+"""
+${transcript.slice(0, 16000)}
+"""
+
+Produce the EVALUATION TREE: the same tree shape, every node keeping its reference fields and ADDING:
+{
+  "reference_status": "<the node's original status>",
+  "candidate_status": "explored" | "mentioned" | "skipped" | "wrong_turn" | "dead_end_hit",
+  "time_spent": "approx from timestamps, e.g. '3m 20s' (or null if skipped)",
+  "quality": "strong" | "adequate" | "weak" | "wrong" | "n/a",
+  "candidate_quotes": ["1-3 verbatim, most diagnostic quotes at this node (empty if skipped)"],
+  "evaluation_note": "judgment of THIS node — what was good, missed, what it reveals",
+  "exhibit_shared": "which exhibits were actually shared here during the interview (or null)",
+  "was_nudged": true/false,
+  "children": [ ... ]
+}
+
+RULES:
+- candidate_status: explored = visited + engaged; mentioned = touched briefly, didn't dig; skipped = never went (quality n/a); wrong_turn = went down a wrong path; dead_end_hit = hit a dead end.
+- Getting to a correct node UNPROMPTED (was_nudged=false) is better than after a nudge.
+- For wrong_turn / dead_end_hit nodes, also fill "recommended_path": a short note of the correct path they should have taken from the same parent, and where (timestamp) they were redirected — this renders as a faded "ghost branch".
+
+Then also return a "summary" object:
+{
+  "total_nodes_in_reference": int, "nodes_explored": int,
+  "nodes_skipped_correct": int, "nodes_skipped_wrong": int,
+  "wrong_turns_taken": int, "dead_ends_hit": int,
+  "max_depth_reached": int, "max_depth_on_correct_path": int,
+  "time_on_correct_path": "Xm Ys", "time_on_wrong_paths": "Xm Ys", "time_on_structure": "Xm Ys",
+  "nudges_given": int, "exhibits_requested_unprompted": int, "exhibits_shared_after_nudge": int,
+  "key_insight_found_unprompted": ["..."], "key_insight_missed": ["..."],
+  "overall_rating": "one honest line: hire/borderline/no-hire + the why"
+}
+
+Return ONLY valid JSON: { "tree": <root eval node with nested children>, "summary": { ... } }`;
+}

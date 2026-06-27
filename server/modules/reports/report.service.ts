@@ -2,7 +2,7 @@ import { Report, IReport, OverallGrade } from '../../models/Report.js';
 import { Session, TranscriptEntry } from '../../models/Session.js';
 import { Case } from '../../models/Case.js';
 import { AppError } from '../../middleware/errorHandler.js';
-import { generateEvaluationWithAI, embedTexts, cosineSimilarity } from '../../ai/client.js';
+import { generateEvaluationWithAI, embedTexts, cosineSimilarity, buildReferenceTree, buildEvaluationTree } from '../../ai/client.js';
 import { EvaluationContext } from '../../ai/prompts.js';
 
 const DIFFICULTY_LABELS: Record<number, string> = {
@@ -195,6 +195,55 @@ export async function getOrGenerateReport(sessionId: string, userId: string): Pr
   return generateReport(sessionId, userId);
 }
 
+// Serialize a Case doc into the text "package" the reference-tree builder reads.
+function serializeCasePackage(c: InstanceType<typeof Case>): string {
+  const parts: string[] = [
+    `TITLE: ${c.title}`,
+    `TYPE: ${c.type ?? ''} | INDUSTRY: ${c.industry ?? ''} | DIFFICULTY: ${c.difficulty}`,
+    `BRIEF / SCENARIO: ${c.scenario}`,
+  ];
+  if (c.keyDataPoints?.length) {
+    parts.push(`KEY DATA:\n${c.keyDataPoints.map((d) => `  - ${d.label}: ${d.value}`).join('\n')}`);
+  }
+  if (Array.isArray(c.exhibits) && c.exhibits.length) {
+    parts.push(`EXHIBITS:\n${c.exhibits.map((e, i) => {
+      const ex = e as Record<string, unknown>;
+      return `  #${ex.id ?? i + 1} ${ex.label ?? ''} (${ex.visual ?? ''}) — data: ${ex.data ?? ''}${ex.insight ? ` | insight: ${ex.insight}` : ''}${ex.whenToShow ? ` | show when: ${ex.whenToShow}` : ''}`;
+    }).join('\n')}`);
+  }
+  if (c.quant && (c.quant as Record<string, unknown>).task) {
+    const q = c.quant as Record<string, unknown>;
+    parts.push(`QUANT: task=${q.task} | derivation=${q.derivation ?? ''} | answer=${q.answer ?? ''}`);
+  }
+  if (c.privateMechanismNote) parts.push(`ROOT CAUSE / MECHANISM: ${c.privateMechanismNote}`);
+  if (c.plausibleSolution || c.answerKey) parts.push(`SOLUTION: ${c.answerKey ?? c.plausibleSolution}`);
+  if (c.commonWrongTurns?.length) parts.push(`COMMON WRONG ANSWERS:\n${c.commonWrongTurns.map((w, i) => `  ${i + 1}. ${w}`).join('\n')}`);
+  return parts.join('\n\n');
+}
+
+// Build the Stage-2 reference tree + Stage-3 evaluation tree (consulting only).
+// The reference tree is cached on the Case so it's generated once per case. All
+// best-effort: a failure here never blocks the report. Returns what to merge
+// into `analysis`.
+async function buildCaseTrees(
+  caseDoc: InstanceType<typeof Case>,
+  transcript: string
+): Promise<{ evaluationTree?: unknown; treeSummary?: unknown } | null> {
+  try {
+    let refTree = caseDoc.referenceTree;
+    if (!refTree) {
+      refTree = await buildReferenceTree(serializeCasePackage(caseDoc));
+      // Cache on the Case for reuse across this case's other sessions.
+      await Case.updateOne({ _id: caseDoc._id }, { $set: { referenceTree: refTree } }).catch(() => { /* non-fatal */ });
+    }
+    const evalOut = await buildEvaluationTree(JSON.stringify(refTree), transcript);
+    return { evaluationTree: evalOut.tree ?? evalOut, treeSummary: evalOut.summary };
+  } catch (e) {
+    console.error('case-tree build failed (non-fatal):', e);
+    return null;
+  }
+}
+
 export async function generateReport(sessionId: string, userId: string): Promise<IReport> {
   const session = await Session.findOne({ _id: sessionId, userId }).populate('caseId');
   if (!session) throw new AppError(404, 'Session not found');
@@ -260,6 +309,16 @@ export async function generateReport(sessionId: string, userId: string): Promise
       });
     } catch (e) {
       console.error('ideal-answer similarity gate failed (non-fatal):', e);
+    }
+  }
+
+  // Stages 2+3: for consulting cases, overlay the candidate's journey onto the
+  // MECE reference tree (answer key). Best-effort — never blocks the report.
+  if ((caseDoc.module ?? 'case') === 'case') {
+    const trees = await buildCaseTrees(caseDoc, timestampedTranscript);
+    if (trees) {
+      analysis.evaluationTree = trees.evaluationTree;
+      analysis.treeSummary = trees.treeSummary;
     }
   }
 
