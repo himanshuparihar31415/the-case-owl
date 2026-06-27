@@ -715,7 +715,7 @@ export default function Report() {
                 <React.Suspense fallback={<div className="no-line-card p-8 text-center text-sm text-secondary">Loading case map…</div>}>
                   <CaseTree root={a.evaluationTree} />
                 </React.Suspense>
-                <p className="text-[11px] text-secondary">Click a node to inspect what you said and the recommended path; click again to collapse its branch.</p>
+                <p className="text-[11px] text-secondary">Click a node to inspect what you said and the recommended path (click again to collapse). Use the ⛶ button for fullscreen.</p>
               </div>
             </Section>
           )}
