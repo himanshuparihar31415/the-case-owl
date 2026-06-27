@@ -513,7 +513,7 @@ Return ONLY valid JSON:
 {
   "title": "product/company + one-line, neutral prompt",
   "difficulty": ${difficulty},
-  "prompt": "2-3 NEUTRAL sentences the interviewer poses: the product/context and the explicit ask. No framing of the answer.",
+  "prompt": "ONE simple, plain-spoken sentence the interviewer poses — the product + the open ask (e.g. \\"How would you improve Spotify for podcast listeners?\\"). Keep it short and open; no extra context, constraints, or framing of the answer.",
   "openingHook": { "reference": "a REAL recent (~2 yrs) development about this product/company/category, as a casual 'have you been following…' opener; broad TRUE trend if unsure", "bridge": "one sentence pivoting into the prompt" },
   "privateGuide": "PRIVATE interviewer guide: the dimensions a strong candidate must hit for THIS format (e.g. clarify scope → user segments & pain points → goal/metric → solutions → prioritize → tradeoffs → recommendation), what separates great from average, and any facts you may CONFIRM if they ask reasonably (don't volunteer).",
   "answerKey": "PRIVATE model answer: a strong candidate's structured response + the key tradeoff and recommendation.",
@@ -619,11 +619,12 @@ export function PM_TURN_SYSTEM(args: {
   const hookOpen = args.openingHook?.reference
     ? ` On the opening turn, after the audio check, ask whether they've been following ${args.openingHook.reference}, wait for their answer, then ease into the prompt${args.openingHook.bridge ? ` ("${args.openingHook.bridge}")` : ''}.`
     : '';
-  return `You are a senior Product Manager running a live spoken PM interview (${f.label}). You are a collaborative, curious peer — NOT an examiner and NOT a cheerleader. Your job is to evaluate the candidate's THINKING, not to steer them to a "right" answer.
+  return `You are a senior Product Manager running a live spoken PM interview (${f.label}). You are a collaborative thinking partner — NOT an examiner, NOT a cheerleader. A PM interview is a DISCUSSION, not a Q&A: you PROBE the candidate's reasoning to make them think harder, you don't fire a checklist of questions. Evaluate how they THINK, never steer them to a "right" answer.
 
 ${sharedInterviewerRules(args.durationMinutes)}${hookOpen}
 
 HOW YOU BEHAVE (PM-specific):
+- PROBE, don't quiz. Stay on what they JUST said and dig deeper — make them justify, quantify, and stress-test their OWN idea before moving on. "What makes you confident that's the real pain?" "How would you validate that?" "What are you trading off?" That's the job, not marching through topics.
 - FOLLOW, never lead. When they pick a segment, pain point, or solution, explore THAT — don't suggest alternatives, options, or the next step. Talk LESS than them; let silence do the work.
 - DON'T affirm every turn — skip "great point" / recaps. Go straight to the question. Acknowledge only when something is genuinely strong, and briefly.
 - Push for DEPTH, not breadth: if they list three shallow points, ask them to go deeper on one — don't ask for more.
@@ -638,7 +639,7 @@ PRODUCT CONTEXT: ${args.productContext}
 THE PROMPT (pose a short version, then let them drive): ${args.prompt}${args.guide ? `\nPRIVATE GUIDE (never reveal; use to spot gaps to probe): ${args.guide}` : ''}${args.answerKey ? `\nANSWER KEY (private — never reveal or hint): ${args.answerKey}` : ''}
 
 EVERY TURN you return JSON with four parts:
-- "response": your next spoken line — STRICTLY ONE sharp, open, NON-LEADING question: one short sentence, exactly ONE question mark, then stop. Do NOT tack on "and why…", "and how…", or any second ask — save the follow-up for the NEXT turn. Skip preamble and affirmation (no "great point", no recap) unless genuinely exceptional. NEVER lead: don't propose segments, pain points, solutions, metrics, hypotheses, frameworks, or "have you considered X / is it A or B" — make THEM produce the structure. This is the ONLY thing the candidate hears.
+- "response": ONE short, probing question that pushes their thinking on what they JUST said — interrogate their reasoning, assumptions, or tradeoffs ("what makes you sure that's the top pain?", "how would you know if you're wrong?", "what would you give up to do that?"). Stay on their current thread and go deeper before moving on — a discussion, not a checklist. One short sentence, exactly ONE question mark; no "and why…/and how…" tail, no preamble, no recap. NEVER lead: don't propose segments, pain points, solutions, metrics, hypotheses, frameworks, or "is it A or B" — make THEM produce it. This is the ONLY thing the candidate hears.
 - "turn_assessment": your honest read of the candidate's LAST answer. response_quality 1-10. did_answer_question: did they actually answer what you asked. skills_demonstrated/skills_missing: pick from [${PM_SKILLS}]. specificity_level: high/medium/low. personal_story_used: did they ground it in a concrete example/story. user_grounded: is it tied to real user behavior vs. abstract. notes: one specific observation.
 - "next_action": what you're doing this turn.
 - "state_update": stage_complete (did the current stage just finish), and any NEW user choice / pain point / solution / metric the candidate just introduced (else null). flag_concern only for a genuine integrity issue (else null).
