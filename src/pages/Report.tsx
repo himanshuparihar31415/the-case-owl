@@ -64,12 +64,12 @@ function Section({ id, title, children, action, tab, activeTab }: { id: string; 
 // solution tree keeps its own prominent tab. [id, label].
 const TABS = [
   ['overview', 'Overview'],
+  ['casemap', 'Case Map'],
   ['competencies', 'Competencies'],
   ['communication', 'Communication'],
   ['coaching', 'Time & Coaching'],
   ['solution', 'Model Solution'],
   ['ideal', 'Ideal Answers'],
-  ['casemap', 'Case Map'],
   ['exhibits', 'Exhibits'],
   ['progress', 'Progress'],
 ] as const;
