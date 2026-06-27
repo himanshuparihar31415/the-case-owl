@@ -10,6 +10,7 @@ import { appendTranscript, settleSession } from '../sessions/session.service.js'
 import { CaseType } from '../../models/Case.js';
 import { buildForbiddenList, deterministicCheck } from './supervisor.js';
 import { handlePmPipeline } from './pm/pm.pipeline.js';
+import { handleConsultingPipeline } from './pm/consulting.pipeline.js';
 
 // gpt-4o-realtime-preview-* were all shut down 2026-05-07. gpt-realtime-2 (released
 // 2026-05-07) is the current top realtime voice model — GPT-5-class reasoning,
@@ -104,8 +105,21 @@ async function handleConnection(clientWs: WebSocket, req: IncomingMessage): Prom
       return;
     }
 
-    // NOTE: product (PM) is handled above by the pipeline and returns early —
-    // only case & guesstimate reach this Realtime branch.
+    // EXPERIMENTAL: energy-profitability consulting cases run on the same
+    // STT→LLM→ElevenLabs pipeline (with exhibit function-calling) instead of
+    // Realtime. Gated narrowly — every OTHER consulting case stays on Realtime.
+    if (caseDoc.module === 'case' && caseDoc.type === 'profitability' && caseDoc.industry === 'energy') {
+      if (!env.OPENAI_API_KEY) {
+        sendToClient(clientWs, { type: 'error', message: 'OPENAI_API_KEY is not configured on the server' });
+        clientWs.close();
+        return;
+      }
+      handleConsultingPipeline({ clientWs, session, caseDoc, sessionId, minutes, style });
+      return;
+    }
+
+    // NOTE: product (PM) and energy-profitability are handled above by the
+    // pipeline and return early — only case & guesstimate reach this Realtime branch.
     let systemPrompt: string;
     if (caseDoc.module === 'guesstimate') {
       systemPrompt = GUESSTIMATE_INTERVIEWER_PROMPT(
