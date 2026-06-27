@@ -335,10 +335,11 @@ function Flow({ root, summary, score }: { root: RawNode; summary?: Record<string
     <div className="flex h-full w-full">
       <div className="relative flex-1 min-w-0">
         <ReactFlow
-          nodes={nodes} edges={edges} nodeTypes={nodeTypes}
+          nodes={nodes} edges={edges} nodeTypes={nodeTypes} colorMode="dark"
           onNodeClick={onNodeClick} onNodeDoubleClick={onNodeDoubleClick}
           onMove={(_, vp) => setZoom(vp.zoom)}
           fitView minZoom={0.15} maxZoom={1.6} proOptions={{ hideAttribution: true }}
+          style={{ background: '#0b0f0d' }}
         >
           <Background variant={BackgroundVariant.Dots} color="#243029" gap={26} size={1.5} />
           <Controls showInteractive={false} />
