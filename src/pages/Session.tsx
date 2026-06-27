@@ -510,7 +510,16 @@ export default function Session() {
   const lastInterviewer = [...transcript].reverse()
     .find((e) => e.role === 'interviewer' && !e.text.startsWith('[HINT]'));
   const liveQuestion = liveRole === 'interviewer' ? liveText : '';
-  const currentQuestion = (liveQuestion || lastInterviewer?.text || '').trim()
+  // Show ONLY the question being asked — the PM interviewer's turn often reacts to
+  // your last answer THEN asks; strip the reaction and keep the actual ask.
+  const askOnly = (text: string): string => {
+    const t = text.trim();
+    if (!t) return t;
+    const sentences = t.match(/[^.!?]+[.!?]+/g)?.map((s) => s.trim()) ?? [t];
+    const questions = sentences.filter((s) => s.endsWith('?'));
+    return (questions.length ? questions[questions.length - 1] : sentences[sentences.length - 1]).trim();
+  };
+  const currentQuestion = askOnly(liveQuestion || lastInterviewer?.text || '')
     || (wsStatus === 'ready' ? 'The interviewer will begin shortly…' : 'Connecting to your interviewer…');
 
   // Derived: rough progress stage from how many turns the candidate has taken.
