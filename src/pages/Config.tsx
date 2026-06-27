@@ -38,7 +38,7 @@ const PRODUCT_FORMATS: { id: string; label: string; desc: string }[] = [
 export default function Config() {
   const navigate = useNavigate();
   const location = useLocation();
-  const [module, setModule] = useState<Module>('case');
+  const [module, setModule] = useState<Module>(((location.state as { module?: Module } | null)?.module) ?? 'case');
   const [productFormat, setProductFormat] = useState('design');
   const [selectedArchetype, setSelectedArchetype] = useState('market_entry');
   const [selectedIndustry, setSelectedIndustry] = useState('Pharma');

@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Play, Loader2, TrendingUp, TrendingDown, Minus, ArrowRight,
-  Target, Sparkles, X,
+  Target, Sparkles, X, Briefcase, Boxes, Calculator,
 } from 'lucide-react';
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine,
@@ -152,6 +152,29 @@ export default function Dashboard({ user }: { user: AuthUser | null }) {
             <Link to="/library" className="flex items-center justify-center bg-white/10 border border-white/15 rounded-xl px-4 text-sm font-semibold hover:bg-white/15 transition">Browse cases</Link>
           </div>
         </div>
+      </section>
+
+      {/* ── START A SESSION: module cards ── */}
+      <section className="grid sm:grid-cols-3 gap-4">
+        {([
+          { module: 'case', label: 'Consulting Case', desc: 'Profitability, market entry, M&A, pricing — exhibits & quant.', Icon: Briefcase },
+          { module: 'product', label: 'Product Case', desc: 'PM interviews — design, strategy, root-cause, prioritization.', Icon: Boxes },
+          { module: 'guesstimate', label: 'Guesstimate', desc: 'Market-sizing & estimation — structure, assumptions, sanity-check.', Icon: Calculator },
+        ] as const).map(({ module, label, desc, Icon }) => (
+          <Link key={module} to="/config" state={{ module }}
+            className="no-line-card p-5 flex flex-col gap-3 hover:shadow-lg hover:border-on-tertiary-container/40 transition group">
+            <div className="flex items-center justify-between">
+              <span className="w-10 h-10 rounded-xl bg-on-tertiary-container/10 flex items-center justify-center text-on-tertiary-container">
+                <Icon className="w-5 h-5" />
+              </span>
+              <ArrowRight className="w-4 h-4 text-secondary group-hover:text-on-tertiary-container group-hover:translate-x-0.5 transition" />
+            </div>
+            <div>
+              <h3 className="font-headline font-bold text-primary">{label}</h3>
+              <p className="text-xs text-secondary leading-relaxed mt-1">{desc}</p>
+            </div>
+          </Link>
+        ))}
       </section>
 
       {/* ── BOTTLENECK ── */}
