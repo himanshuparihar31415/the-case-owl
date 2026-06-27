@@ -63,6 +63,7 @@ const SECTIONS = [
   ['hints', 'Hint Dependency'],
   ['ideal', 'Ideal Answers'],
   ['plan', 'Improvement Plan'],
+  ['casemap', 'Case Map'],
   ['exhibits', 'Exhibits & Quant'],
   ['solution', 'Model Solution'],
   ['script', 'Ideal Script'],
@@ -83,6 +84,53 @@ function SolutionNode({ node, depth = 0 }: { node: any; depth?: number }) {
       {children.length > 0 && (
         <div className="space-y-1">
           {children.map((c, i) => <React.Fragment key={i}><SolutionNode node={c} depth={depth + 1} /></React.Fragment>)}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Post-interview evaluation tree: the candidate's actual journey overlaid on the
+// MECE reference tree. Colour = combined reference + candidate status/quality.
+function evalNodeStyle(node: any): { dot: string; strike: boolean; dim: boolean; quality?: string } {
+  const cs = node.candidate_status;
+  const q = node.quality;
+  let dot = 'bg-outline-variant';
+  if (cs === 'explored') dot = q === 'strong' ? 'bg-green-500' : q === 'adequate' ? 'bg-green-300' : q === 'wrong' ? 'bg-red-400' : 'bg-yellow-400';
+  else if (cs === 'mentioned') dot = 'bg-green-200';
+  else if (cs === 'skipped') dot = node.reference_status === 'correct' ? 'bg-transparent border border-green-400' : 'bg-gray-200';
+  else if (cs === 'wrong_turn') dot = 'bg-gray-400';
+  else if (cs === 'dead_end_hit') dot = 'bg-gray-600';
+  else if (node.reference_status === 'neutral') dot = 'bg-blue-300';
+  return { dot, strike: cs === 'dead_end_hit', dim: cs === 'skipped', quality: q && q !== 'n/a' ? q : undefined };
+}
+
+function EvalTreeNode({ node, depth = 0 }: { node: any; depth?: number }) {
+  if (!node) return null;
+  const children: any[] = node.children ?? [];
+  const { dot, strike, dim, quality } = evalNodeStyle(node);
+  const quotes: string[] = Array.isArray(node.candidate_quotes) ? node.candidate_quotes : [];
+  return (
+    <div className={cn(depth > 0 && 'ml-3 pl-4 border-l border-outline-variant/30')}>
+      <div className={cn('py-1.5', dim && 'opacity-50')}>
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className={cn('w-2.5 h-2.5 rounded-full shrink-0', dot)} />
+          <span className={cn('font-bold', depth === 0 ? 'text-base' : 'text-sm', strike && 'line-through', dim ? 'text-secondary' : 'text-primary')}>{node.label}</span>
+          {node.time_spent && <span className="text-[10px] text-secondary">{node.time_spent}</span>}
+          {node.was_nudged && <span className="text-[10px] uppercase tracking-wide text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded">nudged</span>}
+          {quality && <span className="text-[10px] uppercase tracking-wide text-secondary bg-surface-container-low px-1.5 py-0.5 rounded">{quality}</span>}
+        </div>
+        {node.evaluation_note && <p className="text-xs text-on-surface-variant mt-1 ml-4.5 leading-relaxed">{node.evaluation_note}</p>}
+        {quotes.map((q, i) => (
+          <p key={i} className="text-xs text-secondary italic mt-1 ml-4.5 border-l-2 border-outline-variant/40 pl-2">“{q}”</p>
+        ))}
+        {node.recommended_path && (
+          <p className="text-xs text-green-700 mt-1 ml-4.5 border border-dashed border-green-400 rounded px-2 py-1 bg-green-50/50"><span className="font-bold">Recommended path: </span>{node.recommended_path}</p>
+        )}
+      </div>
+      {children.length > 0 && (
+        <div className="space-y-1">
+          {children.map((c, i) => <React.Fragment key={i}><EvalTreeNode node={c} depth={depth + 1} /></React.Fragment>)}
         </div>
       )}
     </div>
@@ -293,6 +341,7 @@ export default function Report() {
           if (id === 'solution') return !!(solution && (solution.plausibleSolution || solution.solutionTree));
           if (id === 'script') return !!(solution && Array.isArray(solution.idealScript) && solution.idealScript.length > 0);
           if (id === 'exhibits') return !!(solution && Array.isArray(solution.exhibits) && solution.exhibits.length > 0);
+          if (id === 'casemap') return !!a.evaluationTree;
           return true;
         }).map(([id, label]) => (
           <a key={id} href={`#${id}`} className="shrink-0 px-3 py-1.5 rounded-md text-xs font-medium text-secondary hover:text-primary hover:bg-surface-container-low transition">
@@ -672,8 +721,52 @@ export default function Report() {
             </div>
           </Section>
 
-          {/* Exhibits & Quant — pharma cases: the exhibit set you could have earned,
-              the quant derivation, and the traps. Post-interview teaching layer. */}
+          {/* Case Map — the candidate's actual journey overlaid on the MECE answer key */}
+          {a.evaluationTree && (
+            <Section id="casemap" title="Case Map" action={<span className="label-blueprint">your path vs. the answer key</span>}>
+              <div className="space-y-4">
+                {a.treeSummary && (
+                  <div className="no-line-card p-5">
+                    {a.treeSummary.overall_rating && (
+                      <p className="text-sm font-bold text-primary mb-3">{a.treeSummary.overall_rating}</p>
+                    )}
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-2 text-xs">
+                      {([
+                        ['Nodes explored', `${a.treeSummary.nodes_explored ?? '—'} / ${a.treeSummary.total_nodes_in_reference ?? '—'}`],
+                        ['Max depth (correct)', a.treeSummary.max_depth_on_correct_path],
+                        ['Wrong turns', a.treeSummary.wrong_turns_taken],
+                        ['Dead ends', a.treeSummary.dead_ends_hit],
+                        ['Traps avoided', a.treeSummary.nodes_skipped_wrong],
+                        ['Nudges given', a.treeSummary.nudges_given],
+                        ['Time on correct path', a.treeSummary.time_on_correct_path],
+                        ['Time on wrong paths', a.treeSummary.time_on_wrong_paths],
+                        ['Exhibits asked unprompted', a.treeSummary.exhibits_requested_unprompted],
+                      ] as [string, any][]).filter(([, v]) => v !== undefined && v !== null).map(([label, v]) => (
+                        <div key={label} className="flex justify-between gap-2 border-b border-outline-variant/15 py-1">
+                          <span className="text-secondary">{label}</span>
+                          <span className="font-bold text-primary text-right">{String(v)}</span>
+                        </div>
+                      ))}
+                    </div>
+                    {Array.isArray(a.treeSummary.key_insight_missed) && a.treeSummary.key_insight_missed.length > 0 && (
+                      <p className="text-xs text-error mt-3"><span className="font-bold">Missed: </span>{a.treeSummary.key_insight_missed.join('; ')}</p>
+                    )}
+                  </div>
+                )}
+                <div className="no-line-card p-5">
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 mb-4 text-[10px] text-secondary">
+                    <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-green-500" />nailed</span>
+                    <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-yellow-400" />needed help</span>
+                    <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-transparent border border-green-400" />should have explored</span>
+                    <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-gray-400" />wrong turn</span>
+                    <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-gray-600" />dead end</span>
+                  </div>
+                  <EvalTreeNode node={a.evaluationTree} />
+                </div>
+              </div>
+            </Section>
+          )}
+
           {solution && Array.isArray(solution.exhibits) && solution.exhibits.length > 0 && (
             <Section id="exhibits" title="Exhibits &amp; Quant" action={<span className="label-blueprint">what the data showed</span>}>
               <div className="space-y-4">
