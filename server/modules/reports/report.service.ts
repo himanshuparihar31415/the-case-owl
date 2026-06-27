@@ -3,6 +3,7 @@ import { Session, TranscriptEntry } from '../../models/Session.js';
 import { Case } from '../../models/Case.js';
 import { AppError } from '../../middleware/errorHandler.js';
 import { generateEvaluationWithAI, embedTexts, cosineSimilarity, buildReferenceTree, buildEvaluationTree } from '../../ai/client.js';
+import { scoreTraversal } from './treeScore.js';
 import { EvaluationContext } from '../../ai/prompts.js';
 
 const DIFFICULTY_LABELS: Record<number, string> = {
@@ -240,6 +241,7 @@ function mergeOverlay(
     label: node.label,
     depth: node.depth,
     insight: node.insight ?? null, // the right move / why-it-matters (teaching content)
+    rank: node.rank ?? null,       // depth-1 buckets: impact rank (for the scorecard)
     reference_status: node.reference_status ?? node.status ?? 'neutral',
     candidate_status: o?.candidate_status ?? 'skipped',
     quality: o?.quality ?? 'n/a',
@@ -257,10 +259,18 @@ function mergeOverlay(
 // The reference tree is cached on the Case so it's generated once per case. All
 // best-effort: a failure here never blocks the report. Returns what to merge
 // into `analysis`.
+// Attach the deterministic per-node points onto the merged tree (for the viz).
+function attachPoints(node: Record<string, unknown>, points: Record<string, number>): void {
+  const id = node.id != null ? String(node.id) : '';
+  if (id in points) node.points = points[id];
+  const children = Array.isArray(node.children) ? (node.children as Array<Record<string, unknown>>) : [];
+  children.forEach((c) => attachPoints(c, points));
+}
+
 async function buildCaseTrees(
   caseDoc: InstanceType<typeof Case>,
   transcript: string
-): Promise<{ evaluationTree?: unknown; treeSummary?: unknown } | null> {
+): Promise<{ evaluationTree?: unknown; treeSummary?: unknown; treeScore?: unknown } | null> {
   try {
     let refTree = caseDoc.referenceTree;
     if (!refTree) {
@@ -276,7 +286,21 @@ async function buildCaseTrees(
     const byId = new Map(overlays.filter((o) => o.id != null).map((o) => [String(o.id), o]));
     const byLabel = new Map(overlays.filter((o) => o.label != null).map((o) => [normLabel(o.label), o]));
     const merged = mergeOverlay(refTree as Record<string, unknown>, byId, byLabel);
-    return { evaluationTree: merged, treeSummary: evalOut.summary };
+
+    // Deterministic traversal score (spec engine) from the ordered visit list.
+    const traversal = Array.isArray(evalOut.traversal) ? (evalOut.traversal as Array<{ id?: string; was_nudged?: boolean }>) : [];
+    let treeScore: unknown;
+    try {
+      const score = scoreTraversal(refTree as Record<string, unknown>, traversal);
+      attachPoints(merged, score.perNodePoints);
+      // Store everything except the per-node map (that's already on the tree).
+      const { perNodePoints, ...rest } = score; void perNodePoints;
+      treeScore = rest;
+    } catch (e) {
+      console.error('tree scoring failed (non-fatal):', e);
+    }
+
+    return { evaluationTree: merged, treeSummary: evalOut.summary, treeScore };
   } catch (e) {
     console.error('case-tree build failed (non-fatal):', e);
     return null;
@@ -358,6 +382,7 @@ export async function generateReport(sessionId: string, userId: string): Promise
     if (trees) {
       analysis.evaluationTree = trees.evaluationTree;
       analysis.treeSummary = trees.treeSummary;
+      analysis.treeScore = trees.treeScore;
     }
   }
 

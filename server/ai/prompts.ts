@@ -811,7 +811,9 @@ Return:
 
 Return ONLY valid JSON:
 { "id": "root", "label": "...", "depth": 0, "status": "correct", "insight": "1 line: the core question this case is really asking",
-  "children": [ { "id": "1", "label": "...", "depth": 1, "status": "correct", "insight": "1 line: what this bucket is about & why it matters", "scope": "..." } ] }`;
+  "children": [ { "id": "1", "label": "...", "depth": 1, "status": "correct", "rank": 1, "insight": "1 line: what this bucket is about & why it matters", "scope": "..." } ] }
+
+"rank" ranks the CORRECT buckets by impact: 1 = the highest-impact lever (the move that matters most), 2 = next, etc. Neutral buckets get no rank (omit or null).`;
 }
 
 // Step 2 — expand ONE bucket to full depth.
@@ -893,5 +895,11 @@ Then also return a "summary" object:
   "overall_rating": "one honest line: hire/borderline/no-hire + the why"
 }
 
-Return ONLY valid JSON: { "overlays": [ ... ], "summary": { ... } }`;
+Also return "traversal": the ORDERED list of reference-tree node ids the candidate actually visited, in sequence — this drives the deterministic score, so order matters:
+"traversal": [ { "id": "2", "was_nudged": false }, { "id": "2.1", "was_nudged": false }, { "id": "2.2.1", "was_nudged": true } ]
+- Include wrong-turn and dead-end nodes too, in the order they were visited.
+- ids MUST match reference-tree node ids.
+- was_nudged: true only if the interviewer hinted / redirected / led them onto that node (not when they reached it on their own).
+
+Return ONLY valid JSON: { "overlays": [ ... ], "traversal": [ ... ], "summary": { ... } }`;
 }
