@@ -115,53 +115,6 @@ ${rawText.slice(0, 12000)}
 """`;
 }
 
-export function CASE_GENERATION_PROMPT(type: CaseType, industry: Industry, difficulty: number): string {
-  return `You are a McKinsey case interview designer. Create a realistic ${DIFFICULTY_LABELS[difficulty]} difficulty ${type} case for the ${industry} industry.
-
-Return ONLY valid JSON matching this exact schema:
-{
-  "title": "string (concise, business-like case title)",
-  "description": "string (1-2 sentences, what the interviewer tells the candidate upfront)",
-  "scenario": "string (detailed 3-4 sentence context that the AI interviewer will use — include financials, market context, and the client's ask)",
-  "keyDataPoints": [
-    { "label": "string", "value": "string" }
-  ],
-  "questions": ["string", "string", "string", "string"],
-  "plausibleSolution": "string — the model answer to THIS case in 3-5 sentences: the bottom-line recommendation plus the 2-3 key drivers and the numbers that prove it. This is the conclusion a strong candidate should converge on.",
-  "solutionTree": {
-    "label": "the core question the case is really asking",
-    "insight": "one line on what cracking this question requires",
-    "children": [
-      {
-        "label": "a MECE top-level branch of the analysis",
-        "insight": "what this branch reveals and why it matters",
-        "children": [
-          { "label": "sub-driver or analysis step", "insight": "the finding at this node (use real numbers from keyDataPoints where relevant)" }
-        ]
-      }
-    ]
-  },
-  "idealScript": [
-    { "stage": "string (e.g. Clarifying, Structuring, Analysis, Quant, Risks, Recommendation)", "interviewer": "what a sharp interviewer asks at this stage", "idealResponse": "what a top candidate answers — concise and concrete" }
-  ],
-  "openingHook": {
-    "reference": "a REAL, recent (last ~2 years) and well-known development, trend, or company move in this industry that you are confident actually happened — phrased as something an interviewer could casually ask about ('the recent wave of biosimilar launches', 'Novo's GLP-1 supply crunch'). One short clause. If you are not confident a specific event is real, use a broad TRUE industry trend instead of inventing a headline.",
-    "bridge": "one natural sentence that pivots from that reference into this case without announcing it"
-  }
-}
-
-Requirements:
-- keyDataPoints: 4-6 items with realistic financial/operational metrics
-- questions: 4 progressive interviewer questions that follow ${FRAMEWORK_BY_TYPE[type]}
-- Difficulty ${difficulty}/4 should reflect complexity: ${DIFFICULTY_LABELS[difficulty]}
-- Use realistic company names and numbers
-- The scenario should feel like a real client situation
-- solutionTree: MECE and COMPREHENSIVE — 4-5 top-level branches and 4-5 levels deep where the analysis warrants it. Decompose each branch down to specific sub-drivers/analysis steps, not just one layer. Leaf nodes carry the concrete insight/number that drives the conclusion. It must logically lead to plausibleSolution.
-- idealScript: 6-8 exchanges walking the full arc from clarifying to final recommendation, consistent with the tree
-- openingHook: must be a genuine industry reference (not fabricated) that connects to this case's topic, so the interviewer can open conversationally and slide into the case
-- plausibleSolution, solutionTree, and idealScript must be mutually consistent — all leading to the same recommendation`;
-}
-
 // Specialized generator for pharma PROFITABILITY cases. Produces a far more
 // rigorous, internally-reconciled case than the generic generator: a flat top
 // line hiding a margin problem, ONE private pharma mechanism the candidate must
@@ -208,47 +161,6 @@ Recent transcript:
 ${transcriptText}
 
 Give a hint that helps the candidate think more structurally or consider something they may have missed. Be coaching, not prescriptive.`;
-}
-
-export function SCORING_PROMPT(transcriptText: string, caseTitle: string, caseType: string): string {
-  return `You are an expert McKinsey case interview evaluator. Analyze this case interview transcript and provide a detailed evaluation.
-
-Case: "${caseTitle}" (${caseType})
-
-Transcript:
-${transcriptText}
-
-Return ONLY valid JSON matching this exact schema:
-{
-  "overallScore": number (0-100),
-  "overallGrade": "STRONG_PASS" | "PASS" | "BORDERLINE" | "FAIL",
-  "competencies": {
-    "structure": { "score": number (0-100), "flag": "string or null — one-line warning if score < 60" },
-    "math": { "score": number (0-100), "flag": "string or null" },
-    "businessJudgment": { "score": number (0-100), "flag": "string or null" },
-    "communication": { "score": number (0-100), "flag": "string or null" },
-    "creativity": { "score": number (0-100), "flag": "string or null" },
-    "hypothesis": { "score": number (0-100), "flag": "string or null" }
-  },
-  "feedback": {
-    "strengths": ["string", "string", "string"],
-    "improvements": ["string", "string", "string"],
-    "momentsOfExcellence": ["string", "string"],
-    "missedOpportunities": ["string", "string"],
-    "keyHypotheses": ["string", "string"]
-  },
-  "executiveSummary": "string (2 sentences: overall assessment + top recommendation)"
-}
-
-Scoring rubric:
-- STRUCTURE (0-100): MECE framework usage, logical flow, prioritization
-- MATH (0-100): Accuracy, clarity of calculations, estimation skill
-- BUSINESS_JUDGMENT (0-100): Practical insights, real-world applicability
-- COMMUNICATION (0-100): Clarity, confidence, conciseness, active listening
-- CREATIVITY (0-100): Original insights beyond standard frameworks
-- HYPOTHESIS (0-100): Hypothesis-first thinking, testing and updating hypotheses
-
-Grade thresholds: STRONG_PASS ≥ 80, PASS 65-79, BORDERLINE 50-64, FAIL < 50`;
 }
 
 export interface EvaluationContext {
@@ -754,42 +666,6 @@ Respond with the JSON (response + turn_assessment + next_action + state_update).
 // evaluator scores against; the eval tree overlays the candidate's actual
 // journey onto it. Built lazily at report time (see report.service).
 // ============================================================================
-
-// Stage 2: build the MECE reference tree (answer key) from a completed case
-// package. Private — the candidate never sees it. Used to score the interview.
-export function REFERENCE_TREE_PROMPT(casePackage: string): string {
-  return `You are the answer-key builder for "The Case Owl" AI interviewer. You're given a completed consulting case package (brief, exhibits with their data, solution moves, common wrong answers). Build a MECE REFERENCE TREE: the private map the evaluator scores the live interview against. The candidate never sees it.
-
-CASE PACKAGE:
-"""
-${casePackage.slice(0, 14000)}
-"""
-
-NODE STRUCTURE (nested JSON) — keep every field TERSE; this whole tree must fit in one response without truncation, so do not write long sentences:
-{
-  "id": "2.1.3",                 // hierarchical
-  "label": "<=30 chars",
-  "depth": 4,                     // 0 at root, +1 per level
-  "status": "correct" | "explored_wrong" | "dead_end" | "neutral",
-  "candidate_signal": "SHORT pattern of what the candidate says/asks that maps here (a few words, fuzzy-matchable)",
-  "exhibit_trigger": "exhibit+layer to share here, e.g. 'C-surface' or 'C-probing-1' (or null)",
-  "redirect_if_wrong": "ONLY on explored_wrong/dead_end: a SHORT redirect question (else null)",
-  "children": [ ... ]
-}
-
-STATUS TAGS: correct = on the ideal solution path. explored_wrong = plausible path a smart candidate tries that ultimately misses something (1-2 levels deep before its miss; populate redirect_if_wrong). dead_end = reveals a fundamental misunderstanding (populate redirect_if_wrong). neutral = valid optional context, not penalised if skipped.
-
-BUILD RULES:
-1. Root (depth 0) = the CEO's question as a diagnostic ("where is margin going, and what do we do?"). Split into diagnosis first, prescription second.
-2. Level 1 = 3-4 MECE buckets (for profitability: Revenue / Cost / Mix-portfolio / External). Level 2 = components (Cost→COGS/SG&A/R&D/Other; Revenue→price/volume/mix). Level 3+ = case-specific, each tied to a specific exhibit/data layer.
-3. EVERY solution move must be reachable by a "correct" path reaching depth 5+; map each move explicitly to one path.
-4. EVERY wrong answer must appear as an explored_wrong/dead_end node placed where a candidate would naturally hit it, with a short redirect_if_wrong from the wrong-answers list.
-5. EVERY exhibit must appear as an exhibit_trigger on at least one node — no orphan exhibits.
-6. candidate_signal must be DISTINCT across nodes — two nodes must not fire on the same statement; merge or disambiguate if they could.
-7. 40-55 nodes total. Correct path reaches depth 7-8 on at least 2 branches (unit economics / build-vs-buy / NPV grounded in exhibit data). Keep labels and signals short so the FULL tree fits — never stop early or drop branches to save space.
-
-Return ONLY valid JSON: the root node with nested children. Emit the COMPLETE tree — do not truncate.`;
-}
 
 // Chunked reference-tree generation (avoids any single-call output cap): step 1
 // builds just the skeleton (root + top-level MECE buckets); step 2 expands each
