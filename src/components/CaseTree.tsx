@@ -19,13 +19,17 @@ type RawNode = {
   evaluation_note?: string; note?: string;
   candidate_quotes?: string[]; recommended_path?: string;
   exhibit_shared?: string; time_spent?: string; was_nudged?: boolean;
+  points?: number; rank?: number;
   children?: RawNode[];
 };
+
+type Lens = 'journey' | 'score';
 
 interface NodeData extends Record<string, unknown> {
   label: string; depth: number; status: string; candidateStatus: string;
   quality?: string; insight?: string; star: boolean; timeSpent?: string;
   wasNudged?: boolean; hasChildren: boolean; collapsed: boolean; dimmed: boolean; selected: boolean;
+  points?: number; rank?: number; lens: Lens;
 }
 
 const NODE_W = 210;
@@ -62,6 +66,12 @@ function qualityChip(q?: string) {
   return <span className={`text-[9px] uppercase tracking-wide px-1.5 py-0.5 rounded ${map[q] ?? 'bg-zinc-600/30 text-zinc-300'}`}>{q}</span>;
 }
 
+function PointsBadge({ pts, status }: { pts?: number; status: string }) {
+  if (pts == null) return status === 'explored_wrong' ? <span className="text-[9px] px-1.5 py-0.5 rounded bg-zinc-700/40 text-zinc-400">0</span> : null;
+  const cls = pts > 0 ? 'bg-emerald-500/20 text-emerald-300' : pts < 0 ? 'bg-red-500/20 text-red-300' : 'bg-zinc-700/40 text-zinc-400';
+  return <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${cls}`}>{pts > 0 ? `+${pts}` : pts}</span>;
+}
+
 function CaseNode({ data }: NodeProps<Node<NodeData>>) {
   const p = palette(data.status);
   const skipped = data.candidateStatus === 'skipped';
@@ -75,10 +85,16 @@ function CaseNode({ data }: NodeProps<Node<NodeData>>) {
       <Handle type="target" position={Position.Left} style={{ opacity: 0 }} />
       <span className={`w-1.5 shrink-0 ${p.accent}`} />
       <div className="flex-1 px-3 py-2.5 min-w-0">
-        <div className={`text-[13px] font-semibold leading-snug ${p.text} ${data.status === 'dead_end' ? 'line-through' : ''}`}>{data.label}</div>
+        <div className="flex items-center gap-1.5">
+          {data.lens === 'score' && data.rank != null && <span className="text-[9px] font-bold text-amber-300 bg-amber-950/50 rounded px-1">#{data.rank}</span>}
+          <div className={`text-[13px] font-semibold leading-snug ${p.text} ${data.status === 'dead_end' ? 'line-through' : ''}`}>{data.label}</div>
+        </div>
         <div className="mt-1.5 flex items-center gap-1.5 flex-wrap">
-          {candIcon(data.candidateStatus)}
-          {qualityChip(data.quality)}
+          {data.lens === 'score' ? (
+            <PointsBadge pts={data.points} status={data.status} />
+          ) : (
+            <>{candIcon(data.candidateStatus)}{qualityChip(data.quality)}</>
+          )}
           {data.timeSpent && <span className="text-[10px] text-zinc-500">{data.timeSpent}</span>}
           {data.wasNudged && <span className="text-[9px] uppercase tracking-wide text-amber-400/80">nudged</span>}
         </div>
@@ -117,7 +133,7 @@ function flatten(root: RawNode): Array<{ id: string; raw: RawNode; parentId: str
   return out;
 }
 
-function buildGraph(root: RawNode, collapsed: Set<string>, solutionOnly: boolean, selectedId: string | null) {
+function buildGraph(root: RawNode, collapsed: Set<string>, solutionOnly: boolean, selectedId: string | null, lens: Lens) {
   const all = flatten(root);
   const byId = new Map(all.map((n) => [n.id, n]));
   const childrenOf = new Map<string, string[]>();
@@ -146,6 +162,7 @@ function buildGraph(root: RawNode, collapsed: Set<string>, solutionOnly: boolean
         candidateStatus: n.raw.candidate_status ?? 'skipped', quality: n.raw.quality, insight: n.raw.insight,
         star: status === 'correct' && !hasChildren && (n.raw.depth ?? 0) >= 6,
         timeSpent: n.raw.time_spent, wasNudged: n.raw.was_nudged,
+        points: n.raw.points, rank: n.raw.rank, lens,
         hasChildren, collapsed: collapsed.has(n.id),
         dimmed: solutionOnly && status !== 'correct', selected: selectedId === n.id,
       },
@@ -209,9 +226,10 @@ function Detail({ node, summary }: { node: RawNode | null; summary?: Record<stri
     <div className="space-y-3 text-sm">
       <div>
         <p className="font-bold text-zinc-100">{node.label}</p>
-        <div className="flex items-center gap-2 mt-1">
+        <div className="flex items-center gap-2 mt-1 flex-wrap">
           <span className={`text-[11px] font-semibold ${rs.c}`}>{rs.t}</span>
           <span className="text-[11px] text-zinc-500">· {CAND_LABEL[node.candidate_status ?? 'skipped']}</span>
+          {node.points != null && <PointsBadge pts={node.points} status={refStatus(node)} />}
         </div>
       </div>
       {node.insight && (
@@ -238,15 +256,68 @@ function Detail({ node, summary }: { node: RawNode | null; summary?: Record<stri
   );
 }
 
-function Flow({ root, summary }: { root: RawNode; summary?: Record<string, any> }) {
+const GRADE_COLOR: Record<string, string> = {
+  'Strong Hire': 'text-emerald-400', 'Hire': 'text-emerald-300', 'Borderline': 'text-amber-300',
+  'Lean No': 'text-orange-400', 'No Hire': 'text-red-400',
+};
+
+// Default sidebar in the Score lens: grade + total + per-branch breakdown.
+function ScoreCard({ score }: { score?: Record<string, any> }) {
+  if (!score) return <p className="text-xs text-zinc-500">No score available for this report.</p>;
+  const pct = score.percentage ?? 0;
+  const branches: Record<string, any> = score.branch_scores ?? {};
+  const pen = score.penalties ?? {};
+  const cov = score.coverage ?? {};
+  return (
+    <div className="space-y-4 text-sm">
+      <div>
+        <p className={`text-2xl font-extrabold ${GRADE_COLOR[score.grade] ?? 'text-zinc-100'}`}>{score.grade ?? '—'}</p>
+        <p className="text-zinc-400 text-xs mt-0.5">{score.total} / {score.max} pts · {pct}%</p>
+        <div className="h-1.5 bg-zinc-800 rounded-full mt-2 overflow-hidden">
+          <div className="h-full bg-emerald-500" style={{ width: `${Math.max(0, Math.min(100, pct))}%` }} />
+        </div>
+      </div>
+      <div>
+        <p className="text-[10px] uppercase tracking-wide text-zinc-500 font-bold mb-1.5">Branch scores</p>
+        <div className="space-y-1.5">
+          {Object.values(branches).map((b: any, i) => (
+            <div key={i} className="text-xs">
+              <div className="flex justify-between gap-2">
+                <span className="text-zinc-300 truncate">{b.label}</span>
+                <span className="text-zinc-100 font-semibold shrink-0">{b.final} pts</span>
+              </div>
+              <div className="flex gap-2 text-[10px] text-zinc-500">
+                <span>depth {b.depthReached}</span>
+                {b.terminalReached && <span className="text-emerald-400">✓ terminal</span>}
+                {b.ordering !== 1 && <span className="text-amber-400">×{b.ordering} order</span>}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="text-xs text-zinc-400 space-y-1 border-t border-zinc-800 pt-2">
+        <p>Terminals reached: <span className="text-zinc-200">{cov.terminals_reached ?? '—'}</span> (cov {cov.coverage_points >= 0 ? '+' : ''}{cov.coverage_points ?? 0})</p>
+        <p>Wrong turns: <span className="text-zinc-200">{(pen.wrong_turns ?? []).length}</span> · Dead ends: <span className="text-zinc-200">{(pen.dead_ends_hit ?? []).length}</span> · Nudges: <span className="text-zinc-200">{pen.nudges_given ?? 0}</span></p>
+        {pen.nudge_point_reduction ? <p className="text-amber-400">Nudge penalty: {pen.nudge_point_reduction}</p> : null}
+        {Array.isArray(cov.branches_never_entered) && cov.branches_never_entered.length > 0 && (
+          <p className="text-red-400">Never entered: {cov.branches_never_entered.join(', ')}</p>
+        )}
+      </div>
+      <p className="text-[11px] text-zinc-500 pt-1 border-t border-zinc-800">Each node shows the points it earned. Click one for the full breakdown.</p>
+    </div>
+  );
+}
+
+function Flow({ root, summary, score }: { root: RawNode; summary?: Record<string, any>; score?: Record<string, any> }) {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [solutionOnly, setSolutionOnly] = useState(false);
   const [selected, setSelected] = useState<RawNode | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [zoom, setZoom] = useState(0.55);
+  const [lens, setLens] = useState<Lens>('journey');
   const rf = useReactFlow();
   const allNodes = useMemo(() => flatten(root), [root]);
-  const { nodes, edges } = useMemo(() => buildGraph(root, collapsed, solutionOnly, selectedId), [root, collapsed, solutionOnly, selectedId]);
+  const { nodes, edges } = useMemo(() => buildGraph(root, collapsed, solutionOnly, selectedId, lens), [root, collapsed, solutionOnly, selectedId, lens]);
 
   useEffect(() => { const t = setTimeout(() => rf.fitView({ padding: 0.2, duration: 300 }), 60); return () => clearTimeout(t); }, [collapsed, rf]);
 
@@ -272,7 +343,11 @@ function Flow({ root, summary }: { root: RawNode; summary?: Record<string, any> 
           <Background variant={BackgroundVariant.Dots} color="#243029" gap={26} size={1.5} />
           <Controls showInteractive={false} />
           <MiniMap pannable zoomable nodeColor={(n) => palette(((n.data as NodeData)?.status) ?? 'neutral').accent.replace('bg-', '').includes('emerald') ? '#34d399' : '#52525b'} className="!bg-[#0b0f0d] !border !border-zinc-800" />
-          <Panel position="top-left" className="flex flex-wrap gap-2">
+          <Panel position="top-left" className="flex flex-wrap items-center gap-2">
+            <div className="flex rounded-md border border-zinc-700 overflow-hidden">
+              <button onClick={() => setLens('journey')} className={`text-xs px-3 py-1.5 ${lens === 'journey' ? 'bg-emerald-600 text-white' : 'bg-[#0b0f0d]/90 text-zinc-400'}`}>Journey</button>
+              <button onClick={() => setLens('score')} className={`text-xs px-3 py-1.5 ${lens === 'score' ? 'bg-emerald-600 text-white' : 'bg-[#0b0f0d]/90 text-zinc-400'}`}>Score</button>
+            </div>
             <button onClick={() => setSolutionOnly((s) => !s)} className={`${btn} ${solutionOnly ? 'border-emerald-500 text-emerald-400' : 'border-zinc-700 text-zinc-400'}`}>Solution Path</button>
             <button onClick={() => { setCollapsed(new Set()); setSolutionOnly(false); }} className={`${btn} border-zinc-700 text-zinc-400`}>Expand All</button>
             <button onClick={focusSolution} className={`${btn} border-zinc-700 text-zinc-400`}>Focus Solution</button>
@@ -291,13 +366,13 @@ function Flow({ root, summary }: { root: RawNode; summary?: Record<string, any> 
         </ReactFlow>
       </div>
       <aside className="w-[360px] shrink-0 border-l border-zinc-800 bg-[#0e1310] overflow-y-auto p-4">
-        <Detail node={selected} summary={summary} />
+        {lens === 'score' && !selected ? <ScoreCard score={score} /> : <Detail node={selected} summary={summary} />}
       </aside>
     </div>
   );
 }
 
-export default function CaseTree({ root, summary }: { root: RawNode; summary?: Record<string, any> }) {
+export default function CaseTree({ root, summary, score }: { root: RawNode; summary?: Record<string, any>; score?: Record<string, any> }) {
   const [open, setOpen] = useState(false);
   useEffect(() => {
     if (!open) return;
@@ -321,7 +396,7 @@ export default function CaseTree({ root, summary }: { root: RawNode; summary?: R
               <button onClick={() => setOpen(false)} className="p-1.5 rounded-md text-zinc-400 hover:text-white hover:bg-zinc-800"><X className="w-5 h-5" /></button>
             </div>
             <div className="flex-1 min-h-0">
-              <ReactFlowProvider><Flow root={root} summary={summary} /></ReactFlowProvider>
+              <ReactFlowProvider><Flow root={root} summary={summary} score={score} /></ReactFlowProvider>
             </div>
           </div>
         </div>

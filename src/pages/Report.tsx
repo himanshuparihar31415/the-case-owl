@@ -684,6 +684,18 @@ export default function Report() {
           {a.evaluationTree && (
             <Section id="casemap" title="Case Map" tab="casemap" activeTab={activeTab} action={<span className="label-blueprint">your path vs. the answer key</span>}>
               <div className="space-y-4">
+                {a.treeScore && (
+                  <div className="no-line-card p-5 flex items-center gap-5">
+                    <div className="text-center shrink-0">
+                      <div className="font-headline text-3xl font-extrabold text-primary leading-none">{a.treeScore.percentage}%</div>
+                      <div className="label-blueprint mt-1">{a.treeScore.total}/{a.treeScore.max} pts</div>
+                    </div>
+                    <div className="flex-grow">
+                      <div className="font-bold text-primary">{a.treeScore.grade}</div>
+                      <p className="text-xs text-secondary mt-0.5">Deterministic traversal score — points for the nodes you reached, in what order, minus wrong turns, dead ends and nudges. Open the map for the full breakdown.</p>
+                    </div>
+                  </div>
+                )}
                 {a.treeSummary && (
                   <div className="no-line-card p-5">
                     {a.treeSummary.overall_rating && (
@@ -713,7 +725,7 @@ export default function Report() {
                   </div>
                 )}
                 <React.Suspense fallback={<div className="no-line-card p-8 text-center text-sm text-secondary">Loading case map…</div>}>
-                  <CaseTree root={a.evaluationTree} summary={a.treeSummary} />
+                  <CaseTree root={a.evaluationTree} summary={a.treeSummary} score={a.treeScore} />
                 </React.Suspense>
                 <p className="text-[11px] text-secondary">Opens full-screen: click any node to see the right move there and how you did; double-click to collapse a branch; use the minimap and zoom slider to navigate.</p>
               </div>
