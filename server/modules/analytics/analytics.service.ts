@@ -171,17 +171,21 @@ function trailingFlat(series: number[]): number {
   return run;
 }
 
-export async function getDashboard(userId: string) {
+export async function getDashboard(userId: string, moduleFilter?: string) {
   // Reports oldest → newest, joined with their session (case type + date).
   const reports = await Report.find({ userId }).sort({ generatedAt: 1 });
-  const sessions = await Session.find({ userId }).populate('caseId', 'title type');
+  const sessions = await Session.find({ userId }).populate('caseId', 'title type module');
   const sessById = new Map(sessions.map((s) => [s._id.toString(), s]));
 
-  const rows = reports.map((r) => {
+  let rows = reports.map((r) => {
     const sess = sessById.get(r.sessionId.toString());
     const caseDoc = sess?.caseId as unknown as InstanceType<typeof Case> | undefined;
+    // Module for segmenting the dashboard (consulting case / product / guesstimate).
+    const ct = sess?.config?.caseType ?? '';
+    const mod = caseDoc?.module ?? (ct.startsWith('product') ? 'product' : ct === 'guesstimate' ? 'guesstimate' : 'case');
     return {
       report: r as any,
+      module: mod,
       type: caseDoc?.type ?? (sess?.config?.caseType) ?? 'unknown',
       title: caseDoc?.title ?? 'Case',
       difficulty: sess?.config?.difficulty ?? null,
@@ -189,6 +193,10 @@ export async function getDashboard(userId: string) {
       sessionId: r.sessionId.toString(),
     };
   });
+
+  // Scope everything below to a single module when requested (else 'all').
+  const scoped = moduleFilter && moduleFilter !== 'all';
+  if (scoped) rows = rows.filter((x) => x.module === moduleFilter);
 
   const n = rows.length;
   const overallSeries = rows.map((x) => overall10(x.report));
@@ -305,11 +313,13 @@ export async function getDashboard(userId: string) {
     target: 7,
   };
 
-  const insight = await getOrGenerateInsight(userId, {
+  // LLM narrative insight is cached per user for the ALL view; don't regenerate
+  // (or overwrite the cache) for a module-scoped view.
+  const insight = scoped ? null : await getOrGenerateInsight(userId, {
     sessionCount: n, weeksSpan, latestOverall, delta3, trajectory, movers, habits, caseTypes,
   });
 
-  return { totals: { sessions: n, weeks: weeksSpan }, readiness, trajectory, movers, progressBottleneck, deltaCallout, caseTypes, variance, timeSignature, habits, evidence, insight };
+  return { totals: { sessions: n, weeks: weeksSpan }, module: moduleFilter ?? 'all', readiness, trajectory, movers, progressBottleneck, deltaCallout, caseTypes, variance, timeSignature, habits, evidence, insight };
 }
 
 // Cached cross-session narrative; regenerated only when report count changes.

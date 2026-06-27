@@ -54,11 +54,14 @@ export default function Dashboard({ user }: { user: AuthUser | null }) {
   const [data, setData] = useState<Dashboard | null>(null);
   const [loading, setLoading] = useState(true);
   const [drawer, setDrawer] = useState<{ kind: string; arg?: string } | null>(null);
+  const [mod, setMod] = useState<'all' | 'case' | 'product' | 'guesstimate'>('all');
 
   useEffect(() => {
-    api.get<Dashboard>('/analytics/dashboard')
-      .then(setData).catch(() => setData(null)).finally(() => setLoading(false));
-  }, []);
+    // Don't toggle the full-page loader on tab switches — keep the prior view
+    // until the scoped data arrives (avoids the tab row flickering away).
+    api.get<Dashboard>(`/analytics/dashboard${mod === 'all' ? '' : `?module=${mod}`}`)
+      .then(setData).catch(() => { /* keep prior */ }).finally(() => setLoading(false));
+  }, [mod]);
 
   const firstName = user?.name?.split(' ')[0] ?? 'there';
 
@@ -72,8 +75,9 @@ export default function Dashboard({ user }: { user: AuthUser | null }) {
     return <div className="flex items-center justify-center py-40"><Loader2 className="w-8 h-8 animate-spin text-on-tertiary-container" /></div>;
   }
 
-  // Empty state — no completed sessions yet
-  if (!data || data.totals.sessions === 0) {
+  // Empty state — only when there's NOTHING at all (the unscoped view is empty).
+  // A scoped view with 0 sessions still renders so the track tabs stay visible.
+  if (!data || (mod === 'all' && data.totals.sessions === 0)) {
     return (
       <div className="py-20 text-center space-y-6 max-w-xl mx-auto">
         <h1 className="power-gap-h1 text-primary">Welcome, {firstName}.</h1>
@@ -90,6 +94,21 @@ export default function Dashboard({ user }: { user: AuthUser | null }) {
 
   return (
     <div className="space-y-10 py-4">
+      {/* ── TRACK FILTER ── everything below is scoped to the selected module ── */}
+      <div className="flex items-center gap-2 overflow-x-auto scrolling-log -mx-1 px-1">
+        <span className="text-xs font-medium text-secondary mr-1 shrink-0">Track:</span>
+        {([['all', 'All'], ['case', 'Consulting'], ['product', 'Product'], ['guesstimate', 'Guesstimate']] as const).map(([id, label]) => (
+          <button key={id} onClick={() => setMod(id)}
+            className={cn('shrink-0 px-3.5 py-1.5 rounded-full text-xs font-semibold transition',
+              mod === id ? 'bg-primary text-on-primary' : 'bg-surface-container-low text-secondary hover:text-primary')}>
+            {label}
+          </button>
+        ))}
+        {mod !== 'all' && data.totals.sessions === 0 && (
+          <span className="text-xs text-secondary italic ml-2">No sessions in this track yet.</span>
+        )}
+      </div>
+
       {/* ── HERO ── */}
       <section className="grid lg:grid-cols-[1.25fr_.9fr] gap-7">
         <div>
