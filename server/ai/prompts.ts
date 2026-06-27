@@ -810,8 +810,8 @@ Return:
 - Level-1 buckets (depth 1): 3-4 MECE buckets (for profitability: Revenue / Cost / Mix-portfolio / External). For each give: id ("1","2","3"...), label (<=30 chars), status ("correct" or "neutral"), and a one-line "scope" listing what belongs under it (which solution moves, wrong answers, and exhibits map here).
 
 Return ONLY valid JSON:
-{ "id": "root", "label": "...", "depth": 0, "status": "correct",
-  "children": [ { "id": "1", "label": "...", "depth": 1, "status": "correct", "scope": "..." } ] }`;
+{ "id": "root", "label": "...", "depth": 0, "status": "correct", "insight": "1 line: the core question this case is really asking",
+  "children": [ { "id": "1", "label": "...", "depth": 1, "status": "correct", "insight": "1 line: what this bucket is about & why it matters", "scope": "..." } ] }`;
 }
 
 // Step 2 — expand ONE bucket to full depth.
@@ -829,6 +829,7 @@ ${branchJson}
 Node schema for the children you add:
 { "id": "extend the parent id, e.g. '2.1.3'", "label": "<=30 chars", "depth": int,
   "status": "correct"|"explored_wrong"|"dead_end"|"neutral",
+  "insight": "1 short line the CANDIDATE can learn from: on correct nodes, what a strong candidate finds/does here (the right move, with the key number); on wrong/dead nodes, why it's a trap",
   "candidate_signal": "SHORT pattern of what the candidate says/asks that maps here",
   "exhibit_trigger": "exhibit+layer, e.g. 'C-surface' (or null)",
   "redirect_if_wrong": "ONLY on explored_wrong/dead_end: a SHORT redirect question (else null)",
@@ -862,6 +863,7 @@ Do NOT re-emit the tree structure. The full tree (with its depth) is kept separa
 "overlays": [
   {
     "id": "2.1.3",                  // MUST match a node id from the reference tree
+    "label": "the node's label (so we can attach even if the id is off)",
     "candidate_status": "explored" | "mentioned" | "wrong_turn" | "dead_end_hit",
     "time_spent": "approx from timestamps, e.g. '3m 20s'",
     "quality": "strong" | "adequate" | "weak" | "wrong",

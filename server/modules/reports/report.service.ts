@@ -221,16 +221,25 @@ function serializeCasePackage(c: InstanceType<typeof Case>): string {
   return parts.join('\n\n');
 }
 
+const normLabel = (s: unknown): string => String(s ?? '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+
 // Merge the per-node candidate overlay onto the full reference tree (recursively),
-// preserving every node and its depth. Nodes with no overlay are 'skipped'.
-function mergeOverlay(node: Record<string, unknown>, overlay: Map<string, Record<string, unknown>>): Record<string, unknown> {
+// preserving every node, its depth, and its teaching `insight`. Matches the
+// overlay by id first, then by label (so a slightly-off id still attaches).
+// Nodes with no overlay are 'skipped'.
+function mergeOverlay(
+  node: Record<string, unknown>,
+  byId: Map<string, Record<string, unknown>>,
+  byLabel: Map<string, Record<string, unknown>>,
+): Record<string, unknown> {
   const id = node.id != null ? String(node.id) : '';
-  const o = overlay.get(id);
+  const o = byId.get(id) ?? byLabel.get(normLabel(node.label));
   const children = Array.isArray(node.children) ? (node.children as Array<Record<string, unknown>>) : [];
   return {
     id: node.id,
     label: node.label,
     depth: node.depth,
+    insight: node.insight ?? null, // the right move / why-it-matters (teaching content)
     reference_status: node.reference_status ?? node.status ?? 'neutral',
     candidate_status: o?.candidate_status ?? 'skipped',
     quality: o?.quality ?? 'n/a',
@@ -240,7 +249,7 @@ function mergeOverlay(node: Record<string, unknown>, overlay: Map<string, Record
     exhibit_shared: o?.exhibit_shared ?? null,
     was_nudged: o?.was_nudged ?? false,
     recommended_path: o?.recommended_path ?? null,
-    children: children.map((c) => mergeOverlay(c, overlay)),
+    children: children.map((c) => mergeOverlay(c, byId, byLabel)),
   };
 }
 
@@ -264,8 +273,9 @@ async function buildCaseTrees(
     // whole tree — so it never gets truncated and the FULL reference-tree depth
     // survives. Merge the overlay onto the cached reference tree here.
     const overlays = Array.isArray(evalOut.overlays) ? (evalOut.overlays as Array<Record<string, unknown>>) : [];
-    const overlayMap = new Map(overlays.filter((o) => o.id != null).map((o) => [String(o.id), o]));
-    const merged = mergeOverlay(refTree as Record<string, unknown>, overlayMap);
+    const byId = new Map(overlays.filter((o) => o.id != null).map((o) => [String(o.id), o]));
+    const byLabel = new Map(overlays.filter((o) => o.label != null).map((o) => [normLabel(o.label), o]));
+    const merged = mergeOverlay(refTree as Record<string, unknown>, byId, byLabel);
     return { evaluationTree: merged, treeSummary: evalOut.summary };
   } catch (e) {
     console.error('case-tree build failed (non-fatal):', e);
