@@ -45,9 +45,12 @@ function scoreColor(s: number): string {
   return 'bg-green-600';
 }
 
-function Section({ id, title, children, action }: { id: string; title: string; children: React.ReactNode; action?: React.ReactNode }) {
+// A report section. Belongs to a `tab`; on screen only the active tab's sections
+// render, but ALL render in print (so Download/Print assembles the full report).
+function Section({ id, title, children, action, tab, activeTab }: { id: string; title: string; children: React.ReactNode; action?: React.ReactNode; tab?: string; activeTab?: string }) {
+  const hidden = !!(tab && activeTab && tab !== activeTab);
   return (
-    <section id={id} className="scroll-mt-28">
+    <section id={id} className={cn('scroll-mt-28', hidden && 'hidden print:block')}>
       <div className="flex items-center justify-between mb-5">
         <h3 className="font-headline text-xl font-bold text-primary">{title}</h3>
         {action}
@@ -57,20 +60,18 @@ function Section({ id, title, children, action }: { id: string; title: string; c
   );
 }
 
-const SECTIONS = [
-  ['overall', 'Overall Assessment'],
-  ['competencies', 'Competency Matrix'],
-  ['communication', 'Communication Quality'],
-  ['time', 'Time Management'],
-  ['missed', 'Missed Opportunities'],
-  ['hints', 'Hint Dependency'],
-  ['ideal', 'Ideal Answers'],
-  ['plan', 'Improvement Plan'],
-  ['casemap', 'Case Map'],
-  ['exhibits', 'Exhibits & Quant'],
+// Vertical-nav tabs. Each groups one or more sections; nothing is dropped — the
+// solution tree keeps its own prominent tab. [id, label].
+const TABS = [
+  ['overview', 'Overview'],
+  ['competencies', 'Competencies'],
+  ['communication', 'Communication'],
+  ['coaching', 'Time & Coaching'],
   ['solution', 'Model Solution'],
-  ['script', 'Ideal Script'],
-  ['progress', 'Progress Over Time'],
+  ['ideal', 'Ideal Answers'],
+  ['casemap', 'Case Map'],
+  ['exhibits', 'Exhibits'],
+  ['progress', 'Progress'],
 ] as const;
 
 // Recursive node for the comprehensive solution tree. Indented with connector
@@ -108,6 +109,7 @@ export default function Report() {
   const [bookmarks, setBookmarks] = useState<Set<number>>(new Set());
   const [filter, setFilter] = useState<Filter>('All');
   const [openCoach, setOpenCoach] = useState<Set<number>>(new Set());
+  const [activeTab, setActiveTab] = useState<string>('overview');
 
   useEffect(() => {
     if (!sessionId) return;
@@ -290,27 +292,28 @@ export default function Report() {
         </div>
       )}
 
-      {/* Section nav */}
-      <nav className="sticky top-20 z-10 bg-surface/90 backdrop-blur-sm -mx-1 px-1 py-2 flex gap-1 overflow-x-auto scrolling-log border-b border-outline-variant/15">
-        {SECTIONS.filter(([id]) => {
-          // Hide the solution/script tabs when this case has no answer key (legacy/custom).
-          if (id === 'solution') return !!(solution && (solution.plausibleSolution || solution.solutionTree));
-          if (id === 'script') return !!(solution && Array.isArray(solution.idealScript) && solution.idealScript.length > 0);
-          if (id === 'exhibits') return !!(solution && Array.isArray(solution.exhibits) && solution.exhibits.length > 0);
-          if (id === 'casemap') return !!a.evaluationTree;
-          return true;
-        }).map(([id, label]) => (
-          <a key={id} href={`#${id}`} className="shrink-0 px-3 py-1.5 rounded-md text-xs font-medium text-secondary hover:text-primary hover:bg-surface-container-low transition">
-            {label}
-          </a>
-        ))}
-      </nav>
+      <div className="grid grid-cols-1 xl:grid-cols-[180px_minmax(0,1fr)_340px] gap-8">
+        {/* LEFT: vertical section nav (tabs). One section group at a time on screen;
+            print renders everything. */}
+        <nav className="xl:sticky xl:top-32 self-start flex xl:flex-col gap-1 overflow-x-auto scrolling-log print:hidden -mx-1 px-1">
+          {TABS.filter(([id]) => {
+            if (id === 'solution') return !!(solution && (solution.plausibleSolution || solution.solutionTree));
+            if (id === 'ideal') return !!((a.idealAnswers && a.idealAnswers.length) || (solution && Array.isArray(solution.idealScript) && solution.idealScript.length > 0));
+            if (id === 'exhibits') return !!(solution && Array.isArray(solution.exhibits) && solution.exhibits.length > 0);
+            if (id === 'casemap') return !!a.evaluationTree;
+            return true;
+          }).map(([id, label]) => (
+            <button key={id} onClick={() => setActiveTab(id)} className={cn('shrink-0 text-left px-3 py-2 rounded-md text-sm font-medium transition',
+              activeTab === id ? 'bg-primary text-on-primary' : 'text-secondary hover:text-primary hover:bg-surface-container-low')}>
+              {label}
+            </button>
+          ))}
+        </nav>
 
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
-        {/* LEFT: report sections */}
-        <div className="xl:col-span-2 space-y-14">
+        {/* CENTER: report sections (only the active tab's render on screen) */}
+        <div className="min-w-0 space-y-10">
           {/* Overall */}
-          <Section id="overall" title="Overall Assessment">
+          <Section id="overall" title="Overall Assessment" tab="overview" activeTab={activeTab}>
             <div className="no-line-card p-6 space-y-5">
               <p className="text-on-surface-variant leading-relaxed">{a.overall?.summary}</p>
               <div className="grid sm:grid-cols-2 gap-5">
@@ -338,7 +341,7 @@ export default function Report() {
           </Section>
 
           {/* Competency Matrix */}
-          <Section id="competencies" title="Core Competency Matrix" action={<span className="label-blueprint">click a row for evidence</span>}>
+          <Section id="competencies" title="Core Competency Matrix" tab="competencies" activeTab={activeTab} action={<span className="label-blueprint">click a row for evidence</span>}>
             <div className="space-y-3">
               {competencies.map((c, i) => {
                 const open = expandedComp.has(i);
@@ -398,7 +401,7 @@ export default function Report() {
           </Section>
 
           {/* Communication */}
-          <Section id="communication" title="Communication Quality">
+          <Section id="communication" title="Communication Quality" tab="communication" activeTab={activeTab}>
             <div className="space-y-6">
               {/* Communication Effectiveness (replaces Grammar — spec §4) */}
               {a.communication?.effectiveness ? (
@@ -543,7 +546,7 @@ export default function Report() {
           </Section>
 
           {/* Time Management v2 — causal impact chain (spec §6) */}
-          <Section id="time" title="Time Management">
+          <Section id="time" title="Time Management" tab="coaching" activeTab={activeTab}>
             <div className="space-y-3">
               {(a.timeManagement ?? []).map((t: any, i: number) => {
                 const bad = /short|brief|limited|insufficient|long/i.test(t.assessment ?? '');
@@ -563,7 +566,7 @@ export default function Report() {
           </Section>
 
           {/* Missed Opportunities v2 — four-part coaching format (spec §7) */}
-          <Section id="missed" title="Missed Opportunities">
+          <Section id="missed" title="Missed Opportunities" tab="coaching" activeTab={activeTab}>
             <div className="space-y-4">
               {(a.missedOpportunities ?? []).map((m: any, i: number) => (
                 <div key={i} className="no-line-card p-5 border-l-4 border-amber-400 space-y-2">
@@ -593,7 +596,7 @@ export default function Report() {
           </Section>
 
           {/* Hint Dependency */}
-          <Section id="hints" title="Hint &amp; Assistance Dependency">
+          <Section id="hints" title="Hint &amp; Assistance Dependency" tab="communication" activeTab={activeTab}>
             <div className="no-line-card p-6 flex flex-col sm:flex-row gap-6 items-center">
               <div className="flex gap-6">
                 <div className="text-center"><div className="font-headline text-3xl font-extrabold text-primary">{a.hintDependency?.hintsUsed ?? 0}</div><div className="label-blueprint">Hints used</div></div>
@@ -604,7 +607,7 @@ export default function Report() {
           </Section>
 
           {/* Ideal Answers v2 — three-layer comparison + quality gate (spec §3) */}
-          <Section id="ideal" title="Ideal Answer Comparison">
+          <Section id="ideal" title="Ideal Answer Comparison" tab="ideal" activeTab={activeTab}>
             <div className="space-y-5">
               {(a.idealAnswers ?? []).map((q: any, i: number) => (
                 <div key={i} className="no-line-card p-6 space-y-3">
@@ -644,7 +647,7 @@ export default function Report() {
           </Section>
 
           {/* Improvement Plan v2 — max 2 priorities, each with evidence/drill/criteria (spec §8) */}
-          <Section id="plan" title="Priority Improvement Plan" action={<span className="label-blueprint">two specific items beat four generic ones</span>}>
+          <Section id="plan" title="Priority Improvement Plan" tab="overview" activeTab={activeTab} action={<span className="label-blueprint">two specific items beat four generic ones</span>}>
             <div className="space-y-3">
               {((a.improvementPlan ?? a.priorityPlan) ?? []).slice(0, 2).map((p: any, i: number) => (
                 <div key={i} className="no-line-card p-4 flex gap-4 items-start">
@@ -679,7 +682,7 @@ export default function Report() {
 
           {/* Case Map — the candidate's actual journey overlaid on the MECE answer key */}
           {a.evaluationTree && (
-            <Section id="casemap" title="Case Map" action={<span className="label-blueprint">your path vs. the answer key</span>}>
+            <Section id="casemap" title="Case Map" tab="casemap" activeTab={activeTab} action={<span className="label-blueprint">your path vs. the answer key</span>}>
               <div className="space-y-4">
                 {a.treeSummary && (
                   <div className="no-line-card p-5">
@@ -718,7 +721,7 @@ export default function Report() {
           )}
 
           {solution && Array.isArray(solution.exhibits) && solution.exhibits.length > 0 && (
-            <Section id="exhibits" title="Exhibits &amp; Quant" action={<span className="label-blueprint">what the data showed</span>}>
+            <Section id="exhibits" title="Exhibits &amp; Quant" tab="exhibits" activeTab={activeTab} action={<span className="label-blueprint">what the data showed</span>}>
               <div className="space-y-4">
                 {solution.exhibits.map((e: any, i: number) => (
                   <div key={i} className="no-line-card p-5">
@@ -758,7 +761,7 @@ export default function Report() {
 
           {/* Model Solution — the pre-generated answer key + solution tree */}
           {solution && (solution.plausibleSolution || solution.solutionTree) && (
-            <Section id="solution" title="Model Solution" action={<span className="label-blueprint">the answer key</span>}>
+            <Section id="solution" title="Model Solution" tab="solution" activeTab={activeTab} action={<span className="label-blueprint">the answer key</span>}>
               <div className="space-y-4">
                 {solution.plausibleSolution && (
                   <div className="no-line-card p-6 border-l-4 border-on-tertiary-container">
@@ -778,7 +781,7 @@ export default function Report() {
 
           {/* Ideal Interview Script */}
           {solution && Array.isArray(solution.idealScript) && solution.idealScript.length > 0 && (
-            <Section id="script" title="Ideal Interview Script" action={<span className="label-blueprint">how it should have flowed</span>}>
+            <Section id="script" title="Ideal Interview Script" tab="ideal" activeTab={activeTab} action={<span className="label-blueprint">how it should have flowed</span>}>
               <div className="space-y-3">
                 {solution.idealScript.map((s: any, i: number) => (
                   <div key={i} className="no-line-card p-5">
@@ -798,7 +801,7 @@ export default function Report() {
           )}
 
           {/* Progress */}
-          <Section id="progress" title="Progress Over Time">
+          <Section id="progress" title="Progress Over Time" tab="progress" activeTab={activeTab}>
             {progress.length < 2 ? (
               <div className="no-line-card p-6 text-sm text-secondary">This is your first scored interview — complete more cases to track your trend.</div>
             ) : (
