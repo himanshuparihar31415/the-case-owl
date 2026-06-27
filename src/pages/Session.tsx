@@ -135,6 +135,10 @@ export default function Session() {
   const [loadError, setLoadError] = useState('');
   const [transcript, setTranscript] = useState<TranscriptEntry[]>([]);
   const [liveText, setLiveText] = useState('');
+  // Whose partial transcript `liveText` holds. Realtime streams the interviewer;
+  // the PM pipeline streams the candidate — so the live bubble + "current
+  // question" must follow the role, not assume it's the AI.
+  const [liveRole, setLiveRole] = useState<'interviewer' | 'candidate'>('interviewer');
   const [wsStatus, setWsStatus] = useState<WsStatus>('connecting');
   const [wsError, setWsError] = useState('');
   const [isAiSpeaking, setIsAiSpeaking] = useState(false);
@@ -213,8 +217,10 @@ export default function Session() {
   // Auto-scroll transcript to bottom on new content — unless the candidate has
   // scrolled up to revisit an earlier answer.
   useEffect(() => {
+    // Instant (not smooth): partial transcripts stream many deltas/sec and
+    // stacked smooth-scroll animations cause visible lag during a turn.
     if (autoScrollRef.current) {
-      transcriptEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      transcriptEndRef.current?.scrollIntoView({ behavior: 'auto' });
     }
   }, [transcript, liveText]);
 
@@ -400,6 +406,7 @@ export default function Session() {
             break;
           }
           case 'transcript_delta':
+            setLiveRole((msg.role as 'interviewer' | 'candidate') || 'interviewer');
             setLiveText((prev) => prev + (msg.text as string));
             break;
           case 'transcript':
@@ -498,10 +505,12 @@ export default function Session() {
   const moduleKind: 'case' | 'product' | 'guesstimate' =
     ct?.startsWith('product') ? 'product' : ct === 'guesstimate' ? 'guesstimate' : 'case';
 
-  // Derived: the current question = AI's live turn, else its last spoken turn.
+  // Derived: the current question = the interviewer's live turn (if it's the AI
+  // streaming), else its last spoken turn. Never the candidate's own partial.
   const lastInterviewer = [...transcript].reverse()
     .find((e) => e.role === 'interviewer' && !e.text.startsWith('[HINT]'));
-  const currentQuestion = (liveText || lastInterviewer?.text || '').trim()
+  const liveQuestion = liveRole === 'interviewer' ? liveText : '';
+  const currentQuestion = (liveQuestion || lastInterviewer?.text || '').trim()
     || (wsStatus === 'ready' ? 'The interviewer will begin shortly…' : 'Connecting to your interviewer…');
 
   // Derived: rough progress stage from how many turns the candidate has taken.
@@ -745,7 +754,7 @@ export default function Session() {
         {liveText && !search && (
           <div className="space-y-1">
             <div className="flex items-center gap-2">
-              <span className="text-[10px] font-bold text-on-tertiary-container">PARTNER (AI)</span>
+              <span className="text-[10px] font-bold text-on-tertiary-container">{liveRole === 'candidate' ? 'YOU' : 'PARTNER (AI)'}</span>
               <span className="flex items-center gap-1 text-[10px] text-secondary italic">
                 <span className="flex gap-0.5">
                   <span className="w-1 h-1 bg-on-tertiary-container rounded-full animate-pulse" />
