@@ -791,6 +791,57 @@ BUILD RULES:
 Return ONLY valid JSON: the root node with nested children. Emit the COMPLETE tree — do not truncate.`;
 }
 
+// Chunked reference-tree generation (avoids any single-call output cap): step 1
+// builds just the skeleton (root + top-level MECE buckets); step 2 expands each
+// bucket to full depth in its own call. The two are stitched together in code,
+// so the combined tree can be arbitrarily large.
+
+// Step 1 — skeleton only.
+export function REFERENCE_SKELETON_PROMPT(casePackage: string): string {
+  return `You are the answer-key builder for "The Case Owl". From the case package below, build ONLY the TOP of the MECE reference tree — do NOT go deep yet.
+
+CASE PACKAGE:
+"""
+${casePackage.slice(0, 12000)}
+"""
+
+Return:
+- Root (depth 0): the CEO's question framed as a diagnostic (diagnosis first, prescription second).
+- Level-1 buckets (depth 1): 3-4 MECE buckets (for profitability: Revenue / Cost / Mix-portfolio / External). For each give: id ("1","2","3"...), label (<=30 chars), status ("correct" or "neutral"), and a one-line "scope" listing what belongs under it (which solution moves, wrong answers, and exhibits map here).
+
+Return ONLY valid JSON:
+{ "id": "root", "label": "...", "depth": 0, "status": "correct",
+  "children": [ { "id": "1", "label": "...", "depth": 1, "status": "correct", "scope": "..." } ] }`;
+}
+
+// Step 2 — expand ONE bucket to full depth.
+export function REFERENCE_BRANCH_PROMPT(casePackage: string, branchJson: string): string {
+  return `You are the answer-key builder for "The Case Owl". Below is the full case package and ONE top-level branch of the reference tree. Expand THIS branch into a deep MECE subtree. Keep EVERY field terse.
+
+CASE PACKAGE:
+"""
+${casePackage.slice(0, 12000)}
+"""
+
+THE BRANCH TO EXPAND (keep its id/label/status; replace "scope" with real children):
+${branchJson}
+
+Node schema for the children you add:
+{ "id": "extend the parent id, e.g. '2.1.3'", "label": "<=30 chars", "depth": int,
+  "status": "correct"|"explored_wrong"|"dead_end"|"neutral",
+  "candidate_signal": "SHORT pattern of what the candidate says/asks that maps here",
+  "exhibit_trigger": "exhibit+layer, e.g. 'C-surface' (or null)",
+  "redirect_if_wrong": "ONLY on explored_wrong/dead_end: a SHORT redirect question (else null)",
+  "children": [ ... ] }
+
+RULES:
+- Place under THIS branch every solution move, wrong answer, and exhibit from the package that belongs here (per the branch's scope) — nothing orphaned.
+- Correct sub-paths reach depth 7-8 (unit economics / build-vs-buy / NPV grounded in exhibit data). Wrong answers go 1-2 levels then a redirect.
+- 12-22 nodes in this subtree. candidate_signal must be distinct across nodes.
+
+Return ONLY valid JSON: the branch node (its original id, label, depth 1, status) WITH its full nested "children". No "scope" field.`;
+}
+
 // Stage 3: overlay the candidate's actual journey (from the transcript) onto the
 // reference tree. Produces the eval tree + summary metrics shown after the case.
 export function POST_INTERVIEW_TREE_PROMPT(referenceTreeJson: string, transcript: string): string {

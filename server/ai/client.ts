@@ -2,7 +2,7 @@ import OpenAI from 'openai';
 import { env } from '../config/env.js';
 import { CaseType, Industry } from '../models/Case.js';
 import { TranscriptEntry } from '../models/Session.js';
-import { CASE_GENERATION_PROMPT, PHARMA_PROFITABILITY_CASE_PROMPT, EXHIBIT_CASE_PROMPT, EXTRACT_CASE_PROMPT, REFERENCE_TREE_PROMPT, POST_INTERVIEW_TREE_PROMPT, PharmaTheme, PRODUCT_CASE_PROMPT, GUESSTIMATE_PROMPT, ProductFormat, HINT_PROMPT, SCORING_PROMPT, EVALUATION_PROMPT, EvaluationContext, PROGRESS_INSIGHT_PROMPT, ProgressInsightContext } from './prompts.js';
+import { CASE_GENERATION_PROMPT, PHARMA_PROFITABILITY_CASE_PROMPT, EXHIBIT_CASE_PROMPT, EXTRACT_CASE_PROMPT, REFERENCE_SKELETON_PROMPT, REFERENCE_BRANCH_PROMPT, POST_INTERVIEW_TREE_PROMPT, PharmaTheme, PRODUCT_CASE_PROMPT, GUESSTIMATE_PROMPT, ProductFormat, HINT_PROMPT, SCORING_PROMPT, EVALUATION_PROMPT, EvaluationContext, PROGRESS_INSIGHT_PROMPT, ProgressInsightContext } from './prompts.js';
 
 export const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
 
@@ -180,23 +180,45 @@ export async function generateGuesstimateWithAI(difficulty: number): Promise<Mod
 
 // Stage 2: build the private MECE reference tree (answer key) from a case
 // package. Returns the root node (nested JSON). Used by the evaluator.
-export async function buildReferenceTree(casePackage: string): Promise<Record<string, unknown>> {
-  const response = await openai.chat.completions.create({
+// One JSON chunk call with a hard truncation guard.
+async function genTreeChunk(system: string, user: string): Promise<Record<string, unknown>> {
+  const r = await openai.chat.completions.create({
     model: TEXT_MODEL,
-    messages: [
-      { role: 'system', content: 'You build MECE case reference trees (answer keys) for an interview platform. Keep every field terse so the whole tree fits in one response. Return only valid JSON.' },
-      { role: 'user', content: REFERENCE_TREE_PROMPT(casePackage) },
-    ],
+    messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
     response_format: { type: 'json_object' },
     temperature: 0.3,
-    max_tokens: 16384, // gpt-4o output cap; slim node schema keeps 40-55 nodes within it
+    max_tokens: 12000,
   });
-  // Guard against a truncated/over-cap response (finish_reason 'length') — a cut
-  // JSON would throw on parse and we'd cache nothing; surface it clearly instead.
-  if (response.choices[0]?.finish_reason === 'length') {
-    throw new Error('reference tree exceeded the output limit (truncated) — tree not built');
-  }
-  return JSON.parse(response.choices[0]?.message?.content ?? '{}') as Record<string, unknown>;
+  if (r.choices[0]?.finish_reason === 'length') throw new Error('reference-tree chunk truncated');
+  return JSON.parse(r.choices[0]?.message?.content ?? '{}') as Record<string, unknown>;
+}
+
+// Build the reference tree in CHUNKS so the total tree is never bounded by a
+// single call's output cap: skeleton (root + top buckets) → expand each bucket
+// to full depth in its own call → stitch. Total output across calls can far
+// exceed 16k and no single call truncates.
+export async function buildReferenceTree(casePackage: string): Promise<Record<string, unknown>> {
+  const skeleton = await genTreeChunk(
+    'You build the top of MECE case reference trees (answer keys). Return only valid JSON.',
+    REFERENCE_SKELETON_PROMPT(casePackage),
+  );
+  const buckets = Array.isArray(skeleton.children) ? (skeleton.children as Array<Record<string, unknown>>) : [];
+  if (!buckets.length) return skeleton;
+
+  const expanded = await Promise.all(buckets.map(async (b) => {
+    try {
+      const sub = await genTreeChunk(
+        'You expand ONE branch of a MECE case reference tree to full depth. Keep every field terse. Return only valid JSON.',
+        REFERENCE_BRANCH_PROMPT(casePackage, JSON.stringify(b)),
+      );
+      return sub && sub.id ? sub : b; // fall back to the stub if a branch fails
+    } catch (e) {
+      console.error('reference-tree branch expand failed (using stub):', e);
+      return b;
+    }
+  }));
+
+  return { ...skeleton, children: expanded };
 }
 
 // Stage 3: overlay the candidate's actual journey onto the reference tree.
