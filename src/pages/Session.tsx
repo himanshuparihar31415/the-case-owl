@@ -607,8 +607,10 @@ export default function Session() {
       <div className="flex flex-col min-h-0 flex-grow p-5 gap-4">
         {/* Current question + contextual hints */}
         <div className="shrink-0 bg-surface-container-low rounded-lg p-4 border-l-4 border-on-tertiary-container">
-          <div className="label-blueprint mb-1">Current Question</div>
-          <p className="text-sm text-primary font-medium leading-relaxed">{currentQuestion}</p>
+          <div className="label-blueprint mb-1">{moduleKind === 'case' ? 'Current Question' : 'Latest from interviewer'}</div>
+          {/* Clamp + scroll so a long interviewer turn can't overflow and shove the
+              scratchpad off-screen. */}
+          <p className="text-sm text-primary font-medium leading-relaxed max-h-28 overflow-y-auto scrolling-log pr-1">{currentQuestion}</p>
           <div className="flex items-center flex-wrap gap-2 mt-3">
             <span className="text-[11px] text-secondary">Need help?</span>
             <button
