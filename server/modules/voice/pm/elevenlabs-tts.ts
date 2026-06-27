@@ -57,7 +57,10 @@ export function streamTts(text: string, onChunk: (base64Pcm: string) => void): T
     if (!text.trim()) return;
     const audio = await getClient().textToSpeech.convert(
       env.ELEVENLABS_VOICE_ID,
-      { text, modelId: env.ELEVENLABS_MODEL_ID, outputFormat: 'pcm_24000' },
+      {
+        text, modelId: env.ELEVENLABS_MODEL_ID, outputFormat: 'pcm_24000',
+        voiceSettings: { speed: env.ELEVENLABS_SPEED },
+      },
       { abortSignal: controller.signal },
     );
 

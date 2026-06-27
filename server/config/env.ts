@@ -11,6 +11,9 @@ const envSchema = z.object({
   ELEVENLABS_API_KEY: z.string().optional(),
   ELEVENLABS_VOICE_ID: z.string().default('oO7sLA3dWfQXsKeSAjpA'),
   ELEVENLABS_MODEL_ID: z.string().default('eleven_turbo_v2_5'),
+  // Speech rate (0.7 slow … 1.2 fast; 1.0 = default). Slightly slow by default
+  // so the interviewer doesn't sound rushed.
+  ELEVENLABS_SPEED: z.coerce.number().min(0.7).max(1.2).default(0.92),
   APP_URL: z.string().default('http://localhost:5050'),
   FRONTEND_URL: z.string().default('http://localhost:5173'),
   // Razorpay — set in local .env (untracked) and Railway dashboard vars. Never commit.
