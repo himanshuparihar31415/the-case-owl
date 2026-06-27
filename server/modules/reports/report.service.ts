@@ -221,6 +221,29 @@ function serializeCasePackage(c: InstanceType<typeof Case>): string {
   return parts.join('\n\n');
 }
 
+// Merge the per-node candidate overlay onto the full reference tree (recursively),
+// preserving every node and its depth. Nodes with no overlay are 'skipped'.
+function mergeOverlay(node: Record<string, unknown>, overlay: Map<string, Record<string, unknown>>): Record<string, unknown> {
+  const id = node.id != null ? String(node.id) : '';
+  const o = overlay.get(id);
+  const children = Array.isArray(node.children) ? (node.children as Array<Record<string, unknown>>) : [];
+  return {
+    id: node.id,
+    label: node.label,
+    depth: node.depth,
+    reference_status: node.reference_status ?? node.status ?? 'neutral',
+    candidate_status: o?.candidate_status ?? 'skipped',
+    quality: o?.quality ?? 'n/a',
+    time_spent: o?.time_spent ?? null,
+    candidate_quotes: o?.candidate_quotes ?? [],
+    evaluation_note: o?.evaluation_note ?? null,
+    exhibit_shared: o?.exhibit_shared ?? null,
+    was_nudged: o?.was_nudged ?? false,
+    recommended_path: o?.recommended_path ?? null,
+    children: children.map((c) => mergeOverlay(c, overlay)),
+  };
+}
+
 // Build the Stage-2 reference tree + Stage-3 evaluation tree (consulting only).
 // The reference tree is cached on the Case so it's generated once per case. All
 // best-effort: a failure here never blocks the report. Returns what to merge
@@ -237,7 +260,13 @@ async function buildCaseTrees(
       await Case.updateOne({ _id: caseDoc._id }, { $set: { referenceTree: refTree } }).catch(() => { /* non-fatal */ });
     }
     const evalOut = await buildEvaluationTree(JSON.stringify(refTree), transcript);
-    return { evaluationTree: evalOut.tree ?? evalOut, treeSummary: evalOut.summary };
+    // The eval step returns only a small per-node overlay (keyed by id) — NOT the
+    // whole tree — so it never gets truncated and the FULL reference-tree depth
+    // survives. Merge the overlay onto the cached reference tree here.
+    const overlays = Array.isArray(evalOut.overlays) ? (evalOut.overlays as Array<Record<string, unknown>>) : [];
+    const overlayMap = new Map(overlays.filter((o) => o.id != null).map((o) => [String(o.id), o]));
+    const merged = mergeOverlay(refTree as Record<string, unknown>, overlayMap);
+    return { evaluationTree: merged, treeSummary: evalOut.summary };
   } catch (e) {
     console.error('case-tree build failed (non-fatal):', e);
     return null;

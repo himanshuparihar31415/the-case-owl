@@ -810,23 +810,27 @@ INTERVIEW TRANSCRIPT (candidate + interviewer, with timestamps; exhibits shared 
 ${transcript.slice(0, 16000)}
 """
 
-Produce the EVALUATION TREE: the same tree shape, every node keeping its reference fields and ADDING:
-{
-  "reference_status": "<the node's original status>",
-  "candidate_status": "explored" | "mentioned" | "skipped" | "wrong_turn" | "dead_end_hit",
-  "time_spent": "approx from timestamps, e.g. '3m 20s' (or null if skipped)",
-  "quality": "strong" | "adequate" | "weak" | "wrong" | "n/a",
-  "candidate_quotes": ["1-3 verbatim, most diagnostic quotes at this node (empty if skipped)"],
-  "evaluation_note": "judgment of THIS node — what was good, missed, what it reveals",
-  "exhibit_shared": "which exhibits were actually shared here during the interview (or null)",
-  "was_nudged": true/false,
-  "children": [ ... ]
-}
+Do NOT re-emit the tree structure. The full tree (with its depth) is kept separately and merged with your output by node id. Return ONLY a flat OVERLAY: one entry per node the candidate engaged with, keyed by the node's "id". Nodes you don't mention are treated as skipped — so you only need to emit the nodes the candidate actually touched (explored / mentioned / wrong_turn / dead_end_hit). This keeps your output small so NO node is lost to truncation.
+
+"overlays": [
+  {
+    "id": "2.1.3",                  // MUST match a node id from the reference tree
+    "candidate_status": "explored" | "mentioned" | "wrong_turn" | "dead_end_hit",
+    "time_spent": "approx from timestamps, e.g. '3m 20s'",
+    "quality": "strong" | "adequate" | "weak" | "wrong",
+    "candidate_quotes": ["1-3 verbatim, most diagnostic quotes at this node"],
+    "evaluation_note": "judgment of THIS node — what was good, missed, what it reveals",
+    "exhibit_shared": "which exhibits were actually shared here (or null)",
+    "was_nudged": true/false,
+    "recommended_path": "ONLY for wrong_turn/dead_end_hit: the correct path they should have taken from the same parent + where (timestamp) they were redirected (else null)"
+  }
+]
 
 RULES:
-- candidate_status: explored = visited + engaged; mentioned = touched briefly, didn't dig; skipped = never went (quality n/a); wrong_turn = went down a wrong path; dead_end_hit = hit a dead end.
+- Emit an overlay ONLY for nodes the candidate engaged with. Every other reference node is auto-marked skipped — don't list them.
+- candidate_status: explored = visited + engaged; mentioned = touched briefly, didn't dig; wrong_turn = went down a wrong path; dead_end_hit = hit a dead end.
 - Getting to a correct node UNPROMPTED (was_nudged=false) is better than after a nudge.
-- For wrong_turn / dead_end_hit nodes, also fill "recommended_path": a short note of the correct path they should have taken from the same parent, and where (timestamp) they were redirected — this renders as a faded "ghost branch".
+- ids MUST exactly match reference-tree node ids, else the overlay won't attach.
 
 Then also return a "summary" object:
 {
@@ -840,5 +844,5 @@ Then also return a "summary" object:
   "overall_rating": "one honest line: hire/borderline/no-hire + the why"
 }
 
-Return ONLY valid JSON: { "tree": <root eval node with nested children>, "summary": { ... } }`;
+Return ONLY valid JSON: { "overlays": [ ... ], "summary": { ... } }`;
 }
