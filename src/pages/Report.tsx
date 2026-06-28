@@ -10,6 +10,8 @@ import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
 } from 'recharts';
 
+import { ExhibitCard } from '@/src/components/ExhibitCard';
+
 // React-Flow graph is heavy — lazy-load so it only ships when a report renders.
 const CaseTree = React.lazy(() => import('@/src/components/CaseTree'));
 
@@ -1045,16 +1047,20 @@ export default function Report() {
               {solution && Array.isArray(solution.exhibits) && solution.exhibits.length > 0 && (
                 <div>
                   <div className="label-blueprint mb-2">Exhibits</div>
-                  <div className="space-y-3">
+                  <div className="grid sm:grid-cols-2 gap-3">
                     {solution.exhibits.map((e: any, i: number) => (
-                      <div key={i} className="bg-surface-container-low rounded-lg p-3">
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="font-bold text-sm text-primary">{e.label ?? `Exhibit ${i + 1}`}</span>
-                          {e.visual && <span className="text-[10px] uppercase tracking-wide text-secondary bg-surface-container px-1.5 py-0.5 rounded">{e.visual}</span>}
-                        </div>
-                        {e.data && <p className="text-xs text-on-surface-variant leading-relaxed whitespace-pre-line font-mono">{e.data}</p>}
-                      </div>
+                      <div key={i}><ExhibitCard ex={e} large /></div>
                     ))}
+                  </div>
+                </div>
+              )}
+              {solution?.quant && (solution.quant.task || solution.quant.derivation) && (
+                <div>
+                  <div className="label-blueprint mb-2">The quant</div>
+                  <div className="bg-surface-container-low rounded-lg p-3 space-y-1">
+                    {solution.quant.task && <p className="text-sm font-bold text-primary">{solution.quant.task}</p>}
+                    {solution.quant.derivation && <p className="text-sm text-on-surface-variant leading-relaxed whitespace-pre-line">{solution.quant.derivation}</p>}
+                    {solution.quant.answer && <p className="text-sm text-green-700"><span className="font-bold">Answer: </span>{solution.quant.answer}</p>}
                   </div>
                 </div>
               )}
