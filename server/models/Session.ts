@@ -19,6 +19,7 @@ export interface ISession extends Document {
     caseType: string;
     interviewerStyle: InterviewerStyle;
     durationMinutes: number;
+    voiceId?: string; // ElevenLabs voice for pipeline-voiced modules (product / energy-profitability)
   };
   status: SessionStatus;
   transcript: TranscriptEntry[];
@@ -58,6 +59,7 @@ const SessionSchema = new Schema<ISession>(
         default: 'neutral',
       },
       durationMinutes: { type: Number, default: 45 },
+      voiceId: { type: String },
     },
     status: { type: String, enum: ['active', 'completed', 'abandoned'], default: 'active' },
     transcript: [

@@ -15,6 +15,7 @@ interface CreateSessionInput {
     caseType: string;
     interviewerStyle: InterviewerStyle;
     durationMinutes: number;
+    voiceId?: string; // ElevenLabs voice for pipeline-voiced modules
   };
 }
 

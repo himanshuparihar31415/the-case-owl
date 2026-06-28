@@ -34,6 +34,12 @@ const PRODUCT_FORMATS: { id: string; label: string; desc: string }[] = [
   { id: 'rootcause', label: 'Root-cause / Metrics', desc: 'A metric moved — diagnose it / define success metrics.' },
   { id: 'prioritization', label: 'Execution / Prioritization', desc: 'Prioritize features under constraints.' },
 ];
+// ElevenLabs voices for the pipeline-voiced interviews (product, energy-profitability).
+const VOICES: { id: string; label: string }[] = [
+  { id: 'oO7sLA3dWfQXsKeSAjpA', label: 'Default' },
+  { id: '82pE4ethA6AG1rCthGGn', label: 'Raju' },
+  { id: '1zUSi8LeHs9M2mV8X6YS', label: 'Sogam' },
+];
 
 export default function Config() {
   const navigate = useNavigate();
@@ -44,6 +50,7 @@ export default function Config() {
   const [selectedIndustry, setSelectedIndustry] = useState('Pharma');
   const [difficulty, setDifficulty] = useState(3);
   const [interviewerStyle, setInterviewerStyle] = useState('Neutral');
+  const [voiceId, setVoiceId] = useState(VOICES[0].id);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [needsPlan, setNeedsPlan] = useState(false);
@@ -74,7 +81,7 @@ export default function Config() {
         const caseType = module === 'product' ? `product:${productFormat}` : 'guesstimate';
         const s = await api.post<{ session: { _id: string } }>('/sessions', {
           caseId: c._id,
-          config: { difficulty, industry: 'general', caseType, interviewerStyle: styleVal, durationMinutes: 45 },
+          config: { difficulty, industry: 'general', caseType, interviewerStyle: styleVal, durationMinutes: 45, voiceId },
         });
         navigate(`/session/${s.session._id}`);
         return;
@@ -124,6 +131,7 @@ export default function Config() {
           caseType: selectedArchetype,
           interviewerStyle: styleMap[interviewerStyle] ?? 'neutral',
           durationMinutes: 45,
+          voiceId,
         },
       });
 
@@ -276,6 +284,32 @@ export default function Config() {
             ))}
           </div>
         </div>
+
+        {/* Interviewer voice — only the pipeline-voiced interviews (product, and
+            energy-profitability consulting) use ElevenLabs; others use the
+            Realtime voice and ignore this. */}
+        {(module === 'product' || (module === 'case' && selectedArchetype === 'profitability' && selectedIndustry.toLowerCase() === 'energy')) && (
+          <div>
+            <label className="label-blueprint mb-3 block">Interviewer voice</label>
+            <div className="grid grid-cols-3 gap-2">
+              {VOICES.map((v) => (
+                <button
+                  key={v.id}
+                  type="button"
+                  onClick={() => setVoiceId(v.id)}
+                  className={cn(
+                    'px-2 py-2 rounded-lg border text-xs font-semibold transition-all',
+                    voiceId === v.id
+                      ? 'border-on-tertiary-container bg-on-tertiary-container/10 text-primary'
+                      : 'border-outline-variant/30 text-secondary hover:border-on-tertiary-container/50'
+                  )}
+                >
+                  {v.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </section>
 
       {/* Case source (consulting only) */}

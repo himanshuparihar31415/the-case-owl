@@ -140,7 +140,7 @@ export function handlePmPipeline(args: PmPipelineArgs): void {
       currentTts = streamTts(reply, (chunk) => {
         pcmBytes += (chunk.length * 3) >> 2; // base64 → bytes (≈, ignoring padding)
         if (clientWs.readyState === WebSocket.OPEN) sendToClient(clientWs, { type: 'audio_chunk', data: chunk });
-      });
+      }, session.config.voiceId);
       try {
         await currentTts.done; // all chunks sent to the client
         // PCM16 @ 24kHz mono = 48000 bytes/sec. Pad a little for scheduling tail.

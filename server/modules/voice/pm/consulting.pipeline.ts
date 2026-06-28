@@ -141,7 +141,7 @@ export function handleConsultingPipeline(args: Args): void {
       currentTts = streamTts(reply, (chunk) => {
         pcmBytes += (chunk.length * 3) >> 2;
         if (clientWs.readyState === WebSocket.OPEN) sendToClient(clientWs, { type: 'audio_chunk', data: chunk });
-      });
+      }, session.config.voiceId);
       try {
         await currentTts.done;
         const durationMs = (pcmBytes / 48000) * 1000 + 150; // PCM16@24kHz = 48000 B/s

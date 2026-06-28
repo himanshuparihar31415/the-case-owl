@@ -49,14 +49,15 @@ async function collect(audio: unknown): Promise<Buffer> {
   return Buffer.concat(chunks);
 }
 
-/** Synthesize `text`, then emit it as base64 PCM16@24k chunks via `onChunk`. */
-export function streamTts(text: string, onChunk: (base64Pcm: string) => void): TtsHandle {
+/** Synthesize `text`, then emit it as base64 PCM16@24k chunks via `onChunk`.
+ *  `voiceId` overrides the default voice (per-session voice selection). */
+export function streamTts(text: string, onChunk: (base64Pcm: string) => void, voiceId?: string): TtsHandle {
   const controller = new AbortController();
 
   const done = (async () => {
     if (!text.trim()) return;
     const audio = await getClient().textToSpeech.convert(
-      env.ELEVENLABS_VOICE_ID,
+      voiceId || env.ELEVENLABS_VOICE_ID,
       {
         text, modelId: env.ELEVENLABS_MODEL_ID, outputFormat: 'pcm_24000',
         voiceSettings: { speed: env.ELEVENLABS_SPEED },
