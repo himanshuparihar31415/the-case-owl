@@ -265,6 +265,7 @@ Return ONLY valid JSON matching this EXACT schema. Scores are 0–10. Cite real 
     "primaryStrengths": ["string", "string"], "criticalGaps": ["string", "string"],
     "hintDependencyNote": "string — one line on hint reliance"
   },
+  "candidateSolution": "string — 3-5 sentences reconstructing the recommendation/answer the candidate ACTUALLY arrived at by the end, in THEIR OWN logic (paraphrased faithfully from the transcript — their structure, their numbers, their final call). Do NOT improve it or add steps they skipped. If they never reached a clear recommendation, say exactly that and describe how far they got and where they stopped.",
   "competencies": [
     // EXACTLY these competencies, in this order — use these EXACT keys + labels:
     // ${comps.map((c) => `${c.key} ("${c.label}" — ${c.focus})`).join('; ')}

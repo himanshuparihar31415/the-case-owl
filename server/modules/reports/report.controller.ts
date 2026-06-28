@@ -15,12 +15,29 @@ export async function getReport(req: AuthRequest, res: Response, next: NextFunct
       plausibleSolution?: string; solutionTree?: unknown; idealScript?: unknown;
       exhibits?: unknown; quant?: unknown; commonWrongTurns?: unknown;
     } | null = null;
+    // The case brief (prompt + scenario + key data) so the report can show the
+    // candidate WHAT they were asked, formatted, at the top of the Overview.
+    let caseBrief: {
+      title?: string; type?: string; industry?: string;
+      prompt?: string; scenario?: string;
+      keyDataPoints?: unknown;
+    } | null = null;
     // Also ship the FULL transcript (every turn) so the user can download the
     // complete conversation — the report's analysis only carries key turns.
     const session = await Session.findOne({ _id: req.params.sessionId, userId: req.userId! }).select('caseId transcript supervisorFlags');
     if (session?.caseId) {
-      const caseDoc = await Case.findById(session.caseId).select('plausibleSolution solutionTree idealScript exhibits quant commonWrongTurns');
+      const caseDoc = await Case.findById(session.caseId).select('title type industry prompt scenario keyDataPoints plausibleSolution solutionTree idealScript exhibits quant commonWrongTurns');
       const hasExhibits = Array.isArray(caseDoc?.exhibits) && caseDoc!.exhibits!.length > 0;
+      if (caseDoc && (caseDoc.scenario || caseDoc.prompt)) {
+        caseBrief = {
+          title: caseDoc.title,
+          type: caseDoc.type,
+          industry: caseDoc.industry,
+          prompt: caseDoc.prompt,
+          scenario: caseDoc.scenario,
+          keyDataPoints: caseDoc.keyDataPoints,
+        };
+      }
       if (caseDoc && (caseDoc.plausibleSolution || caseDoc.solutionTree || caseDoc.idealScript || hasExhibits)) {
         solution = {
           plausibleSolution: caseDoc.plausibleSolution,
@@ -40,7 +57,7 @@ export async function getReport(req: AuthRequest, res: Response, next: NextFunct
     const me = await User.findById(req.userId!).select('role');
     if (me?.role === 'admin') supervisor = session?.supervisorFlags ?? [];
 
-    res.json({ report, solution, transcript: session?.transcript ?? [], supervisor });
+    res.json({ report, solution, caseBrief, transcript: session?.transcript ?? [], supervisor });
   } catch (err) {
     next(err);
   }

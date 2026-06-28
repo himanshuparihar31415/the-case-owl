@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   CheckCircle, AlertCircle, AlertTriangle, Loader2, ArrowRight, Download,
-  RefreshCw, Bookmark, ChevronDown,
+  RefreshCw, Bookmark, ChevronDown, FileText, X,
 } from 'lucide-react';
 import { cn } from '@/src/lib/utils';
 import { Link, useParams } from 'react-router-dom';
@@ -101,6 +101,7 @@ export default function Report() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const [report, setReport] = useState<ReportData | null>(null);
   const [solution, setSolution] = useState<{ plausibleSolution?: string; solutionTree?: any; idealScript?: any[]; exhibits?: any[]; quant?: any; commonWrongTurns?: string[] } | null>(null);
+  const [caseBrief, setCaseBrief] = useState<{ title?: string; type?: string; industry?: string; prompt?: string; scenario?: string; keyDataPoints?: Array<{ label?: string; value?: string }> } | null>(null);
   const [fullTranscript, setFullTranscript] = useState<Array<{ role: string; text: string; timestamp?: string }>>([]);
   const [supervisor, setSupervisor] = useState<Array<{ verdict: string; term?: string; at?: string }> | null>(null);
   const [loading, setLoading] = useState(true);
@@ -110,11 +111,12 @@ export default function Report() {
   const [filter, setFilter] = useState<Filter>('All');
   const [openCoach, setOpenCoach] = useState<Set<number>>(new Set());
   const [activeTab, setActiveTab] = useState<string>('overview');
+  const [showCase, setShowCase] = useState(false);
 
   useEffect(() => {
     if (!sessionId) return;
-    api.get<{ report: ReportData; solution: typeof solution; transcript: typeof fullTranscript; supervisor?: typeof supervisor }>(`/reports/${sessionId}`)
-      .then((data) => { setReport(data.report); setSolution(data.solution ?? null); setFullTranscript(data.transcript ?? []); setSupervisor(data.supervisor ?? null); setLoading(false); })
+    api.get<{ report: ReportData; solution: typeof solution; caseBrief: typeof caseBrief; transcript: typeof fullTranscript; supervisor?: typeof supervisor }>(`/reports/${sessionId}`)
+      .then((data) => { setReport(data.report); setSolution(data.solution ?? null); setCaseBrief(data.caseBrief ?? null); setFullTranscript(data.transcript ?? []); setSupervisor(data.supervisor ?? null); setLoading(false); })
       .catch((err) => { setError(err instanceof Error ? err.message : 'Failed to load report.'); setLoading(false); });
   }, [sessionId]);
 
@@ -242,6 +244,11 @@ export default function Report() {
           <p className={cn('mt-2 font-bold text-sm', DECISION_COLOR[decision] ?? 'text-primary')}>
             {decision} · {a.difficultyLabel ?? ''}
           </p>
+          {caseBrief && (caseBrief.prompt || caseBrief.scenario) && (
+            <button onClick={() => setShowCase(true)} className="mt-3 inline-flex items-center gap-1.5 text-sm font-bold text-on-tertiary-container hover:underline">
+              <FileText className="w-4 h-4" /> View full case
+            </button>
+          )}
         </div>
         <div className="flex items-center gap-5">
           {!suppressed && (
@@ -297,7 +304,7 @@ export default function Report() {
             print renders everything. */}
         <nav className="xl:sticky xl:top-32 self-start flex xl:flex-col gap-1 overflow-x-auto scrolling-log print:hidden -mx-1 px-1">
           {TABS.filter(([id]) => {
-            if (id === 'solution') return !!(solution && (solution.plausibleSolution || solution.solutionTree));
+            if (id === 'solution') return !!(a.candidateSolution || (solution && (solution.plausibleSolution || solution.solutionTree)));
             if (id === 'ideal') return !!((a.idealAnswers && a.idealAnswers.length) || (solution && Array.isArray(solution.idealScript) && solution.idealScript.length > 0));
             if (id === 'exhibits') return !!(solution && Array.isArray(solution.exhibits) && solution.exhibits.length > 0);
             if (id === 'casemap') return !!a.evaluationTree;
@@ -312,6 +319,40 @@ export default function Report() {
 
         {/* CENTER: report sections (only the active tab's render on screen) */}
         <div className="min-w-0 space-y-10">
+          {/* The Case — what the candidate was asked, formatted */}
+          {caseBrief && (caseBrief.prompt || caseBrief.scenario) && (
+            <Section id="thecase" title="The Case" tab="overview" activeTab={activeTab}
+              action={(caseBrief.type || caseBrief.industry) ? <span className="label-blueprint capitalize">{[caseBrief.type, caseBrief.industry].filter(Boolean).join(' · ')}</span> : undefined}>
+              <div className="no-line-card p-6 space-y-4">
+                {caseBrief.prompt && (
+                  <div className="border-l-4 border-on-tertiary-container pl-4">
+                    <div className="label-blueprint text-on-tertiary-container font-bold mb-1">The prompt</div>
+                    <p className="text-base text-primary font-medium leading-relaxed">{caseBrief.prompt}</p>
+                  </div>
+                )}
+                {caseBrief.scenario && caseBrief.scenario !== caseBrief.prompt && (
+                  <div>
+                    <div className="label-blueprint mb-1">Background</div>
+                    <p className="text-sm text-on-surface-variant leading-relaxed whitespace-pre-line">{caseBrief.scenario}</p>
+                  </div>
+                )}
+                {Array.isArray(caseBrief.keyDataPoints) && caseBrief.keyDataPoints.length > 0 && (
+                  <div>
+                    <div className="label-blueprint mb-2">Key data</div>
+                    <div className="grid sm:grid-cols-2 gap-2">
+                      {caseBrief.keyDataPoints.map((d, i) => (
+                        <div key={i} className="flex justify-between gap-3 bg-surface-container-low rounded-lg px-3 py-2 text-sm">
+                          <span className="text-secondary">{d.label}</span>
+                          <span className="font-bold text-primary text-right">{d.value}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </Section>
+          )}
+
           {/* Overall */}
           <Section id="overall" title="Overall Assessment" tab="overview" activeTab={activeTab}>
             <div className="no-line-card p-6 space-y-5">
@@ -771,17 +812,23 @@ export default function Report() {
             </Section>
           )}
 
-          {/* Model Solution — the pre-generated answer key + solution tree */}
-          {solution && (solution.plausibleSolution || solution.solutionTree) && (
-            <Section id="solution" title="Model Solution" tab="solution" activeTab={activeTab} action={<span className="label-blueprint">the answer key</span>}>
+          {/* Model Solution — the candidate's actual answer vs. the answer key */}
+          {(a.candidateSolution || (solution && (solution.plausibleSolution || solution.solutionTree))) && (
+            <Section id="solution" title="Model Solution" tab="solution" activeTab={activeTab} action={<span className="label-blueprint">your answer vs. the answer key</span>}>
               <div className="space-y-4">
-                {solution.plausibleSolution && (
+                {a.candidateSolution && (
+                  <div className="no-line-card p-6 border-l-4 border-amber-400">
+                    <p className="label-blueprint text-amber-700 font-bold mb-2">Your solution</p>
+                    <p className="text-sm text-primary leading-relaxed whitespace-pre-line">{a.candidateSolution}</p>
+                  </div>
+                )}
+                {solution?.plausibleSolution && (
                   <div className="no-line-card p-6 border-l-4 border-on-tertiary-container">
-                    <p className="label-blueprint text-on-tertiary-container font-bold mb-2">The recommendation</p>
+                    <p className="label-blueprint text-on-tertiary-container font-bold mb-2">The model recommendation</p>
                     <p className="text-sm text-primary leading-relaxed">{solution.plausibleSolution}</p>
                   </div>
                 )}
-                {solution.solutionTree && (
+                {solution?.solutionTree && (
                   <div className="no-line-card p-6">
                     <p className="label-blueprint text-secondary font-bold mb-4">How a strong candidate gets there — solution tree</p>
                     <SolutionNode node={solution.solutionTree} />
@@ -954,6 +1001,67 @@ export default function Report() {
           </Link>
         </div>
       </div>
+
+      {/* Full-case modal — the complete brief + exhibits the candidate worked from */}
+      {showCase && caseBrief && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 print:hidden" onClick={() => setShowCase(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-start justify-between gap-4 p-6 border-b border-outline-variant/15 shrink-0">
+              <div>
+                <span className="label-blueprint text-on-tertiary-container font-bold block mb-1">The Full Case</span>
+                <h2 className="font-headline text-xl font-extrabold text-primary">{caseBrief.title ?? a.caseTitle ?? 'Case'}</h2>
+                {(caseBrief.type || caseBrief.industry) && (
+                  <p className="text-xs text-secondary capitalize mt-0.5">{[caseBrief.type, caseBrief.industry].filter(Boolean).join(' · ')}</p>
+                )}
+              </div>
+              <button onClick={() => setShowCase(false)} className="text-secondary hover:text-primary transition shrink-0"><X className="w-5 h-5" /></button>
+            </div>
+            <div className="overflow-y-auto scrolling-log p-6 space-y-5">
+              {caseBrief.prompt && (
+                <div className="border-l-4 border-on-tertiary-container pl-4">
+                  <div className="label-blueprint text-on-tertiary-container font-bold mb-1">The prompt</div>
+                  <p className="text-base text-primary font-medium leading-relaxed">{caseBrief.prompt}</p>
+                </div>
+              )}
+              {caseBrief.scenario && caseBrief.scenario !== caseBrief.prompt && (
+                <div>
+                  <div className="label-blueprint mb-1">Background</div>
+                  <p className="text-sm text-on-surface-variant leading-relaxed whitespace-pre-line">{caseBrief.scenario}</p>
+                </div>
+              )}
+              {Array.isArray(caseBrief.keyDataPoints) && caseBrief.keyDataPoints.length > 0 && (
+                <div>
+                  <div className="label-blueprint mb-2">Key data</div>
+                  <div className="grid sm:grid-cols-2 gap-2">
+                    {caseBrief.keyDataPoints.map((d, i) => (
+                      <div key={i} className="flex justify-between gap-3 bg-surface-container-low rounded-lg px-3 py-2 text-sm">
+                        <span className="text-secondary">{d.label}</span>
+                        <span className="font-bold text-primary text-right">{d.value}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {solution && Array.isArray(solution.exhibits) && solution.exhibits.length > 0 && (
+                <div>
+                  <div className="label-blueprint mb-2">Exhibits</div>
+                  <div className="space-y-3">
+                    {solution.exhibits.map((e: any, i: number) => (
+                      <div key={i} className="bg-surface-container-low rounded-lg p-3">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="font-bold text-sm text-primary">{e.label ?? `Exhibit ${i + 1}`}</span>
+                          {e.visual && <span className="text-[10px] uppercase tracking-wide text-secondary bg-surface-container px-1.5 py-0.5 rounded">{e.visual}</span>}
+                        </div>
+                        {e.data && <p className="text-xs text-on-surface-variant leading-relaxed whitespace-pre-line font-mono">{e.data}</p>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
