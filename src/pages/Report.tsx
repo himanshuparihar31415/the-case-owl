@@ -727,18 +727,32 @@ export default function Report() {
           {a.evaluationTree && (
             <Section id="casemap" title="Case Map" tab="casemap" activeTab={activeTab} action={<span className="label-blueprint">your path vs. the answer key</span>}>
               <div className="space-y-4">
-                {a.treeScore && (
-                  <div className="no-line-card p-5 flex items-center gap-5">
-                    <div className="text-center shrink-0">
-                      <div className="font-headline text-3xl font-extrabold text-primary leading-none">{a.treeScore.percentage}%</div>
-                      <div className="label-blueprint mt-1">{a.treeScore.total}/{a.treeScore.max} pts</div>
+                {a.treeScore && (() => {
+                  // New dual-score shape (global/local); fall back to the legacy flat shape for old reports.
+                  const ts = a.treeScore;
+                  const pct = ts.global?.percentage ?? ts.percentage ?? 0;
+                  const score = ts.global?.score ?? ts.total ?? 0;
+                  const max = ts.global?.max ?? ts.max ?? 0;
+                  const reached = ts.terminals_reached, total = ts.terminals_total, strong = ts.strong_branches;
+                  return (
+                    <div className="no-line-card p-5 flex items-center gap-5">
+                      <div className="text-center shrink-0">
+                        <div className="font-headline text-3xl font-extrabold text-primary leading-none">{pct}%</div>
+                        <div className="label-blueprint mt-1">{score}/{max} pts</div>
+                      </div>
+                      <div className="flex-grow">
+                        <div className="font-bold text-primary">{ts.grade}</div>
+                        {reached != null ? (
+                          <p className="text-xs text-secondary mt-0.5">
+                            Global {pct}% · reached {reached}/{total} terminal{total === 1 ? '' : 's'} · {strong} strong branch{strong === 1 ? '' : 'es'}. Global measures coverage; per-branch local scores measure depth of thinking. Open the map for the breakdown.
+                          </p>
+                        ) : (
+                          <p className="text-xs text-secondary mt-0.5">Deterministic traversal score. Open the map for the full breakdown.</p>
+                        )}
+                      </div>
                     </div>
-                    <div className="flex-grow">
-                      <div className="font-bold text-primary">{a.treeScore.grade}</div>
-                      <p className="text-xs text-secondary mt-0.5">Deterministic traversal score — points for the nodes you reached, in what order, minus wrong turns, dead ends and nudges. Open the map for the full breakdown.</p>
-                    </div>
-                  </div>
-                )}
+                  );
+                })()}
                 {a.treeSummary && (
                   <div className="no-line-card p-5">
                     {a.treeSummary.overall_rating && (

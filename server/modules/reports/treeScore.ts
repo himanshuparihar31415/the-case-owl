@@ -1,7 +1,9 @@
 // Deterministic tree-traversal scoring engine (no LLM, pure math). Walks the
 // candidate's ordered node-visit list against the reference tree and produces a
-// score + diagnostic breakdown + per-node points (for the Case Map viz).
-// Implements THE CASE OWL "Tree Traversal Scoring Engine" spec.
+// DUAL score — a GLOBAL score (breadth + prioritisation + structure across the
+// whole case) and a LOCAL per-branch score (how good the thinking was on each
+// branch they chose) — plus a two-dimensional grade. Implements the revised
+// "depth-rewarded, breadth-aware" scoring strategy.
 
 type RawNode = {
   id?: string; label?: string; depth?: number;
@@ -12,17 +14,16 @@ type Visit = { id?: string; was_nudged?: boolean };
 
 interface IndexedNode { id: string; label: string; status: string; depth: number; rank?: number; hasCorrectChild: boolean }
 
-// --- weight tables (spec §1) ---
+// --- weight tables ---
 const CORRECT_W: Record<number, number> = { 0: 0, 1: 5, 2: 10, 3: 20, 4: 35, 5: 55, 6: 75, 7: 95, 8: 120 };
 const correctWeight = (d: number): number => CORRECT_W[d] ?? (d > 8 ? 120 : 0);
-function weightFor(status: string, d: number): number {
-  if (status === 'correct') return correctWeight(d);
-  if (status === 'neutral') return Math.floor(correctWeight(d) * 0.3);
-  return 0;
-}
-const deadEndPenalty = (d: number): number => (d <= 2 ? -10 : d === 3 ? -20 : -35);
-const chainMult = (len: number): number => (len >= 7 ? 1.7 : len === 6 ? 1.5 : len === 5 ? 1.35 : len === 4 ? 1.2 : len === 3 ? 1.1 : 1.0);
-const decay = (c: number): number => (c <= 0 ? 1.0 : c === 1 ? 0.75 : c === 2 ? 0.55 : c === 3 ? 0.4 : 0.25);
+// Soft nudge: a hint is a flag, not a punishment. Nudged node ×0.85, next ×0.95.
+const nudgeMultFor = (countdown: number): number => (countdown === 2 ? 0.85 : countdown === 1 ? 0.95 : 1.0);
+// Contamination decay after wrong turns / dead ends on a branch (softened).
+const decay = (c: number): number => (c <= 0 ? 1.0 : c === 1 ? 0.8 : c === 2 ? 0.65 : c === 3 ? 0.5 : 0.4);
+// Chain reward for sustained parent→child correct depth, capped at 1.3.
+const chainMult = (len: number): number => (len >= 7 ? 1.3 : len === 6 ? 1.25 : len === 5 ? 1.2 : len === 4 ? 1.15 : len === 3 ? 1.1 : 1.0);
+const DEAD_END_PENALTY = -5;
 
 const statusOf = (n: RawNode): string => n.reference_status ?? n.status ?? 'neutral';
 const branchOf = (id: string): string => (id === 'root' ? 'root' : id.split('.')[0]);
@@ -30,46 +31,85 @@ const parentOf = (id: string): string => { const p = id.split('.'); return p.len
 
 function indexTree(root: RawNode): Map<string, IndexedNode> {
   const map = new Map<string, IndexedNode>();
-  const walk = (n: RawNode) => {
+  const walkIdx = (n: RawNode) => {
     const children = n.children ?? [];
     const hasCorrectChild = children.some((c) => statusOf(c) === 'correct');
     map.set(String(n.id), { id: String(n.id), label: n.label ?? '', status: statusOf(n), depth: n.depth ?? 0, rank: n.rank, hasCorrectChild });
-    children.forEach(walk);
+    children.forEach(walkIdx);
   };
-  walk(root);
+  walkIdx(root);
   return map;
 }
 
+// ---- public output shapes ----
+export interface LocalBranch {
+  label: string;
+  not_explored?: boolean;
+  points?: number; max?: number; percentage?: number; grade?: string;
+  depth_reached?: number; terminal_reached?: boolean; contamination?: number; nudges?: number;
+}
 export interface TreeScore {
-  total: number; max: number; percentage: number; grade: string;
-  idealPath: string[]; // ordered node ids of the max-points traversal (the "ideal sequence")
-  branch_scores: Record<string, { label: string; raw: number; ordering: number; final: number; depthReached: number; terminalReached: boolean }>;
-  penalties: { dead_ends_hit: Array<{ node: string; penalty: number }>; wrong_turns: string[]; nudges_given: number; nudge_point_reduction: number };
-  coverage: { terminals_reached: string; coverage_points: number; branches_never_entered: string[] };
+  global: { score: number; max: number; percentage: number };
+  local: Record<string, LocalBranch>;
+  terminals_reached: number;
+  terminals_total: number;
+  strong_branches: number;
+  grade: string;
+  idealPath: string[];        // ordered node ids of the max-points traversal
   perNodePoints: Record<string, number>;
 }
 
-function gradeFor(pct: number): string {
-  if (pct >= 85) return 'Strong Hire';
-  if (pct >= 70) return 'Hire';
-  if (pct >= 55) return 'Borderline';
-  if (pct >= 40) return 'Lean No';
-  return 'No Hire';
+function branchGrade(pct: number): string {
+  if (pct >= 85) return 'Excellent';
+  if (pct >= 70) return 'Good';
+  if (pct >= 50) return 'Adequate';
+  if (pct >= 30) return 'Weak';
+  return 'Poor';
 }
 
-// Core walk. Returns total path score + diagnostics + per-node points.
-function walk(root: RawNode, traversal: Visit[]): Omit<TreeScore, 'max' | 'percentage' | 'grade' | 'idealPath'> {
-  const map = indexTree(root);
-  const branchRank = new Map<string, number>();
-  for (const n of map.values()) if (n.depth === 1) branchRank.set(n.id, n.rank ?? 99);
+// ---- two-dimensional grade matrix ----
+const GRADES = ['No Hire', 'Lean No', 'Borderline', 'Hire', 'Strong Hire'];
+function gradeMatrix(strongBranches: number, terminals: number): string {
+  const row = Math.min(3, strongBranches);       // 0,1,2,3+
+  const col = Math.min(4, terminals);             // 0..4+
+  const M = [
+    ['No Hire', 'Lean No', 'Lean No', 'Borderline', 'Borderline'],
+    ['Lean No', 'Borderline', 'Borderline', 'Hire', 'Hire'],
+    ['Borderline', 'Borderline', 'Hire', 'Hire', 'Strong Hire'],
+    ['Borderline', 'Hire', 'Hire', 'Strong Hire', 'Strong Hire'],
+  ];
+  return M[row][col];
+}
+const bumpUp = (g: string): string => GRADES[Math.min(GRADES.length - 1, GRADES.indexOf(g) + 1)];
+const capAt = (g: string, cap: string): string => GRADES[Math.min(GRADES.indexOf(g), GRADES.indexOf(cap))];
 
-  const branchRaw = new Map<string, number>();
-  const contam = new Map<string, number>();
+interface WalkResult {
+  pathPoints: number;
+  branchPoints: Map<string, number>;
+  branchContam: Map<string, number>;
+  branchNudges: Map<string, number>;
+  branchMaxDepth: Map<string, number>;
+  branchTerminal: Map<string, boolean>;
+  enteredBranches: Set<string>;                   // visited a depth>=2 node here
+  terminalsReached: Array<{ id: string; rank: number }>; // in visit order
+  branchesBeforeDeep: number;                     // distinct branches touched before first depth>=4 move
+  perNode: Record<string, number>;
+}
+
+// Core path walk: scores every visited node, accumulating per-branch totals and
+// the signals the global bonuses need. NO global bonuses applied here.
+function walkPath(map: Map<string, IndexedNode>, branchRank: Map<string, number>, traversal: Visit[]): WalkResult {
+  const branchPoints = new Map<string, number>();
+  const branchContam = new Map<string, number>();
+  const branchNudges = new Map<string, number>();
+  const branchMaxDepth = new Map<string, number>();
+  const branchTerminal = new Map<string, boolean>();
+  const enteredBranches = new Set<string>();
+  const terminalsReached: Array<{ id: string; rank: number }> = [];
+  const branchesTouched = new Set<string>();
   const perNode: Record<string, number> = {};
-  const deepest = new Map<string, number>();        // deepest CORRECT depth per branch
-  const firstDeepIdx = new Map<string, number>();   // for ordering bonus
-  const terminalsReached = new Set<string>();
-  const penalties = { dead_ends_hit: [] as Array<{ node: string; penalty: number }>, wrong_turns: [] as string[], nudges_given: 0, nudge_point_reduction: 0 };
+  let branchesBeforeDeep = 0;
+  let firstDeepSeen = false;
 
   let chain: string[] = [];
   let nudgeCountdown = 0;
@@ -77,129 +117,103 @@ function walk(root: RawNode, traversal: Visit[]): Omit<TreeScore, 'max' | 'perce
   const closeChain = () => {
     if (chain.length >= 3) {
       const tail = chain[chain.length - 1];
-      const m = chainMult(chain.length);
-      const extra = (perNode[tail] ?? 0) * (m - 1);
+      const extra = (perNode[tail] ?? 0) * (chainMult(chain.length) - 1);
       perNode[tail] = (perNode[tail] ?? 0) + extra;
-      branchRaw.set(branchOf(tail), (branchRaw.get(branchOf(tail)) ?? 0) + extra);
+      branchPoints.set(branchOf(tail), (branchPoints.get(branchOf(tail)) ?? 0) + extra);
     }
     chain = [];
   };
 
   const visits = traversal.filter((v) => v.id != null && map.has(String(v.id)));
-  visits.forEach((v, idx) => {
+  visits.forEach((v) => {
     const node = map.get(String(v.id)) as IndexedNode;
     const br = branchOf(node.id);
+    if (!branchPoints.has(br)) { branchPoints.set(br, 0); branchContam.set(br, 0); branchNudges.set(br, 0); branchMaxDepth.set(br, 0); }
 
-    // nudge countdown (spec §7a/b)
-    if (v.was_nudged) { nudgeCountdown = 2; penalties.nudges_given += 1; } else { nudgeCountdown = Math.max(0, nudgeCountdown - 1); }
-    const nudgeMult = nudgeCountdown === 2 ? 0.5 : nudgeCountdown === 1 ? 0.75 : 1.0;
+    // breadth tracking
+    if (node.depth >= 2) branchesTouched.add(br);
+    if (node.depth >= 4 && !firstDeepSeen) { firstDeepSeen = true; branchesBeforeDeep = branchesTouched.size; }
+
+    // soft nudge countdown (no stacking — a fresh nudge just resets to 2)
+    if (v.was_nudged) { nudgeCountdown = 2; branchNudges.set(br, (branchNudges.get(br) ?? 0) + 1); }
+    const nMult = nudgeMultFor(nudgeCountdown);
+    if (nudgeCountdown > 0) nudgeCountdown -= 1;
 
     if (node.status === 'correct') {
+      enteredBranches.add(br);
       const base = correctWeight(node.depth);
-      const c = decay(contam.get(br) ?? 0);
+      const c = decay(branchContam.get(br) ?? 0);
       const last = chain[chain.length - 1];
       const isExt = chain.length > 0 && parentOf(node.id) === last && branchOf(node.id) === branchOf(last);
       if (isExt) chain.push(node.id); else { closeChain(); chain = [node.id]; }
-      const s = base * c * nudgeMult;
+      const s = base * c * nMult;
       perNode[node.id] = s;
-      branchRaw.set(br, (branchRaw.get(br) ?? 0) + s);
-      penalties.nudge_point_reduction += base * c - s;
-      deepest.set(br, Math.max(deepest.get(br) ?? 0, node.depth));
-      if (node.depth >= 3 && !firstDeepIdx.has(br)) firstDeepIdx.set(br, idx);
-      if (!node.hasCorrectChild) terminalsReached.add(node.id);
+      branchPoints.set(br, (branchPoints.get(br) ?? 0) + s);
+      branchMaxDepth.set(br, Math.max(branchMaxDepth.get(br) ?? 0, node.depth));
+      if (!node.hasCorrectChild) {
+        branchTerminal.set(br, true);
+        terminalsReached.push({ id: node.id, rank: branchRank.get(br) ?? 99 });
+      }
     } else if (node.status === 'neutral') {
-      const base = weightFor('neutral', node.depth);
-      const c = decay(contam.get(br) ?? 0);
-      const s = base * c * nudgeMult;
+      enteredBranches.add(br);
+      const base = Math.floor(correctWeight(node.depth) * 0.3);
+      const c = decay(branchContam.get(br) ?? 0);
+      const s = base * c * nMult;
       perNode[node.id] = s;
-      branchRaw.set(br, (branchRaw.get(br) ?? 0) + s);
-      penalties.nudge_point_reduction += base * c - s;
+      branchPoints.set(br, (branchPoints.get(br) ?? 0) + s);
       // neutral sibling detour does NOT break the chain
     } else if (node.status === 'explored_wrong') {
       perNode[node.id] = 0;
-      contam.set(br, (contam.get(br) ?? 0) + 1);
-      penalties.wrong_turns.push(node.id);
+      branchContam.set(br, (branchContam.get(br) ?? 0) + 1);
       closeChain();
     } else if (node.status === 'dead_end') {
-      const pen = deadEndPenalty(node.depth);
-      perNode[node.id] = pen;
-      branchRaw.set(br, (branchRaw.get(br) ?? 0) + pen);
-      contam.set(br, (contam.get(br) ?? 0) + 2);
-      penalties.dead_ends_hit.push({ node: node.id, penalty: pen });
+      perNode[node.id] = DEAD_END_PENALTY;
+      branchPoints.set(br, (branchPoints.get(br) ?? 0) + DEAD_END_PENALTY);
+      branchContam.set(br, (branchContam.get(br) ?? 0) + 1);
       closeChain();
     }
   });
   closeChain();
 
-  // Branch ordering bonus (spec §4)
-  const deepBranches = [...firstDeepIdx.entries()].sort((a, b) => a[1] - b[1]).map((e) => e[0]);
-  const orderingMult = new Map<string, number>();
-  deepBranches.forEach((br, pos) => {
-    const rank = branchRank.get(br) ?? 99;
-    if (pos === 0) orderingMult.set(br, rank === 1 ? 1.25 : rank === 2 ? 1.15 : rank === 3 ? 1.05 : 1.0);
-    else if (pos === 1) {
-      const remaining = deepBranches.slice(1).map((b) => branchRank.get(b) ?? 99);
-      orderingMult.set(br, rank === Math.min(...remaining) ? 1.1 : 1.0);
-    } else orderingMult.set(br, 1.0);
-  });
+  const pathPoints = [...branchPoints.values()].reduce((a, b) => a + b, 0);
+  return { pathPoints, branchPoints, branchContam, branchNudges, branchMaxDepth, branchTerminal, enteredBranches, terminalsReached, branchesBeforeDeep, perNode };
+}
 
-  // Coverage (spec §5)
-  const terminals = [...map.values()].filter((n) => n.status === 'correct' && !n.hasCorrectChild);
-  const totalTerminals = terminals.length;
-  const reached = terminalsReached.size;
-  // Coverage is mostly a BONUS for completeness. Missing nodes already costs you
-  // their points (the score is relative to max), so we don't pile on big negative
-  // penalties — at most a small nudge for finishing nothing at all.
-  let coveragePoints = 0;
-  if (totalTerminals > 0) {
-    if (reached >= totalTerminals) coveragePoints += 50;
-    else if (reached >= totalTerminals * 0.75) coveragePoints += 25;
-    else if (reached >= totalTerminals * 0.5) coveragePoints += 10;
-    else if (reached < 1) coveragePoints -= 5; // finished no branch at all (mild)
+// Flat global bonuses: ordering (did they hit the high-priority branches first),
+// coverage (soft — how many terminals reached), structure (scan before diving).
+function globalBonuses(w: WalkResult, allTerminalRanks: number[]): number {
+  let b = 0;
+  const T = allTerminalRanks.length;
+  const R = w.terminalsReached.length;
+
+  // ordering (flat points)
+  if (w.terminalsReached[0]) {
+    const r = w.terminalsReached[0].rank;
+    b += r === 1 ? 15 : r === 2 ? 10 : r === 3 ? 5 : 0;
   }
-  const branchTerminalDepth = new Map<string, number>();
-  terminals.forEach((t) => branchTerminalDepth.set(branchOf(t.id), Math.max(branchTerminalDepth.get(branchOf(t.id)) ?? 0, t.depth)));
-  const neverEntered: string[] = [];
-  for (const br of branchRank.keys()) {
-    const tDepth = branchTerminalDepth.get(br) ?? 0;
-    const rd = deepest.get(br);
-    // Never entered a branch → no extra penalty (you already forgo its points);
-    // just record it for the diagnostic.
-    if (rd == null) { neverEntered.push(map.get(br)?.label ?? br); continue; }
-    if (tDepth && rd >= tDepth) coveragePoints += 15;
-    else if (tDepth && rd >= tDepth - 1) coveragePoints += 8;
-    else if (tDepth && rd >= tDepth - 2) coveragePoints += 3;
+  if (w.terminalsReached[1]) {
+    const remaining = [...allTerminalRanks];
+    const firstIdx = remaining.indexOf(w.terminalsReached[0].rank);
+    if (firstIdx >= 0) remaining.splice(firstIdx, 1);
+    const remainingTop = remaining.length ? Math.min(...remaining) : Infinity;
+    if (w.terminalsReached[1].rank === remainingTop) b += 5;
   }
 
-  // Assemble branch_scores + path total
-  const branch_scores: TreeScore['branch_scores'] = {};
-  let pathTotal = 0;
-  for (const [br, raw] of branchRaw) {
-    const mult = orderingMult.get(br) ?? 1.0;
-    const final = raw * mult;
-    pathTotal += final;
-    const node = map.get(br);
-    branch_scores[br] = {
-      label: node?.label ?? br, raw: Math.round(raw), ordering: mult, final: Math.round(final),
-      depthReached: deepest.get(br) ?? 0,
-      terminalReached: terminals.some((t) => branchOf(t.id) === br && terminalsReached.has(t.id)),
-    };
-  }
+  // coverage (soft)
+  if (R >= T) b += 30;
+  else if (R === T - 1) b += 20;
+  else if (R === T - 2) b += 10;
+  else if (R === 0) b -= 10;
 
-  const total = Math.max(0, Math.round(pathTotal + coveragePoints)); // never below zero
-  const rounded: Record<string, number> = {};
-  for (const [k, v] of Object.entries(perNode)) rounded[k] = Math.round(v);
-  penalties.nudge_point_reduction = -Math.round(penalties.nudge_point_reduction);
+  // structure (scan then dive)
+  if (w.branchesBeforeDeep >= 3) b += 15;
+  else if (w.branchesBeforeDeep >= 2) b += 10;
 
-  return {
-    total, branch_scores, penalties,
-    coverage: { terminals_reached: `${reached}/${totalTerminals}`, coverage_points: Math.round(coveragePoints), branches_never_entered: neverEntered },
-    perNodePoints: rounded,
-  };
+  return b;
 }
 
 // Ideal traversal: every correct node in parent→child order, branches in rank
-// order, no nudges, no wrong turns. Used to compute the max possible score.
+// order, no nudges, no wrong turns. Used to compute the per-branch + global max.
 function idealTraversal(root: RawNode): Visit[] {
   const out: Visit[] = [{ id: String(root.id ?? 'root'), was_nudged: false }];
   const dfsCorrect = (n: RawNode) => {
@@ -207,18 +221,67 @@ function idealTraversal(root: RawNode): Visit[] {
     for (const c of kids) { out.push({ id: String(c.id), was_nudged: false }); dfsCorrect(c); }
   };
   const buckets = (root.children ?? []).filter((c) => statusOf(c) === 'correct').sort((a, b) => (a.rank ?? 99) - (b.rank ?? 99));
-  for (const b of buckets) { out.push({ id: String(b.id), was_nudged: false }); dfsCorrect(b); }
+  for (const bk of buckets) { out.push({ id: String(bk.id), was_nudged: false }); dfsCorrect(bk); }
   return out;
 }
 
 export function scoreTraversal(root: RawNode, traversal: Visit[]): TreeScore {
-  const actual = walk(root, traversal);
+  const map = indexTree(root);
+  const branchRank = new Map<string, number>();
+  for (const n of map.values()) if (n.depth === 1) branchRank.set(n.id, n.rank ?? 99);
+
+  // Terminals = correct leaves (no correct child). Total + their branch ranks.
+  const terminals = [...map.values()].filter((n) => n.status === 'correct' && !n.hasCorrectChild);
+  const totalTerminals = terminals.length;
+  const allTerminalRanks = terminals.map((t) => branchRank.get(branchOf(t.id)) ?? 99);
+
+  // Walk candidate + ideal (ideal gives per-branch + global maxima).
+  const actual = walkPath(map, branchRank, traversal);
   const idealVisits = idealTraversal(root);
-  const ideal = walk(root, idealVisits).total;
-  const max = Math.max(1, ideal);
-  const percentage = Math.round((actual.total / max) * 1000) / 10;
-  // The ideal sequence (max-points path) — node ids in order, root excluded so
-  // the viz can number the substantive moves 1,2,3…
+  const ideal = walkPath(map, branchRank, idealVisits);
+
+  const actualGlobal = Math.max(0, Math.round(actual.pathPoints + globalBonuses(actual, allTerminalRanks)));
+  const idealGlobal = Math.max(1, Math.round(ideal.pathPoints + globalBonuses(ideal, allTerminalRanks)));
+  const globalPct = Math.round((actualGlobal / idealGlobal) * 1000) / 10;
+
+  // Per-branch local scores (only for branches the candidate entered; others = not explored).
+  const local: Record<string, LocalBranch> = {};
+  for (const [brId, brRank] of branchRank) {
+    void brRank;
+    const label = map.get(brId)?.label ?? brId;
+    if (!actual.enteredBranches.has(brId)) { local[brId] = { label, not_explored: true }; continue; }
+    const pts = Math.round(actual.branchPoints.get(brId) ?? 0);
+    const max = Math.max(1, Math.round(ideal.branchPoints.get(brId) ?? 0));
+    const pct = Math.round((pts / max) * 1000) / 10;
+    local[brId] = {
+      label, points: pts, max, percentage: pct, grade: branchGrade(pct),
+      depth_reached: actual.branchMaxDepth.get(brId) ?? 0,
+      terminal_reached: actual.branchTerminal.get(brId) ?? false,
+      contamination: actual.branchContam.get(brId) ?? 0,
+      nudges: actual.branchNudges.get(brId) ?? 0,
+    };
+  }
+
+  const strongBranches = Object.values(local).filter((b) => !b.not_explored && (b.percentage ?? 0) >= 70).length;
+  const R = actual.terminalsReached.length;
+
+  let grade = gradeMatrix(strongBranches, R);
+  if (globalPct < 35) grade = capAt(grade, 'Lean No');
+  if (globalPct >= 80) grade = bumpUp(grade);
+
+  const perNodePoints: Record<string, number> = {};
+  for (const [k, v] of Object.entries(actual.perNode)) perNodePoints[k] = Math.round(v);
+
   const idealPath = idealVisits.map((v) => String(v.id)).filter((id) => id !== 'root');
-  return { ...actual, max, percentage, grade: gradeFor(percentage), idealPath };
+
+  return {
+    global: { score: actualGlobal, max: idealGlobal, percentage: globalPct },
+    local,
+    terminals_reached: R,
+    terminals_total: totalTerminals,
+    strong_branches: strongBranches,
+    grade,
+    idealPath,
+    perNodePoints,
+  };
 }

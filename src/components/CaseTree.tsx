@@ -271,46 +271,68 @@ const GRADE_COLOR: Record<string, string> = {
   'Lean No': 'text-orange-600', 'No Hire': 'text-red-600',
 };
 
+const BRANCH_GRADE_COLOR: Record<string, string> = {
+  Excellent: 'bg-emerald-100 text-emerald-700', Good: 'bg-lime-100 text-lime-700',
+  Adequate: 'bg-amber-100 text-amber-700', Weak: 'bg-orange-100 text-orange-700', Poor: 'bg-red-100 text-red-700',
+};
+
 function ScoreCard({ score, idealSequence }: { score?: Record<string, any>; idealSequence?: Array<{ n: number; label: string }> }) {
   if (!score) return <p className="text-xs text-slate-500">No score available for this report.</p>;
-  const pct = score.percentage ?? 0;
-  const branches: Record<string, any> = score.branch_scores ?? {};
-  const pen = score.penalties ?? {};
-  const cov = score.coverage ?? {};
+  const pct = score.global?.percentage ?? score.percentage ?? 0;
+  const gScore = score.global?.score ?? score.total ?? 0;
+  const gMax = score.global?.max ?? score.max ?? 0;
+  // New dual-score shape; tolerate legacy branch_scores so old reports still show something.
+  const local: Record<string, any> = score.local ?? score.branch_scores ?? {};
+  const explored = Object.values(local).filter((b: any) => !b.not_explored);
+  const notExplored = Object.values(local).filter((b: any) => b.not_explored);
   return (
     <div className="space-y-4 text-sm">
       <div>
         <p className={`text-2xl font-extrabold ${GRADE_COLOR[score.grade] ?? 'text-slate-800'}`}>{score.grade ?? '—'}</p>
-        <p className="text-slate-500 text-xs mt-0.5">{score.total} / {score.max} pts · {pct}%</p>
-        <div className="h-1.5 bg-slate-200 rounded-full mt-2 overflow-hidden">
-          <div className="h-full bg-emerald-500" style={{ width: `${Math.max(0, Math.min(100, pct))}%` }} />
-        </div>
+        {score.terminals_reached != null && (
+          <p className="text-slate-500 text-xs mt-0.5">
+            reached {score.terminals_reached}/{score.terminals_total} terminals · {score.strong_branches} strong branch{score.strong_branches === 1 ? '' : 'es'}
+          </p>
+        )}
       </div>
       <div>
-        <p className="text-[10px] uppercase tracking-wide text-slate-500 font-bold mb-1.5">Branch scores</p>
-        <div className="space-y-1.5">
-          {Object.values(branches).map((b: any, i) => (
-            <div key={i} className="text-xs">
-              <div className="flex justify-between gap-2">
-                <span className="text-slate-700 truncate">{b.label}</span>
-                <span className="text-slate-900 font-semibold shrink-0">{b.final} pts</span>
-              </div>
-              <div className="flex gap-2 text-[10px] text-slate-400">
-                <span>depth {b.depthReached}</span>
-                {b.terminalReached && <span className="text-emerald-600">✓ terminal</span>}
-                {b.ordering !== 1 && <span className="text-amber-600">×{b.ordering} order</span>}
-              </div>
-            </div>
-          ))}
+        <div className="flex justify-between items-baseline">
+          <p className="text-[10px] uppercase tracking-wide text-slate-500 font-bold">Global score</p>
+          <span className="text-xs text-slate-500">{gScore} / {gMax} pts · {pct}%</span>
         </div>
+        <div className="h-1.5 bg-slate-200 rounded-full mt-1.5 overflow-hidden">
+          <div className="h-full bg-emerald-500" style={{ width: `${Math.max(0, Math.min(100, pct))}%` }} />
+        </div>
+        <p className="text-[10px] text-slate-400 mt-1">Coverage & prioritisation across the whole case.</p>
       </div>
-      <div className="text-xs text-slate-500 space-y-1 border-t border-slate-200 pt-2">
-        <p>Terminals reached: <span className="text-slate-800">{cov.terminals_reached ?? '—'}</span> (cov {cov.coverage_points >= 0 ? '+' : ''}{cov.coverage_points ?? 0})</p>
-        <p>Wrong turns: <span className="text-slate-800">{(pen.wrong_turns ?? []).length}</span> · Dead ends: <span className="text-slate-800">{(pen.dead_ends_hit ?? []).length}</span> · Nudges: <span className="text-slate-800">{pen.nudges_given ?? 0}</span></p>
-        {pen.nudge_point_reduction ? <p className="text-amber-600">Nudge penalty: {pen.nudge_point_reduction}</p> : null}
-        {Array.isArray(cov.branches_never_entered) && cov.branches_never_entered.length > 0 && (
-          <p className="text-red-600">Never entered: {cov.branches_never_entered.join(', ')}</p>
-        )}
+      <div>
+        <p className="text-[10px] uppercase tracking-wide text-slate-500 font-bold mb-1.5">Branch scores (depth of thinking)</p>
+        <div className="space-y-2">
+          {explored.map((b: any, i) => {
+            const bpct = b.percentage ?? 0;
+            return (
+              <div key={i} className="text-xs">
+                <div className="flex justify-between gap-2 items-center">
+                  <span className="text-slate-700 truncate">{b.label}</span>
+                  <span className={`shrink-0 text-[9px] uppercase tracking-wide px-1.5 py-0.5 rounded ${BRANCH_GRADE_COLOR[b.grade] ?? 'bg-slate-100 text-slate-600'}`}>{b.grade ?? '—'}</span>
+                </div>
+                <div className="h-1 bg-slate-200 rounded-full mt-1 overflow-hidden">
+                  <div className="h-full bg-emerald-500" style={{ width: `${Math.max(0, Math.min(100, bpct))}%` }} />
+                </div>
+                <div className="flex gap-2 text-[10px] text-slate-400 mt-0.5">
+                  <span>{bpct}% ({b.points}/{b.max})</span>
+                  <span>depth {b.depth_reached ?? b.depthReached ?? 0}</span>
+                  {(b.terminal_reached ?? b.terminalReached) && <span className="text-emerald-600">✓ terminal</span>}
+                  {b.contamination > 0 && <span className="text-amber-600">{b.contamination} wrong turn{b.contamination === 1 ? '' : 's'}</span>}
+                  {b.nudges > 0 && <span className="text-amber-600">{b.nudges} nudge{b.nudges === 1 ? '' : 's'}</span>}
+                </div>
+              </div>
+            );
+          })}
+          {notExplored.length > 0 && (
+            <p className="text-[11px] text-slate-400 pt-1">Not explored: {notExplored.map((b: any) => b.label).join(', ')}</p>
+          )}
+        </div>
       </div>
       {Array.isArray(idealSequence) && idealSequence.length > 0 && (
         <div className="border-t border-slate-200 pt-2">
