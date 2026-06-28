@@ -86,7 +86,7 @@ export function handleConsultingPipeline(args: Args): void {
     const e = ex as Record<string, unknown>;
     sendToClient(clientWs, {
       type: 'exhibit',
-      exhibit: { id: e.id, label: e.label, visual: e.visual, render: e.render, chartType: e.chartType, xKey: e.xKey, series: e.series, chartData: e.chartData, data: e.data },
+      exhibit: { id: e.id, label: e.label, visual: e.visual, render: e.render, chartType: e.chartType, xKey: e.xKey, series: e.series, chartData: e.chartData, columns: e.columns, rows: e.rows, data: e.data },
     });
     console.log(`[consulting-pipeline] exhibit #${exhibitId} (${(ex as { label?: string }).label ?? ''})`);
     return `Exhibit ${exhibitId} is now on the candidate's screen.`;

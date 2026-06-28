@@ -63,7 +63,7 @@ export interface ExhibitCase {
   keyDataPoints?: Array<{ label?: string; value?: string }>;
   openingHook?: { reference: string; bridge: string };
   privateMechanismNote?: string;
-  exhibits?: Array<{ id?: number; label?: string; visual?: string; render?: string; chartType?: string; xKey?: string; series?: unknown; chartData?: unknown; data?: string; whenToShow?: string; doNotShowIf?: string; insight?: string }>;
+  exhibits?: Array<{ id?: number; label?: string; visual?: string; render?: string; chartType?: string; xKey?: string; series?: unknown; chartData?: unknown; columns?: string[]; rows?: string[][]; data?: string; whenToShow?: string; doNotShowIf?: string; insight?: string }>;
   quant?: { task?: string; whenToShow?: string; derivation?: string; answer?: string };
   answerKey?: string;
   commonWrongTurns?: string[];
@@ -71,6 +71,69 @@ export interface ExhibitCase {
 }
 
 const CASE_SYSTEM = 'You are a McKinsey case designer. The numbers must reconcile. Return only valid JSON.';
+
+// Coerce a value to a finite number, stripping currency/%/commas ("$3.2B"→3.2,
+// "72%"→72). Returns null if there's no number in it.
+function toNum(v: unknown): number | null {
+  if (typeof v === 'number') return Number.isFinite(v) ? v : null;
+  if (typeof v === 'string') {
+    const m = v.replace(/,/g, '').match(/-?\d+(\.\d+)?/);
+    if (m) { const n = parseFloat(m[0]); return Number.isFinite(n) ? n : null; }
+  }
+  return null;
+}
+
+// Make one exhibit safe for the recharts/table renderer: charts get a valid xKey,
+// numeric series values, and series whose keys actually exist in the rows; tables
+// get string cells. Models routinely emit "72%"/"$3.2B" or mismatched series keys,
+// which silently render blank — this repairs them (or downgrades to a table).
+function normalizeExhibit(raw: Record<string, unknown>): Record<string, unknown> {
+  const e: Record<string, unknown> = { ...raw };
+
+  if (e.render === 'chart' && Array.isArray(e.chartData) && e.chartData.length) {
+    const rows = e.chartData as Array<Record<string, unknown>>;
+    const first = rows[0] ?? {};
+    // Pick the x-axis key: the declared one if present, else the first non-numeric field.
+    let xKey = typeof e.xKey === 'string' && e.xKey in first ? e.xKey : '';
+    if (!xKey) xKey = Object.keys(first).find((k) => toNum(first[k]) == null) ?? Object.keys(first)[0] ?? 'x';
+    const numericKeys = new Set<string>();
+    const clean = rows.map((r) => {
+      const out: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(r)) {
+        if (k === xKey) { out[k] = String(v); continue; }
+        const n = toNum(v);
+        if (n != null) { out[k] = n; numericKeys.add(k); } else out[k] = v;
+      }
+      return out;
+    });
+    let series = Array.isArray(e.series)
+      ? (e.series as Array<Record<string, unknown>>).filter((s) => s && numericKeys.has(String(s.key)))
+      : [];
+    if (!series.length) series = [...numericKeys].map((k) => ({ key: k, label: k }));
+    if (series.length) {
+      e.xKey = xKey; e.chartData = clean; e.series = series;
+    } else {
+      // No plottable numeric series — fall back to the text/table view.
+      e.render = 'table';
+    }
+  }
+
+  if (e.render === 'table') {
+    if (Array.isArray(e.columns)) e.columns = (e.columns as unknown[]).map((c) => String(c));
+    if (Array.isArray(e.rows)) {
+      e.rows = (e.rows as unknown[]).map((r) => (Array.isArray(r) ? r.map((c) => String(c)) : [String(r)]));
+    }
+  }
+  return e;
+}
+
+// Normalize every exhibit on a generated/extracted case in place.
+function normalizeCase<T extends ExhibitCase>(c: T): T {
+  if (Array.isArray(c.exhibits)) {
+    c.exhibits = c.exhibits.map((ex) => normalizeExhibit(ex as Record<string, unknown>)) as T['exhibits'];
+  }
+  return c;
+}
 
 // The core call's shape: the brief + the canonical dataset + the exhibit plan.
 type CaseCore = Omit<ExhibitCase, 'exhibits'> & {
@@ -95,12 +158,12 @@ async function buildRichCase(opts: {
     );
   } catch (e) {
     console.error('rich case core failed; falling back to single-call:', e);
-    return jsonChat<ExhibitCase>(CASE_SYSTEM, fallbackPrompt, { temperature: 0.5, maxTokens: 10000 });
+    return normalizeCase(await jsonChat<ExhibitCase>(CASE_SYSTEM, fallbackPrompt, { temperature: 0.5, maxTokens: 10000 }));
   }
 
   const plan = Array.isArray(core.exhibitPlan) ? core.exhibitPlan : [];
   if (!plan.length) {
-    return jsonChat<ExhibitCase>(CASE_SYSTEM, fallbackPrompt, { temperature: 0.5, maxTokens: 10000 });
+    return normalizeCase(await jsonChat<ExhibitCase>(CASE_SYSTEM, fallbackPrompt, { temperature: 0.5, maxTokens: 10000 }));
   }
 
   // Expand each planned exhibit from the shared dataset, in parallel.
@@ -121,10 +184,10 @@ async function buildRichCase(opts: {
     }
   }));
 
-  // Drop the internal-only fields; ship the assembled case.
+  // Drop the internal-only fields; ship the assembled, normalized case.
   const { dataset: _dataset, exhibitPlan: _plan, ...rest } = core;
   void _dataset; void _plan;
-  return { ...rest, exhibits } as ExhibitCase;
+  return normalizeCase({ ...rest, exhibits } as ExhibitCase);
 }
 
 // Pharma-specific constraints injected into the rich core call (keeps the tuned
@@ -160,11 +223,11 @@ export interface ExtractedCase extends ExhibitCase {
 // (pasted text, PDF text, or a full interview transcript) — faithful to the
 // source, neutral candidate-facing prompt, fact base as earned exhibits.
 export async function extractCaseFromTranscript(rawText: string): Promise<ExtractedCase> {
-  return jsonChat<ExtractedCase>(
+  return normalizeCase(await jsonChat<ExtractedCase>(
     'You reconstruct structured case-interview cases from raw uploads. Be FAITHFUL to the source — never invent figures it does not support. Return only valid JSON.',
     EXTRACT_CASE_PROMPT(rawText),
     { temperature: 0.3, maxTokens: 8000 }, // low temp — faithful extraction, not creative generation
-  );
+  ));
 }
 
 // Product-case & guesstimate generators (PM / estimation modules).

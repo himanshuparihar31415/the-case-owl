@@ -186,7 +186,9 @@ async function handleConnection(clientWs: WebSocket, req: IncomingMessage): Prom
             id: (ex as Record<string, unknown>).id, label: ex.label, visual: ex.visual,
             render: (ex as Record<string, unknown>).render, chartType: (ex as Record<string, unknown>).chartType,
             xKey: (ex as Record<string, unknown>).xKey, series: (ex as Record<string, unknown>).series,
-            chartData: (ex as Record<string, unknown>).chartData, data: ex.data,
+            chartData: (ex as Record<string, unknown>).chartData,
+            columns: (ex as Record<string, unknown>).columns, rows: (ex as Record<string, unknown>).rows,
+            data: ex.data,
           },
         });
       } else {

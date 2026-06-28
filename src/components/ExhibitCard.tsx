@@ -56,6 +56,27 @@ export function ExhibitCard({ ex, large = false }: { ex: any; large?: boolean })
             </div>
           )}
         </>
+      ) : Array.isArray(ex.columns) && ex.columns.length > 0 && Array.isArray(ex.rows) && ex.rows.length > 0 ? (
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse text-xs">
+            <thead>
+              <tr>
+                {ex.columns.map((c: string, i: number) => (
+                  <th key={i} className={cn('border-b border-outline-variant/30 px-2 py-1.5 font-bold text-primary', i === 0 ? 'text-left' : 'text-right')}>{c}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {ex.rows.map((row: string[], ri: number) => (
+                <tr key={ri} className="border-b border-outline-variant/10 last:border-0">
+                  {(Array.isArray(row) ? row : [row]).map((cell: string, ci: number) => (
+                    <td key={ci} className={cn('px-2 py-1.5', ci === 0 ? 'text-left font-medium text-primary' : 'text-right text-on-surface-variant tabular-nums')}>{cell}</td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       ) : (
         <p className="text-xs text-on-surface-variant whitespace-pre-line font-mono leading-relaxed">{ex.data}</p>
       )}

@@ -39,12 +39,17 @@ const EXHIBITS_BY_TYPE: Record<CaseType, string> = {
 // Shared exhibit JSON spec (used by every exhibit-based generator).
 const EXHIBIT_JSON_SPEC = `{ "id": number,                 // 1-based; the interviewer passes this to show_exhibit
       "label": "", "visual": "table|chart|spoken",
-      "data": "the reconciled numbers as a compact readable string the interviewer can read aloud",
+      "data": "the reconciled numbers as a compact readable string the interviewer can read aloud (used for the spoken read + as a fallback)",
       "render": "chart" | "table" | "spoken",
-      "chartType": "line" | "bar",              // only when render=chart
-      "xKey": "the category-axis field name present in every chartData row, e.g. \\"year\\"",  // only when render=chart
-      "series": [ { "key": "revenue", "label": "Revenue ($B)" } ],  // numeric series to plot; only when render=chart
-      "chartData": [ { "year": "Y1", "revenue": 3.2, "grossMarginPct": 72 } ],  // rows; numbers MUST equal the 'data' string; only when render=chart
+      // === when render="chart" ===
+      "chartType": "line" | "bar",
+      "xKey": "the category-axis field name present in EVERY chartData row, e.g. \\"year\\"",
+      "series": [ { "key": "revenue", "label": "Revenue ($B)" } ],  // one per numeric line/bar. EACH key MUST be an exact field name in every chartData row.
+      "chartData": [ { "year": "FY20", "revenue": 3.2, "grossMarginPct": 72 } ],  // >=5 rows for time-series, >=4 for categorical. EVERY value except the xKey field MUST be a RAW NUMBER (3.2, 72 — never "3.2", "72%", "$3.2B"). Put units in the series label, NOT the value. Numbers MUST match the 'data' string.
+      // === when render="table" ===
+      "columns": ["Year", "Revenue ($B)", "Gross margin (%)", "EBIT ($B)"],  // 2-6 column headers (units in the header)
+      "rows": [ ["FY20", "3.2", "72%", "0.6"], ["FY21", "3.3", "70%", "0.55"] ],  // each row = one array of cell strings, same length/order as columns; >=4 rows. Cells may carry units/%/$ here since this is display-only.
+      // === always ===
       "whenToShow": "the LIGHT trigger that earns it — a hypothesis or structure pointing here, or a reasoned request. Be generous: in a normal case most exhibits come out when asked for with a reason.",
       "doNotShowIf": "RARE — only if this single exhibit hands over the diagnosis outright. Usually empty/'—'. A direct request after a hypothesis is NOT a reason to withhold.",
       "insight": "PRIVATE: what it reveals" }`;
@@ -142,10 +147,10 @@ Produce a DENSE, realistic exhibit using ONLY numbers from the dataset that matc
 ${EXHIBIT_JSON_SPEC}
 RULES:
 - Keep the planned id, label, render, whenToShow, doNotShowIf, insight (refine wording if needed).
-- If render="chart": set chartType, xKey, series (2-3 numeric series where the data supports it), and chartData — time-series carry >=5 periods, categorical carry >=4-6 categories. The 'data' string and chartData MUST carry identical numbers, straight from the dataset.
-- If render="table": put the full reconciled figures in 'data' as a compact readable block.
-- If render="spoken": 'data' is the qualitative fact stated plainly.
-- This exhibit must reconcile with the dataset. Recompute before returning.`;
+- If render="chart": set chartType, xKey, series (2-3 numeric series where the data supports it), and chartData — time-series carry >=5 periods, categorical carry >=4-6 categories. CRITICAL: every series.key must be an exact field name present in every chartData row, and every chartData value except the xKey field must be a RAW NUMBER (3.2, 72 — never "72%" or "$3.2B"; put units in the series label). Also fill 'data' with the same numbers as a readable line.
+- If render="table": fill "columns" (2-6 headers with units) and "rows" (>=4 rows, each an array of cell strings matching the columns in order). Also fill 'data' with the same figures as a readable fallback. Do NOT use a chart here.
+- If render="spoken": 'data' is the qualitative fact stated plainly (no columns/chartData).
+- All numbers come straight from the dataset and must reconcile. Recompute before returning.`;
 }
 
 // Reconstruct a STRUCTURED case from raw user-uploaded material (a pasted case,
