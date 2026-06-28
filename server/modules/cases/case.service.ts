@@ -103,17 +103,23 @@ export async function getCaseById(id: string): Promise<ICase> {
 
 const PHARMA_THEMES: PharmaTheme[] = ['pricing', 'cost', 'competition', 'pipeline'];
 
-// Map the exhibit/quant generator output into a Case doc. keyDataPoints is left
-// empty on purpose so the live Case Brief can't spoil the discovery — exhibit
-// data is released by the interviewer only when earned. answerKey doubles as the
-// report recommendation + the interviewer's private "destination" (plausibleSolution).
+// Map the exhibit/quant generator output into a Case doc. keyDataPoints carries
+// only NEUTRAL context facts (scale/footprint/business-model/timeframe/the ask)
+// the interviewer states up front — the diagnostic figures stay in exhibits,
+// released only when earned, so the brief can't spoil the discovery. answerKey
+// doubles as the report recommendation + the interviewer's private "destination"
+// (plausibleSolution).
 function mapExhibitCase(g: ExhibitCase, type: CaseType, industry: Industry, difficulty: number) {
+  const keyDataPoints = (Array.isArray(g.keyDataPoints) ? g.keyDataPoints : [])
+    .map((d) => ({ label: String(d?.label ?? '').trim(), value: String(d?.value ?? '').trim() }))
+    .filter((d) => d.label && d.value)
+    .slice(0, 8);
   return {
     title: g.title,
     type, industry, difficulty,
     description: (g.situation ?? '').slice(0, 300),
     scenario: g.situation ?? '',
-    keyDataPoints: [],
+    keyDataPoints,
     questions: [],
     plausibleSolution: g.answerKey,
     answerKey: g.answerKey,

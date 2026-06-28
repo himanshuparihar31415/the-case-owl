@@ -60,6 +60,7 @@ export interface ExhibitCase {
   title: string;
   difficulty?: number;
   situation: string;
+  keyDataPoints?: Array<{ label?: string; value?: string }>;
   openingHook?: { reference: string; bridge: string };
   privateMechanismNote?: string;
   exhibits?: Array<{ id?: number; label?: string; visual?: string; render?: string; chartType?: string; xKey?: string; series?: unknown; chartData?: unknown; data?: string; whenToShow?: string; doNotShowIf?: string; insight?: string }>;
@@ -74,7 +75,7 @@ export async function generatePharmaProfitabilityCaseWithAI(difficulty: number, 
   return jsonChat<ExhibitCase>(
     'You are a McKinsey pharma case designer. The numbers must reconcile. Return only valid JSON.',
     PHARMA_PROFITABILITY_CASE_PROMPT(difficulty, theme),
-    { temperature: 0.5, maxTokens: 6000 },
+    { temperature: 0.5, maxTokens: 10000 },
   );
 }
 
@@ -83,7 +84,7 @@ export async function generateExhibitCaseWithAI(type: CaseType, industry: Indust
   return jsonChat<ExhibitCase>(
     'You are a McKinsey case designer. The numbers must reconcile. Return only valid JSON.',
     EXHIBIT_CASE_PROMPT(type, industry, difficulty),
-    { temperature: 0.5, maxTokens: 6000 },
+    { temperature: 0.5, maxTokens: 10000 },
   );
 }
 
@@ -101,7 +102,7 @@ export async function extractCaseFromTranscript(rawText: string): Promise<Extrac
   return jsonChat<ExtractedCase>(
     'You reconstruct structured case-interview cases from raw uploads. Be FAITHFUL to the source — never invent figures it does not support. Return only valid JSON.',
     EXTRACT_CASE_PROMPT(rawText),
-    { temperature: 0.3, maxTokens: 6000 }, // low — faithful extraction, not creative generation
+    { temperature: 0.3, maxTokens: 8000 }, // low temp — faithful extraction, not creative generation
   );
 }
 

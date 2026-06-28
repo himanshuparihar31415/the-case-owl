@@ -53,9 +53,9 @@ const EXHIBIT_JSON_SPEC = `{ "id": number,                 // 1-based; the inter
 // as the pharma case (neutral prompt, a private crux discovered via earned
 // exhibits, reconciled numbers, a quant, an answer key) parametrized by type.
 export function EXHIBIT_CASE_PROMPT(type: CaseType, industry: Industry, difficulty: number): string {
-  const exhibitCount = difficulty <= 1 ? '3' : difficulty >= 4 ? '5' : '3-4';
-  return `You are a McKinsey case designer. Generate ONE realistic, internally-consistent ${DIFFICULTY_LABELS[difficulty]} ${type} case for the ${industry} industry, as JSON.
-THE NUMBERS MUST RECONCILE: totals = sum of their lines, margins = profit/revenue, and the quant answer is derivable from the exhibits. Use realistic magnitudes for ${industry}.
+  const exhibitCount = difficulty <= 1 ? '4' : difficulty >= 4 ? '6-7' : '5-6';
+  return `You are a McKinsey case designer. Generate ONE realistic, RICH, internally-consistent ${DIFFICULTY_LABELS[difficulty]} ${type} case for the ${industry} industry, as JSON. This is a full case-team-quality case, not a sketch — it must have enough depth and data for a 30-45 minute interview.
+THE NUMBERS MUST RECONCILE: totals = sum of their lines, margins = profit/revenue, growth rates tie to the underlying values, and the quant answer is derivable from the exhibits. Use realistic, specific magnitudes for a real ${industry} company (revenue, volumes, prices, share, costs).
 THE CRUX (the real answer the candidate must DISCOVER — keep PRIVATE; the situation they hear is neutral and names no cause): ${CRUX_BY_TYPE[type]}
 Benchmark structure for this type (a strong candidate builds toward it — never hand it over): ${FRAMEWORK_BY_TYPE[type]}.
 The mechanism/answer jargon stays PRIVATE — the candidate discovers it from the exhibits.
@@ -63,16 +63,20 @@ Return ONLY valid JSON:
 {
   "title": "company + one-line, neutral problem",
   "difficulty": ${difficulty},
-  "situation": "3-4 NEUTRAL sentences: company, the setup, the exec's ask. Name no cause, frame no answer.",
+  "situation": "5-7 NEUTRAL sentences that set a vivid, concrete scene: (1) the company — who they are, founded/scale, what they sell, business model; (2) where they operate / segments / channels; (3) the market context and what recently changed (the trigger); (4) who the client sponsor is and the precise decision/metric on the table; (5) the timeframe and any constraint. Be specific and realistic — but name NO cause and frame NO answer. The candidate must still have to diagnose.",
+  "keyDataPoints": [
+    // 5-7 NEUTRAL context facts the interviewer can state UP FRONT (these appear in the candidate's brief). Scale/footprint/business-model/timeframe/target-metric ONLY — e.g. {"label":"Revenue","value":"$3.4B (FY24)"}, {"label":"Footprint","value":"8,200 stores, 41 countries"}, {"label":"Business model","value":"Company-owned + franchise"}, {"label":"The ask","value":"Restore margin to ~18% within 24 months"}. These are CONTEXT, never the diagnosis — the specific driver figures live ONLY in exhibits and stay hidden until earned. Do NOT put the answer numbers here.
+    { "label": "", "value": "" }
+  ],
   "openingHook": { "reference": "a REAL, recent (~last 2 yrs) and well-known ${industry} development/trend you are confident actually happened, phrased so an interviewer could casually ask 'have you been following…'. One short clause. If unsure it's real, use a broad TRUE industry trend instead of inventing a headline.", "bridge": "one natural sentence pivoting from it into this case without announcing it" },
-  "privateMechanismNote": "the real driver/answer in your own words — withheld from the candidate",
-  "exhibits": [ ${EXHIBIT_JSON_SPEC} ],  // ${exhibitCount} exhibits; include ${EXHIBITS_BY_TYPE[type]}; make 2 of them render="chart" (chartData numbers MUST equal the 'data' string)
-  "quant": { "task": "", "whenToShow": "", "derivation": "PRIVATE step-by-step", "answer": "PRIVATE: result + attribution across 2-3 drivers" },
-  "answerKey": "PRIVATE: diagnosis (the crux + secondary driver) + recommendation with a clear bet and a tradeoff",
-  "commonWrongTurns": ["traps a weak candidate falls into"],
+  "privateMechanismNote": "the real driver/answer in your own words, with the secondary driver and the logic spine — withheld from the candidate",
+  "exhibits": [ ${EXHIBIT_JSON_SPEC} ],  // ${exhibitCount} exhibits; cover ${EXHIBITS_BY_TYPE[type]} AND additional supporting cuts (by segment / channel / geography / competitor / cost line / time). Make AT LEAST 3 of them render="chart". DENSITY: time-series charts carry >=5 periods; categorical charts carry >=4-6 categories; charts plot 2-3 numeric series where it makes sense. Every 'data' string and its 'chartData' MUST carry identical numbers. Each exhibit must add NEW information, not restate another.
+  "quant": { "task": "a concrete multi-step calculation grounded in the exhibits (e.g. quantify the profit bridge, size the opportunity, compute the breakeven)", "whenToShow": "", "derivation": "PRIVATE step-by-step with the actual numbers", "answer": "PRIVATE: result + attribution across 2-3 drivers" },
+  "answerKey": "PRIVATE: full diagnosis (the crux + secondary driver, with the supporting numbers) + a recommendation with a clear bet, the quantified upside, and the key tradeoff/risk",
+  "commonWrongTurns": ["3-5 specific traps a weak candidate falls into on THIS case"],
   "forbiddenTerms": ["PRIVATE: the SPECIFIC jargon + key figures the candidate must DISCOVER — a silent compliance monitor uses these so the interviewer never says them first. Short tokens/phrases only."]
 }
-FINAL: recompute every total, margin, and the quant answer. Fix any mismatch before returning.`;
+FINAL: recompute every total, margin, growth rate, and the quant answer. Confirm each exhibit adds distinct information and the keyDataPoints reveal no diagnosis. Fix any mismatch before returning.`;
 }
 
 // Reconstruct a STRUCTURED case from raw user-uploaded material (a pasted case,
@@ -99,7 +103,8 @@ Return ONLY valid JSON:
   "type": "one of: profitability | market_entry | ma | growth | pricing | operations (best fit)",
   "industry": "one of: tech | cpg | pharma | finance | energy | automotive | retail (best fit; use closest)",
   "difficulty": 1-4 (estimate from depth/complexity),
-  "situation": "3-4 NEUTRAL sentences the interviewer opens with: context + the ask. No revealed data, no answer.",
+  "situation": "4-6 NEUTRAL sentences the interviewer opens with: company/context, the setup, the market backdrop, and the ask. No revealed data, no answer.",
+  "keyDataPoints": [ { "label": "", "value": "" } ],  // 3-6 NEUTRAL context facts from the source (scale/footprint/business-model/timeframe/the ask) for the candidate's brief; never the diagnosis. Omit any the source doesn't support.
   "openingHook": { "reference": "a REAL broad TRUE trend relevant to this industry (only if confident); else a generic industry framing", "bridge": "one sentence pivoting into the case" },
   "privateMechanismNote": "PRIVATE: the real driver/root cause and the logic spine, in your own words, as evidenced by the source",
   "exhibits": [ ${EXHIBIT_JSON_SPEC} ],  // ONE entry per material fact the source reveals; make the quantitative ones render="chart"/"table" with FAITHFUL numbers, qualitative ones render="spoken"
@@ -121,17 +126,21 @@ ${rawText.slice(0, 12000)}
 // DISCOVER, and exhibits revealed only when earned. theme ∈ pricing|cost|competition|pipeline.
 export type PharmaTheme = 'pricing' | 'cost' | 'competition' | 'pipeline';
 export function PHARMA_PROFITABILITY_CASE_PROMPT(difficulty: number, theme: PharmaTheme): string {
-  const exhibitCount = difficulty <= 1 ? '3' : difficulty >= 4 ? '5' : '3-4';
-  return `You are a McKinsey pharma case designer. Generate ONE realistic, internally-consistent pharma profitability case as JSON.
+  const exhibitCount = difficulty <= 1 ? '4' : difficulty >= 4 ? '6-7' : '5-6';
+  return `You are a McKinsey pharma case designer. Generate ONE realistic, RICH, internally-consistent pharma profitability case as JSON. This is a full case-team-quality case, not a sketch — enough depth and data for a 30-45 minute interview.
 Inputs: difficulty ${difficulty} (1-4), theme "${theme}" (pricing | cost | competition | pipeline).
-THE NUMBERS MUST RECONCILE. Revenue lines sum to totals; margins = profit/revenue; the quant answer is derivable from the exhibits. Net revenue stays roughly flat across 5 years (flat top line hiding a margin problem). The decline traces to ONE pharma-specific mechanism (loss of exclusivity, gross-to-net erosion, payer/channel mix shift, biosimilar entry, R&D productivity decline, mandatory rebate/340B growth, inventory destocking, or another genuine pharma mechanism you choose to fit the theme — VARY it, don't default to the obvious) plus one secondary driver. Realistic magnitudes: $1-5B revenue, 60-85% gross margin, R&D 12-20% of revenue, SG&A 20-30% of revenue.
+THE NUMBERS MUST RECONCILE. Revenue lines sum to totals; margins = profit/revenue; growth rates tie to the values; the quant answer is derivable from the exhibits. Net revenue stays roughly flat across 5 years (flat top line hiding a margin problem). The decline traces to ONE pharma-specific mechanism (loss of exclusivity, gross-to-net erosion, payer/channel mix shift, biosimilar entry, R&D productivity decline, mandatory rebate/340B growth, inventory destocking, or another genuine pharma mechanism you choose to fit the theme — VARY it, don't default to the obvious) plus one secondary driver. Realistic magnitudes: $1-5B revenue, 60-85% gross margin, R&D 12-20% of revenue, SG&A 20-30% of revenue. Use a realistic portfolio (2-4 named products/franchises with their own dynamics).
 The mechanism jargon stays PRIVATE — the candidate must discover it from the exhibits. The situation they hear is neutral and names no cause.
 Return ONLY valid JSON:
 {
   "title": "company + one-line problem",
   "difficulty": ${difficulty},
-  "situation": "3-4 neutral sentences: company, flat-revenue/falling-margin setup, CEO's ask. No framing the answer.",
-  "privateMechanismNote": "the real driver, in your own words — withheld from candidate",
+  "situation": "5-7 neutral sentences that set a vivid, concrete scene: the company (scale, therapeutic areas, key products), the flat-revenue/falling-margin setup, the market context and what recently changed, the CEO's precise ask and target metric, the timeframe. Specific and realistic — but no framing of the answer.",
+  "keyDataPoints": [
+    // 5-7 NEUTRAL context facts for the candidate's brief: scale / portfolio / therapeutic areas / business model / timeframe / the ask — e.g. {"label":"Revenue","value":"$3.2B (flat, 5 yrs)"}, {"label":"Portfolio","value":"3 marketed drugs, lead = 60% of sales"}, {"label":"The ask","value":"Recover ~6 pts of operating margin in 24 months"}. CONTEXT only — the diagnostic figures live in exhibits and stay hidden until earned. Never put the answer here.
+    { "label": "", "value": "" }
+  ],
+  "privateMechanismNote": "the real driver + the secondary driver + the logic spine, in your own words — withheld from candidate",
   "exhibits": [
     { "id": number,                 // 1-based; the interviewer passes this to show_exhibit
       "label": "", "visual": "table|chart|spoken",
@@ -144,10 +153,10 @@ Return ONLY valid JSON:
       "whenToShow": "the LIGHT trigger that earns it — a hypothesis or structure pointing at this area, or a reasoned request. Be generous: in a normal case most exhibits come out when asked for with a reason.",
       "doNotShowIf": "RARE — only if this single exhibit hands over the diagnosis outright. Usually empty/'—'. A direct request after a hypothesis is NOT a reason to withhold.",
       "insight": "PRIVATE: what it reveals" }
-  ],  // ${exhibitCount} exhibits; include a 5-yr P&L and a revenue-by-line mix exhibit as render="chart" (line for the P&L trend, bar for the mix), plus the mechanism exhibit. The 'data' string and 'chartData' MUST carry identical numbers.
-  "quant": { "task": "", "whenToShow": "", "derivation": "PRIVATE step-by-step", "answer": "PRIVATE: result + attribution across 2-3 drivers" },
-  "answerKey": "PRIVATE: diagnosis (mechanism + secondary driver) + recommendation with a clear bet and tradeoff",
-  "commonWrongTurns": ["traps a weak candidate falls into"],
+  ],  // ${exhibitCount} exhibits; include a 5-yr P&L (line), a revenue-by-product/line mix (bar), a gross-to-net or cost-bridge exhibit, and the mechanism exhibit, plus supporting cuts (by payer/channel, by product, by geography). At least 3 render="chart". DENSITY: time-series >=5 periods; categorical >=4-6 categories; 2-3 numeric series where sensible. Each exhibit adds NEW info. The 'data' string and 'chartData' MUST carry identical numbers.
+  "quant": { "task": "a concrete multi-step calc grounded in the exhibits (e.g. build the gross-to-net or profit bridge, size the margin recovery)", "whenToShow": "", "derivation": "PRIVATE step-by-step with the actual numbers", "answer": "PRIVATE: result + attribution across 2-3 drivers" },
+  "answerKey": "PRIVATE: full diagnosis (mechanism + secondary driver, with supporting numbers) + recommendation with a clear bet, quantified upside, and the key tradeoff/risk",
+  "commonWrongTurns": ["3-5 specific traps a weak candidate falls into on THIS case"],
   "forbiddenTerms": ["PRIVATE: the SPECIFIC mechanism jargon + the key figures the candidate must DISCOVER for themselves — a silent compliance monitor uses this so the interviewer never says them first. Short tokens/phrases only, e.g. \\"gross-to-net\\", \\"biosimilar\\", \\"loss of exclusivity\\", \\"47%\\"."]
 }
 FINAL: recompute every total, margin, and the quant answer. Fix any mismatch before returning.`;
