@@ -194,6 +194,36 @@ ${rawText.slice(0, 12000)}
 """`;
 }
 
+// Generate a MODEL interview transcript that walks the IDEAL (highest-scoring)
+// path through the case — the answer key brought to life as a conversation. The
+// `stepsText` is the ordered ideal sequence (the reference tree's correct nodes,
+// in priority order, with their private insight). The transcript shows a strong
+// candidate driving the case top-down, earning exhibits, doing the quant, and
+// synthesising — a worked example the user can learn the shape of the case from.
+export function IDEAL_TRANSCRIPT_PROMPT(casePackage: string, stepsText: string): string {
+  return `You are writing a MODEL case-interview transcript: how a top (top-5%) candidate would walk THIS case end to end, following the ideal solution path. Output JSON only.
+
+THE CASE (full package — includes the private answer key, exhibits, quant, and mechanism; use them to make the model answers correct and specific):
+${casePackage}
+
+THE IDEAL PATH (the highest-scoring sequence of moves — follow this order; each line is a step with the private insight that should surface there):
+${stepsText}
+
+Write a realistic spoken transcript of a 30-40 minute case between INTERVIEWER and CANDIDATE that demonstrates this ideal path. Rules:
+- Open with the interviewer posing the neutral prompt; the candidate plays back the ask and lays out a clear, MECE structure (signposting the branches) BEFORE diving — this is the "scan then dive" a strong candidate does.
+- Then go DEEP on the high-priority branches in the ideal order. The candidate states a hypothesis, asks for the relevant data, the interviewer reveals the matching exhibit, the candidate reads it correctly and draws the insight, then drills to the next level. Reference real exhibit numbers and do the quant explicitly (show the arithmetic, land the answer).
+- The candidate leads with the answer (top-down), is concise, and transitions cleanly between branches.
+- End with a crisp synthesis: the diagnosis (primary + secondary driver) and a recommendation with the quantified upside and the key risk/tradeoff.
+- Keep each turn natural and spoken (1-4 sentences). 24-40 turns total. This is a MODEL answer — the candidate should be excellent throughout, but realistic (not robotic).
+
+Return ONLY valid JSON:
+{
+  "turns": [
+    { "role": "interviewer" | "candidate", "text": "the spoken line" }
+  ]
+}`;
+}
+
 // Specialized generator for pharma PROFITABILITY cases. Produces a far more
 // rigorous, internally-reconciled case than the generic generator: a flat top
 // line hiding a margin problem, ONE private pharma mechanism the candidate must

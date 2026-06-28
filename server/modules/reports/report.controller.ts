@@ -71,3 +71,12 @@ export async function regenerateReport(req: AuthRequest, res: Response, next: Ne
     next(err);
   }
 }
+
+export async function getIdealTranscript(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const transcript = await reportService.getOrGenerateIdealTranscript(req.params.sessionId, req.userId!);
+    res.json({ transcript });
+  } catch (err) {
+    next(err);
+  }
+}

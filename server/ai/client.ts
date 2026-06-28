@@ -2,7 +2,7 @@ import OpenAI from 'openai';
 import { env } from '../config/env.js';
 import { CaseType, Industry } from '../models/Case.js';
 import { TranscriptEntry } from '../models/Session.js';
-import { PHARMA_PROFITABILITY_CASE_PROMPT, EXHIBIT_CASE_PROMPT, RICH_CASE_CORE_PROMPT, EXHIBIT_RENDER_PROMPT, EXTRACT_CASE_PROMPT, REFERENCE_SKELETON_PROMPT, REFERENCE_BRANCH_PROMPT, POST_INTERVIEW_TREE_PROMPT, PharmaTheme, PRODUCT_CASE_PROMPT, GUESSTIMATE_PROMPT, ProductFormat, HINT_PROMPT, EVALUATION_PROMPT, EvaluationContext, PROGRESS_INSIGHT_PROMPT, ProgressInsightContext } from './prompts.js';
+import { PHARMA_PROFITABILITY_CASE_PROMPT, EXHIBIT_CASE_PROMPT, RICH_CASE_CORE_PROMPT, EXHIBIT_RENDER_PROMPT, EXTRACT_CASE_PROMPT, IDEAL_TRANSCRIPT_PROMPT, REFERENCE_SKELETON_PROMPT, REFERENCE_BRANCH_PROMPT, POST_INTERVIEW_TREE_PROMPT, PharmaTheme, PRODUCT_CASE_PROMPT, GUESSTIMATE_PROMPT, ProductFormat, HINT_PROMPT, EVALUATION_PROMPT, EvaluationContext, PROGRESS_INSIGHT_PROMPT, ProgressInsightContext } from './prompts.js';
 
 export const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
 
@@ -228,6 +228,16 @@ export async function extractCaseFromTranscript(rawText: string): Promise<Extrac
     EXTRACT_CASE_PROMPT(rawText),
     { temperature: 0.3, maxTokens: 8000 }, // low temp — faithful extraction, not creative generation
   ));
+}
+
+// Model "ideal transcript" — a worked example walking the highest-scoring path.
+export interface IdealTranscript { turns: Array<{ role: string; text: string }> }
+export async function generateIdealTranscript(casePackage: string, stepsText: string): Promise<IdealTranscript> {
+  return jsonChat<IdealTranscript>(
+    'You write model case-interview transcripts that demonstrate the ideal solution path. Return only valid JSON.',
+    IDEAL_TRANSCRIPT_PROMPT(casePackage, stepsText),
+    { temperature: 0.5, maxTokens: 6000 },
+  );
 }
 
 // Product-case & guesstimate generators (PM / estimation modules).

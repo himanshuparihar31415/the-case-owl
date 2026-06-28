@@ -2,7 +2,7 @@ import { Report, IReport, OverallGrade } from '../../models/Report.js';
 import { Session, TranscriptEntry } from '../../models/Session.js';
 import { Case } from '../../models/Case.js';
 import { AppError } from '../../middleware/errorHandler.js';
-import { generateEvaluationWithAI, embedTexts, cosineSimilarity, buildReferenceTree, buildEvaluationTree } from '../../ai/client.js';
+import { generateEvaluationWithAI, embedTexts, cosineSimilarity, buildReferenceTree, buildEvaluationTree, generateIdealTranscript } from '../../ai/client.js';
 import { scoreTraversal } from './treeScore.js';
 import { EvaluationContext } from '../../ai/prompts.js';
 
@@ -194,6 +194,67 @@ export async function getOrGenerateReport(sessionId: string, userId: string): Pr
   const existing = await Report.findOne({ sessionId, userId });
   if (existing) return existing;
   return generateReport(sessionId, userId);
+}
+
+// Walk the reference tree's CORRECT nodes in ideal (priority) order → an ordered
+// list of "Step N — <label>: <insight>" lines describing the highest-scoring path.
+function idealStepsText(refTree: Record<string, unknown> | undefined): string {
+  if (!refTree) return '';
+  const status = (n: Record<string, unknown>): string => String(n.reference_status ?? n.status ?? 'neutral');
+  const lines: string[] = [];
+  let step = 0;
+  const dfs = (n: Record<string, unknown>) => {
+    const kids = (Array.isArray(n.children) ? n.children : []) as Array<Record<string, unknown>>;
+    const correct = kids.filter((c) => status(c) === 'correct');
+    for (const c of correct) {
+      step += 1;
+      const label = String(c.label ?? '').trim();
+      const insight = String(c.insight ?? '').trim();
+      lines.push(`Step ${step} — ${label}${insight ? `: ${insight}` : ''}`);
+      dfs(c);
+    }
+  };
+  // depth-1 buckets in rank order, then their correct subtrees.
+  const buckets = ((Array.isArray(refTree.children) ? refTree.children : []) as Array<Record<string, unknown>>)
+    .filter((c) => status(c) === 'correct')
+    .sort((a, b) => (Number(a.rank ?? 99)) - (Number(b.rank ?? 99)));
+  for (const b of buckets) {
+    step += 1;
+    lines.push(`Step ${step} — ${String(b.label ?? '').trim()}${b.insight ? `: ${String(b.insight).trim()}` : ''}`);
+    dfs(b);
+  }
+  return lines.join('\n');
+}
+
+// Generate (and cache on the Report) a model transcript that walks the ideal
+// solution path. Consulting cases only — those have a reference tree.
+export async function getOrGenerateIdealTranscript(sessionId: string, userId: string): Promise<Array<{ role: string; text: string }>> {
+  const report = await Report.findOne({ sessionId, userId });
+  if (!report) throw new AppError(404, 'Report not found — open the report first');
+  const cached = (report.analysis as Record<string, unknown> | undefined)?.idealTranscript;
+  if (Array.isArray(cached) && cached.length) return cached as Array<{ role: string; text: string }>;
+
+  const session = await Session.findOne({ _id: sessionId, userId }).populate('caseId');
+  if (!session) throw new AppError(404, 'Session not found');
+  const caseDoc = session.caseId as unknown as InstanceType<typeof Case>;
+  if (!caseDoc) throw new AppError(400, 'No case attached to this session');
+
+  // Prefer the cached reference tree (full MECE answer key); build it if missing.
+  let refTree = caseDoc.referenceTree as Record<string, unknown> | undefined;
+  if (!refTree) {
+    try {
+      refTree = await buildReferenceTree(serializeCasePackage(caseDoc));
+      await Case.updateOne({ _id: caseDoc._id }, { $set: { referenceTree: refTree } }).catch(() => { /* non-fatal */ });
+    } catch (e) { console.error('ideal-transcript: reference tree build failed:', e); }
+  }
+
+  const stepsText = idealStepsText(refTree) || (caseDoc.answerKey ?? caseDoc.plausibleSolution ?? '');
+  const out = await generateIdealTranscript(serializeCasePackage(caseDoc), stepsText);
+  const turns = Array.isArray(out.turns) ? out.turns.filter((t) => t && t.text) : [];
+  if (turns.length) {
+    await Report.updateOne({ sessionId, userId }, { $set: { 'analysis.idealTranscript': turns } }).catch((e) => console.error('cache ideal transcript failed:', e));
+  }
+  return turns;
 }
 
 // Serialize a Case doc into the text "package" the reference-tree builder reads.

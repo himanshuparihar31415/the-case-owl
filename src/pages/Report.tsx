@@ -114,6 +114,20 @@ export default function Report() {
   const [openCoach, setOpenCoach] = useState<Set<number>>(new Set());
   const [activeTab, setActiveTab] = useState<string>('overview');
   const [showCase, setShowCase] = useState(false);
+  const [idealTranscript, setIdealTranscript] = useState<Array<{ role: string; text: string }> | null>(null);
+  const [idealLoading, setIdealLoading] = useState(false);
+  const [idealError, setIdealError] = useState('');
+  const [showIdeal, setShowIdeal] = useState(false);
+
+  const loadIdealTranscript = () => {
+    setShowIdeal(true);
+    if (idealTranscript || idealLoading) return;
+    setIdealLoading(true); setIdealError('');
+    api.post<{ transcript: Array<{ role: string; text: string }> }>(`/reports/${sessionId}/ideal-transcript`)
+      .then((d) => setIdealTranscript(d.transcript ?? []))
+      .catch((e) => setIdealError(e instanceof Error ? e.message : 'Failed to generate the ideal transcript.'))
+      .finally(() => setIdealLoading(false));
+  };
 
   useEffect(() => {
     if (!sessionId) return;
@@ -784,7 +798,12 @@ export default function Report() {
                 <React.Suspense fallback={<div className="no-line-card p-8 text-center text-sm text-secondary">Loading case map…</div>}>
                   <CaseTree root={a.evaluationTree} summary={a.treeSummary} score={a.treeScore} />
                 </React.Suspense>
-                <p className="text-[11px] text-secondary">Opens full-screen: click any node to see the right move there and how you did; double-click to collapse a branch; use the minimap and zoom slider to navigate.</p>
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <p className="text-[11px] text-secondary">Opens full-screen: click any node to see the right move there and how you did; double-click to collapse a branch; use the minimap and zoom slider to navigate.</p>
+                  <button onClick={loadIdealTranscript} className="shrink-0 inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-on-primary text-sm font-bold hover:bg-primary-container transition">
+                    <FileText className="w-4 h-4" /> Ideal Transcript
+                  </button>
+                </div>
               </div>
             </Section>
           )}
@@ -1074,6 +1093,42 @@ export default function Report() {
                   </div>
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Ideal transcript modal — a model interview walking the best solution path */}
+      {showIdeal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 print:hidden" onClick={() => setShowIdeal(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-start justify-between gap-4 p-6 border-b border-outline-variant/15 shrink-0">
+              <div>
+                <span className="label-blueprint text-on-tertiary-container font-bold block mb-1">Ideal Transcript</span>
+                <h2 className="font-headline text-xl font-extrabold text-primary">How a top candidate works this case</h2>
+                <p className="text-xs text-secondary mt-0.5">A model interview following the highest-scoring path through the answer key.</p>
+              </div>
+              <button onClick={() => setShowIdeal(false)} className="text-secondary hover:text-primary transition shrink-0"><X className="w-5 h-5" /></button>
+            </div>
+            <div className="overflow-y-auto scrolling-log p-6 space-y-4">
+              {idealLoading && (
+                <div className="flex items-center justify-center py-16 gap-3 text-secondary">
+                  <Loader2 className="w-6 h-6 animate-spin" /> <span className="text-sm">Writing the model transcript — this takes a moment…</span>
+                </div>
+              )}
+              {idealError && !idealLoading && <p className="text-sm text-error">{idealError}</p>}
+              {!idealLoading && !idealError && idealTranscript && idealTranscript.length === 0 && (
+                <p className="text-sm text-secondary">No ideal transcript available for this case.</p>
+              )}
+              {!idealLoading && idealTranscript && idealTranscript.map((t, i) => (
+                <div key={i} className={cn('flex flex-col', t.role === 'candidate' ? 'items-end' : 'items-start')}>
+                  <span className="text-[10px] font-bold font-mono mb-1 text-on-tertiary-container">{t.role === 'candidate' ? 'CANDIDATE' : 'INTERVIEWER'}</span>
+                  <div className={cn('max-w-[85%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed',
+                    t.role === 'candidate' ? 'bg-primary text-on-primary rounded-tr-sm' : 'bg-surface-container-low text-on-surface-variant rounded-tl-sm')}>
+                    {t.text}
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         </div>
