@@ -30,6 +30,8 @@ interface NodeData extends Record<string, unknown> {
   quality?: string; insight?: string; star: boolean; timeSpent?: string;
   wasNudged?: boolean; hasChildren: boolean; collapsed: boolean; dimmed: boolean; selected: boolean;
   points?: number; rank?: number; lens: Lens;
+  seq?: number;      // position in the ideal (max-points) sequence, 1-based
+  onPath?: boolean;  // is this node on the ideal sequence
 }
 
 const NODE_W = 210;
@@ -84,6 +86,10 @@ function CaseNode({ data }: NodeProps<Node<NodeData>>) {
     >
       <Handle type="target" position={Position.Left} style={{ opacity: 0 }} />
       <span className={`w-1.5 shrink-0 ${p.accent}`} />
+      {data.seq != null && (
+        <span className="absolute -top-2 -left-2 z-10 w-5 h-5 rounded-full bg-emerald-600 text-white text-[10px] font-bold leading-5 text-center shadow ring-2 ring-white"
+          title={`Step ${data.seq} on the ideal path`}>{data.seq}</span>
+      )}
       <div className="flex-1 px-3 py-2.5 min-w-0">
         <div className="flex items-center gap-1.5">
           {data.lens === 'score' && data.rank != null && <span className="text-[9px] font-bold text-amber-700 bg-amber-100 rounded px-1">#{data.rank}</span>}
@@ -134,7 +140,7 @@ function flatten(root: RawNode): Array<{ id: string; raw: RawNode; parentId: str
   return out;
 }
 
-function buildGraph(root: RawNode, collapsed: Set<string>, solutionOnly: boolean, selectedId: string | null, lens: Lens) {
+function buildGraph(root: RawNode, collapsed: Set<string>, solutionOnly: boolean, selectedId: string | null, lens: Lens, seqById: Map<string, number>, showSequence: boolean) {
   const all = flatten(root);
   const byId = new Map(all.map((n) => [n.id, n]));
   const childrenOf = new Map<string, string[]>();
@@ -155,6 +161,8 @@ function buildGraph(root: RawNode, collapsed: Set<string>, solutionOnly: boolean
     const pos = g.node(n.id);
     const status = refStatus(n.raw);
     const hasChildren = (childrenOf.get(n.id) ?? []).length > 0;
+    const seq = seqById.get(n.id);
+    const onPath = seq != null;
     return {
       id: n.id, type: 'caseNode',
       position: { x: pos.x - NODE_W / 2, y: pos.y - NODE_H / 2 },
@@ -164,8 +172,10 @@ function buildGraph(root: RawNode, collapsed: Set<string>, solutionOnly: boolean
         star: status === 'correct' && !hasChildren && (n.raw.depth ?? 0) >= 6,
         timeSpent: n.raw.time_spent, wasNudged: n.raw.was_nudged,
         points: n.raw.points, rank: n.raw.rank, lens,
+        seq: showSequence ? seq : undefined, onPath,
         hasChildren, collapsed: collapsed.has(n.id),
-        dimmed: solutionOnly && status !== 'correct', selected: selectedId === n.id,
+        dimmed: (solutionOnly && status !== 'correct') || (showSequence && !onPath),
+        selected: selectedId === n.id,
       },
     };
   });
@@ -261,7 +271,7 @@ const GRADE_COLOR: Record<string, string> = {
   'Lean No': 'text-orange-600', 'No Hire': 'text-red-600',
 };
 
-function ScoreCard({ score }: { score?: Record<string, any> }) {
+function ScoreCard({ score, idealSequence }: { score?: Record<string, any>; idealSequence?: Array<{ n: number; label: string }> }) {
   if (!score) return <p className="text-xs text-slate-500">No score available for this report.</p>;
   const pct = score.percentage ?? 0;
   const branches: Record<string, any> = score.branch_scores ?? {};
@@ -302,6 +312,20 @@ function ScoreCard({ score }: { score?: Record<string, any> }) {
           <p className="text-red-600">Never entered: {cov.branches_never_entered.join(', ')}</p>
         )}
       </div>
+      {Array.isArray(idealSequence) && idealSequence.length > 0 && (
+        <div className="border-t border-slate-200 pt-2">
+          <p className="text-[10px] uppercase tracking-wide text-slate-500 font-bold mb-1.5">Ideal sequence (max points)</p>
+          <ol className="space-y-1">
+            {idealSequence.map((s) => (
+              <li key={s.n} className="flex items-start gap-2 text-xs">
+                <span className="shrink-0 w-4 h-4 rounded-full bg-emerald-600 text-white text-[9px] font-bold leading-4 text-center">{s.n}</span>
+                <span className="text-slate-700 leading-snug">{s.label}</span>
+              </li>
+            ))}
+          </ol>
+          <p className="text-[10px] text-slate-400 mt-1.5">The highest-scoring order to work the case — toggle “Ideal Sequence” to see it numbered on the map.</p>
+        </div>
+      )}
       <p className="text-[11px] text-slate-500 pt-1 border-t border-slate-200">Each node shows the points it earned. Click one for the full breakdown.</p>
     </div>
   );
@@ -314,9 +338,19 @@ function Flow({ root, summary, score }: { root: RawNode; summary?: Record<string
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [zoom, setZoom] = useState(0.55);
   const [lens, setLens] = useState<Lens>('journey');
+  const [showSequence, setShowSequence] = useState(false);
   const rf = useReactFlow();
   const allNodes = useMemo(() => flatten(root), [root]);
-  const { nodes, edges } = useMemo(() => buildGraph(root, collapsed, solutionOnly, selectedId, lens), [root, collapsed, solutionOnly, selectedId, lens]);
+
+  // The ideal (max-points) order from the scoring engine → node id → step number.
+  const idealPath: string[] = useMemo(() => (Array.isArray(score?.idealPath) ? score!.idealPath : []), [score]);
+  const seqById = useMemo(() => new Map(idealPath.map((id, i) => [String(id), i + 1])), [idealPath]);
+  const idealSequence = useMemo(() => {
+    const byId = new Map<string, RawNode>(allNodes.map((n) => [n.id, n.raw] as [string, RawNode]));
+    return idealPath.map((id, i) => ({ n: i + 1, label: byId.get(String(id))?.label ?? String(id) }));
+  }, [idealPath, allNodes]);
+
+  const { nodes, edges } = useMemo(() => buildGraph(root, collapsed, solutionOnly, selectedId, lens, seqById, showSequence), [root, collapsed, solutionOnly, selectedId, lens, seqById, showSequence]);
 
   useEffect(() => { const t = setTimeout(() => rf.fitView({ padding: 0.2, duration: 300 }), 60); return () => clearTimeout(t); }, [collapsed, rf]);
 
@@ -349,6 +383,9 @@ function Flow({ root, summary, score }: { root: RawNode; summary?: Record<string
               <button onClick={() => setLens('score')} className={`text-xs px-3 py-1.5 ${lens === 'score' ? 'bg-emerald-600 text-white' : 'bg-white text-slate-500'}`}>Score</button>
             </div>
             <button onClick={() => setSolutionOnly((s) => !s)} className={`${btn} ${solutionOnly ? 'border-emerald-500 text-emerald-600' : 'border-slate-300 text-slate-500'}`}>Solution Path</button>
+            {seqById.size > 0 && (
+              <button onClick={() => setShowSequence((s) => !s)} className={`${btn} ${showSequence ? 'border-emerald-500 text-emerald-600' : 'border-slate-300 text-slate-500'}`}>Ideal Sequence</button>
+            )}
             <button onClick={() => { setCollapsed(new Set()); setSolutionOnly(false); }} className={`${btn} border-slate-300 text-slate-500`}>Expand All</button>
             <button onClick={focusSolution} className={`${btn} border-slate-300 text-slate-500`}>Focus Solution</button>
           </Panel>
@@ -366,7 +403,7 @@ function Flow({ root, summary, score }: { root: RawNode; summary?: Record<string
         </ReactFlow>
       </div>
       <aside className="w-[360px] shrink-0 border-l border-slate-200 bg-white overflow-y-auto p-4">
-        {lens === 'score' && !selected ? <ScoreCard score={score} /> : <Detail node={selected} summary={summary} />}
+        {lens === 'score' && !selected ? <ScoreCard score={score} idealSequence={idealSequence} /> : <Detail node={selected} summary={summary} />}
       </aside>
     </div>
   );

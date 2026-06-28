@@ -780,11 +780,7 @@ export default function Report() {
               <div className="space-y-4">
                 {solution.exhibits.map((e: any, i: number) => (
                   <div key={i} className="no-line-card p-5">
-                    <div className="flex items-center gap-2 mb-2">
-                      <span className="font-headline font-bold text-sm text-primary">{e.label ?? `Exhibit ${i + 1}`}</span>
-                      {e.visual && <span className="text-[10px] uppercase tracking-wide text-secondary bg-surface-container-low px-1.5 py-0.5 rounded">{e.visual}</span>}
-                    </div>
-                    {e.data && <p className="text-sm text-on-surface-variant leading-relaxed whitespace-pre-line font-mono bg-surface-container-lowest rounded-lg p-3">{e.data}</p>}
+                    <ExhibitCard ex={e} large />
                     {e.insight && <p className="text-xs text-on-tertiary-container mt-2"><span className="font-bold">What it reveals: </span>{e.insight}</p>}
                   </div>
                 ))}

@@ -42,6 +42,7 @@ function indexTree(root: RawNode): Map<string, IndexedNode> {
 
 export interface TreeScore {
   total: number; max: number; percentage: number; grade: string;
+  idealPath: string[]; // ordered node ids of the max-points traversal (the "ideal sequence")
   branch_scores: Record<string, { label: string; raw: number; ordering: number; final: number; depthReached: number; terminalReached: boolean }>;
   penalties: { dead_ends_hit: Array<{ node: string; penalty: number }>; wrong_turns: string[]; nudges_given: number; nudge_point_reduction: number };
   coverage: { terminals_reached: string; coverage_points: number; branches_never_entered: string[] };
@@ -57,7 +58,7 @@ function gradeFor(pct: number): string {
 }
 
 // Core walk. Returns total path score + diagnostics + per-node points.
-function walk(root: RawNode, traversal: Visit[]): Omit<TreeScore, 'max' | 'percentage' | 'grade'> {
+function walk(root: RawNode, traversal: Visit[]): Omit<TreeScore, 'max' | 'percentage' | 'grade' | 'idealPath'> {
   const map = indexTree(root);
   const branchRank = new Map<string, number>();
   for (const n of map.values()) if (n.depth === 1) branchRank.set(n.id, n.rank ?? 99);
@@ -212,8 +213,12 @@ function idealTraversal(root: RawNode): Visit[] {
 
 export function scoreTraversal(root: RawNode, traversal: Visit[]): TreeScore {
   const actual = walk(root, traversal);
-  const ideal = walk(root, idealTraversal(root)).total;
+  const idealVisits = idealTraversal(root);
+  const ideal = walk(root, idealVisits).total;
   const max = Math.max(1, ideal);
   const percentage = Math.round((actual.total / max) * 1000) / 10;
-  return { ...actual, max, percentage, grade: gradeFor(percentage) };
+  // The ideal sequence (max-points path) — node ids in order, root excluded so
+  // the viz can number the substantive moves 1,2,3…
+  const idealPath = idealVisits.map((v) => String(v.id)).filter((id) => id !== 'root');
+  return { ...actual, max, percentage, grade: gradeFor(percentage), idealPath };
 }
