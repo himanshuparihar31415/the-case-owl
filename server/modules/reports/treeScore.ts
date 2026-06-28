@@ -146,12 +146,15 @@ function walk(root: RawNode, traversal: Visit[]): Omit<TreeScore, 'max' | 'perce
   const terminals = [...map.values()].filter((n) => n.status === 'correct' && !n.hasCorrectChild);
   const totalTerminals = terminals.length;
   const reached = terminalsReached.size;
+  // Coverage is mostly a BONUS for completeness. Missing nodes already costs you
+  // their points (the score is relative to max), so we don't pile on big negative
+  // penalties — at most a small nudge for finishing nothing at all.
   let coveragePoints = 0;
   if (totalTerminals > 0) {
     if (reached >= totalTerminals) coveragePoints += 50;
     else if (reached >= totalTerminals * 0.75) coveragePoints += 25;
-    else if (reached >= totalTerminals * 0.5) coveragePoints += 5;
-    else if (reached < 1) coveragePoints -= 30;
+    else if (reached >= totalTerminals * 0.5) coveragePoints += 10;
+    else if (reached < 1) coveragePoints -= 5; // finished no branch at all (mild)
   }
   const branchTerminalDepth = new Map<string, number>();
   terminals.forEach((t) => branchTerminalDepth.set(branchOf(t.id), Math.max(branchTerminalDepth.get(branchOf(t.id)) ?? 0, t.depth)));
@@ -159,7 +162,9 @@ function walk(root: RawNode, traversal: Visit[]): Omit<TreeScore, 'max' | 'perce
   for (const br of branchRank.keys()) {
     const tDepth = branchTerminalDepth.get(br) ?? 0;
     const rd = deepest.get(br);
-    if (rd == null) { coveragePoints -= 10; neverEntered.push(map.get(br)?.label ?? br); continue; }
+    // Never entered a branch → no extra penalty (you already forgo its points);
+    // just record it for the diagnostic.
+    if (rd == null) { neverEntered.push(map.get(br)?.label ?? br); continue; }
     if (tDepth && rd >= tDepth) coveragePoints += 15;
     else if (tDepth && rd >= tDepth - 1) coveragePoints += 8;
     else if (tDepth && rd >= tDepth - 2) coveragePoints += 3;
@@ -180,7 +185,7 @@ function walk(root: RawNode, traversal: Visit[]): Omit<TreeScore, 'max' | 'perce
     };
   }
 
-  const total = Math.round(pathTotal + coveragePoints);
+  const total = Math.max(0, Math.round(pathTotal + coveragePoints)); // never below zero
   const rounded: Record<string, number> = {};
   for (const [k, v] of Object.entries(perNode)) rounded[k] = Math.round(v);
   penalties.nudge_point_reduction = -Math.round(penalties.nudge_point_reduction);
