@@ -79,6 +79,75 @@ Return ONLY valid JSON:
 FINAL: recompute every total, margin, growth rate, and the quant answer. Confirm each exhibit adds distinct information and the keyDataPoints reveal no diagnosis. Fix any mismatch before returning.`;
 }
 
+// ── Rich TWO-STAGE case generation ───────────────────────────────────────────
+// A single JSON call under-produces: 6-7 exhibits crammed into one response come
+// out sparse and sometimes don't reconcile. So we generate in two stages, mirroring
+// the chunked reference-tree build:
+//   (1) CORE — fix the rich neutral brief + ONE canonical, fully-reconciled DATASET
+//       (the single source of truth for every number in the case) + an exhibit PLAN.
+//   (2) RENDER — expand each planned exhibit in its OWN call, pulling its numbers
+//       straight from the shared dataset. Each exhibit gets full attention (dense)
+//       and, because they all draw from one dataset, they reconcile by construction.
+
+// Stage 1: the case core + canonical dataset + exhibit plan (no rendered exhibits yet).
+export function RICH_CASE_CORE_PROMPT(type: CaseType, industry: Industry, difficulty: number, extraGuidance?: string): string {
+  const exhibitCount = difficulty <= 1 ? 4 : difficulty >= 4 ? 7 : 6;
+  return `You are a McKinsey case designer building the CORE of ONE rich, realistic ${DIFFICULTY_LABELS[difficulty]} ${type} case for the ${industry} industry. Output JSON only.
+THE CRUX (the real answer — keep PRIVATE; the candidate must DISCOVER it): ${CRUX_BY_TYPE[type]}
+Benchmark structure a strong candidate builds toward (never handed over): ${FRAMEWORK_BY_TYPE[type]}.
+${extraGuidance ? extraGuidance + '\n' : ''}Your job now is the brief + the CANONICAL DATASET that every exhibit will later be drawn from. Invest heavily in the dataset: it must be a real, internally-consistent fact base — totals = sum of lines, margins = profit/revenue, growth ties to values, shares sum to ~100%. Realistic magnitudes for a real ${industry} company.
+Return ONLY valid JSON:
+{
+  "title": "company + one-line, neutral problem",
+  "difficulty": ${difficulty},
+  "situation": "5-7 NEUTRAL sentences setting a vivid, concrete scene: the company (who, scale, what they sell, model); where they operate / segments / channels; the market context and what recently changed (the trigger); the client sponsor and the precise decision/metric on the table; the timeframe/constraint. Specific and realistic — but name NO cause and frame NO answer.",
+  "keyDataPoints": [ { "label": "", "value": "" } ],  // 5-7 NEUTRAL context facts for the candidate's brief (scale/footprint/model/timeframe/the ask). CONTEXT only — never the diagnostic figures (those stay in the dataset/exhibits).
+  "openingHook": { "reference": "a REAL, recent (~last 2 yrs) ${industry} trend you're confident happened, as a casual 'have you been following…' clause; if unsure, a broad TRUE industry trend", "bridge": "one sentence pivoting into the case" },
+  "privateMechanismNote": "PRIVATE: the real primary driver + the secondary driver + the logic spine, in your own words",
+  "dataset": {
+    // The SINGLE SOURCE OF TRUTH — a rich, reconciled fact base big enough to feed ${exhibitCount} distinct exhibits + the quant. Use clear nested keys with ACTUAL NUMBERS, e.g.:
+    //   "pnl_by_year": [ { "year": "FY20", "revenue": 3.2, "cogs": 0.9, "grossMargin": 72, "sgna": 0.8, "rnd": 0.5, "ebit": 0.6 }, ... 5+ years ],
+    //   "revenue_by_segment": [ { "segment": "Retail", "FY20": 1.8, "FY24": 1.6 }, ... ],
+    //   "by_channel"/"by_geography"/"competitor_share"/"cost_bridge"/"price_volume": [...],
+    //   plus any driver-specific tables the crux needs.
+    // Every number the case relies on lives HERE and reconciles. Be generous and specific.
+  },
+  "exhibitPlan": [
+    // EXACTLY ${exhibitCount} planned exhibits. Each presents a DISTINCT cut of the dataset — no two show the same thing. AT LEAST 3 render="chart".
+    { "id": 1, "label": "", "render": "chart|table|spoken", "chartType": "line|bar",
+      "shows": "which dataset key(s)/cut this exhibit presents, precisely",
+      "whenToShow": "the LIGHT trigger that earns it (a hypothesis/structure pointing here, or a reasoned request — be generous)",
+      "doNotShowIf": "RARE — only if it hands over the diagnosis outright; usually '—'",
+      "insight": "PRIVATE: what it reveals" }
+  ],
+  "quant": { "task": "a concrete multi-step calc grounded in the dataset (profit bridge, opportunity sizing, breakeven)", "whenToShow": "", "derivation": "PRIVATE step-by-step using the dataset's actual numbers", "answer": "PRIVATE: result + attribution across 2-3 drivers" },
+  "answerKey": "PRIVATE: full diagnosis (crux + secondary driver, with supporting numbers) + recommendation with a clear bet, quantified upside, and the key tradeoff/risk",
+  "commonWrongTurns": ["3-5 specific traps on THIS case"],
+  "forbiddenTerms": ["PRIVATE: the specific jargon + key figures the candidate must DISCOVER — short tokens only"]
+}
+FINAL: verify the dataset reconciles (totals, margins, growth, shares) before returning.`;
+}
+
+// Stage 2: render ONE planned exhibit into a full, dense exhibit object, drawing
+// every number from the shared canonical dataset (so all exhibits reconcile).
+export function EXHIBIT_RENDER_PROMPT(title: string, situation: string, datasetJson: string, stubJson: string): string {
+  return `You are rendering ONE exhibit for this McKinsey case. Output JSON only (a single exhibit object).
+CASE: ${title}
+SITUATION: ${situation}
+CANONICAL DATASET (the ONLY source of numbers — do NOT invent figures; pull exactly from here):
+${datasetJson}
+THE EXHIBIT TO RENDER (from the plan):
+${stubJson}
+Produce a DENSE, realistic exhibit using ONLY numbers from the dataset that match this exhibit's "shows". Return ONLY valid JSON:
+${EXHIBIT_JSON_SPEC}
+RULES:
+- Keep the planned id, label, render, whenToShow, doNotShowIf, insight (refine wording if needed).
+- If render="chart": set chartType, xKey, series (2-3 numeric series where the data supports it), and chartData — time-series carry >=5 periods, categorical carry >=4-6 categories. The 'data' string and chartData MUST carry identical numbers, straight from the dataset.
+- If render="table": put the full reconciled figures in 'data' as a compact readable block.
+- If render="spoken": 'data' is the qualitative fact stated plainly.
+- This exhibit must reconcile with the dataset. Recompute before returning.`;
+}
+
 // Reconstruct a STRUCTURED case from raw user-uploaded material (a pasted case,
 // a PDF, or a full interview transcript). The source is ONE path; the live
 // interviewer must handle a NEW candidate taking a different path — so we extract

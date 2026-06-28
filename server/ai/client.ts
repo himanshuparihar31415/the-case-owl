@@ -2,7 +2,7 @@ import OpenAI from 'openai';
 import { env } from '../config/env.js';
 import { CaseType, Industry } from '../models/Case.js';
 import { TranscriptEntry } from '../models/Session.js';
-import { PHARMA_PROFITABILITY_CASE_PROMPT, EXHIBIT_CASE_PROMPT, EXTRACT_CASE_PROMPT, REFERENCE_SKELETON_PROMPT, REFERENCE_BRANCH_PROMPT, POST_INTERVIEW_TREE_PROMPT, PharmaTheme, PRODUCT_CASE_PROMPT, GUESSTIMATE_PROMPT, ProductFormat, HINT_PROMPT, EVALUATION_PROMPT, EvaluationContext, PROGRESS_INSIGHT_PROMPT, ProgressInsightContext } from './prompts.js';
+import { PHARMA_PROFITABILITY_CASE_PROMPT, EXHIBIT_CASE_PROMPT, RICH_CASE_CORE_PROMPT, EXHIBIT_RENDER_PROMPT, EXTRACT_CASE_PROMPT, REFERENCE_SKELETON_PROMPT, REFERENCE_BRANCH_PROMPT, POST_INTERVIEW_TREE_PROMPT, PharmaTheme, PRODUCT_CASE_PROMPT, GUESSTIMATE_PROMPT, ProductFormat, HINT_PROMPT, EVALUATION_PROMPT, EvaluationContext, PROGRESS_INSIGHT_PROMPT, ProgressInsightContext } from './prompts.js';
 
 export const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
 
@@ -70,22 +70,83 @@ export interface ExhibitCase {
   forbiddenTerms?: string[];
 }
 
-// Specialized pharma-profitability generator (tuned).
-export async function generatePharmaProfitabilityCaseWithAI(difficulty: number, theme: PharmaTheme): Promise<ExhibitCase> {
-  return jsonChat<ExhibitCase>(
-    'You are a McKinsey pharma case designer. The numbers must reconcile. Return only valid JSON.',
-    PHARMA_PROFITABILITY_CASE_PROMPT(difficulty, theme),
-    { temperature: 0.5, maxTokens: 10000 },
-  );
+const CASE_SYSTEM = 'You are a McKinsey case designer. The numbers must reconcile. Return only valid JSON.';
+
+// The core call's shape: the brief + the canonical dataset + the exhibit plan.
+type CaseCore = Omit<ExhibitCase, 'exhibits'> & {
+  dataset?: unknown;
+  exhibitPlan?: Array<Record<string, unknown>>;
+};
+
+// Rich TWO-STAGE generator (see prompts.ts): a CORE call fixes the brief + one
+// canonical reconciled dataset + an exhibit plan, then EACH planned exhibit is
+// rendered in its own call from that shared dataset (dense + reconciling). Falls
+// back to the legacy single-call generator if the core call fails or yields no plan.
+async function buildRichCase(opts: {
+  type: CaseType; industry: Industry; difficulty: number;
+  extraGuidance?: string; fallbackPrompt: string;
+}): Promise<ExhibitCase> {
+  const { type, industry, difficulty, extraGuidance, fallbackPrompt } = opts;
+  let core: CaseCore;
+  try {
+    core = await jsonChat<CaseCore>(
+      CASE_SYSTEM, RICH_CASE_CORE_PROMPT(type, industry, difficulty, extraGuidance),
+      { temperature: 0.5, maxTokens: 9000, guard: true },
+    );
+  } catch (e) {
+    console.error('rich case core failed; falling back to single-call:', e);
+    return jsonChat<ExhibitCase>(CASE_SYSTEM, fallbackPrompt, { temperature: 0.5, maxTokens: 10000 });
+  }
+
+  const plan = Array.isArray(core.exhibitPlan) ? core.exhibitPlan : [];
+  if (!plan.length) {
+    return jsonChat<ExhibitCase>(CASE_SYSTEM, fallbackPrompt, { temperature: 0.5, maxTokens: 10000 });
+  }
+
+  // Expand each planned exhibit from the shared dataset, in parallel.
+  const datasetJson = JSON.stringify(core.dataset ?? {});
+  const title = core.title ?? '';
+  const situation = core.situation ?? '';
+  const exhibits = await Promise.all(plan.map(async (stub) => {
+    try {
+      const ex = await jsonChat<Record<string, unknown>>(
+        'You render ONE dense case exhibit from a shared canonical dataset. Return only valid JSON.',
+        EXHIBIT_RENDER_PROMPT(title, situation, datasetJson, JSON.stringify(stub)),
+        { temperature: 0.3, maxTokens: 2500 },
+      );
+      return ex && (ex.label || ex.data || ex.chartData) ? ex : stub;
+    } catch (e) {
+      console.error('exhibit render failed (using stub):', e);
+      return stub;
+    }
+  }));
+
+  // Drop the internal-only fields; ship the assembled case.
+  const { dataset: _dataset, exhibitPlan: _plan, ...rest } = core;
+  void _dataset; void _plan;
+  return { ...rest, exhibits } as ExhibitCase;
 }
 
-// Generalized exhibit-based generator for every other type/industry.
+// Pharma-specific constraints injected into the rich core call (keeps the tuned
+// pharma framing the dedicated single-call prompt had).
+const pharmaGuidance = (theme: PharmaTheme): string =>
+  `PHARMA SPECIFICS (theme "${theme}"): Net revenue stays roughly FLAT across 5 years — a flat top line hiding a margin problem. The decline traces to ONE pharma mechanism (loss of exclusivity, gross-to-net erosion, payer/channel mix shift, biosimilar entry, R&D productivity decline, mandatory rebate/340B growth, inventory destocking — VARY it to fit the theme) plus one secondary driver. Magnitudes: $1-5B revenue, 60-85% gross margin, R&D 12-20% of revenue, SG&A 20-30%. Build a portfolio of 2-4 named products/franchises with their own dynamics into the dataset.`;
+
+// Specialized pharma-profitability generator (rich two-stage, pharma-tuned).
+export async function generatePharmaProfitabilityCaseWithAI(difficulty: number, theme: PharmaTheme): Promise<ExhibitCase> {
+  return buildRichCase({
+    type: 'profitability', industry: 'pharma', difficulty,
+    extraGuidance: pharmaGuidance(theme),
+    fallbackPrompt: PHARMA_PROFITABILITY_CASE_PROMPT(difficulty, theme),
+  });
+}
+
+// Generalized exhibit-based generator for every other type/industry (rich two-stage).
 export async function generateExhibitCaseWithAI(type: CaseType, industry: Industry, difficulty: number): Promise<ExhibitCase> {
-  return jsonChat<ExhibitCase>(
-    'You are a McKinsey case designer. The numbers must reconcile. Return only valid JSON.',
-    EXHIBIT_CASE_PROMPT(type, industry, difficulty),
-    { temperature: 0.5, maxTokens: 10000 },
-  );
+  return buildRichCase({
+    type, industry, difficulty,
+    fallbackPrompt: EXHIBIT_CASE_PROMPT(type, industry, difficulty),
+  });
 }
 
 // A reconstructed custom case carries the same exhibit shape PLUS the type/
