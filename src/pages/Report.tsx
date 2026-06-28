@@ -1005,7 +1005,7 @@ export default function Report() {
       {/* Full-case modal — the complete brief + exhibits the candidate worked from */}
       {showCase && caseBrief && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 print:hidden" onClick={() => setShowCase(false)}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-start justify-between gap-4 p-6 border-b border-outline-variant/15 shrink-0">
               <div>
                 <span className="label-blueprint text-on-tertiary-container font-bold block mb-1">The Full Case</span>
