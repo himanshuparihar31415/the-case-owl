@@ -385,6 +385,14 @@ export async function generateReport(sessionId: string, userId: string): Promise
   const difficultyLabel = `${DIFFICULTY_LABELS[session.config.difficulty] ?? 'Intermediate'} ${kindLabel} ${caseDoc.module === 'guesstimate' ? '' : 'case'}`.trim();
   const durationLabel = `${Math.floor(durationSeconds / 60)}m ${durationSeconds % 60}s`;
 
+  // Kick the case-tree build off NOW, concurrently with the evaluation — it only
+  // needs the case + transcript, not the analysis, and (on a case's first report)
+  // the reference-tree build is the long pole. Running them in parallel turns the
+  // report wall-time from eval + trees into max(eval, trees).
+  const treesPromise = (caseDoc.module ?? 'case') === 'case'
+    ? buildCaseTrees(caseDoc, timestampedTranscript)
+    : Promise.resolve(null);
+
   const analysis: any = await generateEvaluationWithAI({
     timestampedTranscript,
     caseTitle: caseDoc.title,
@@ -436,15 +444,13 @@ export async function generateReport(sessionId: string, userId: string): Promise
     }
   }
 
-  // Stages 2+3: for consulting cases, overlay the candidate's journey onto the
-  // MECE reference tree (answer key). Best-effort — never blocks the report.
-  if ((caseDoc.module ?? 'case') === 'case') {
-    const trees = await buildCaseTrees(caseDoc, timestampedTranscript);
-    if (trees) {
-      analysis.evaluationTree = trees.evaluationTree;
-      analysis.treeSummary = trees.treeSummary;
-      analysis.treeScore = trees.treeScore;
-    }
+  // Stages 2+3 (consulting): collect the journey-vs-answer-key trees we started
+  // building in parallel above. Best-effort — never blocks the report.
+  const trees = await treesPromise;
+  if (trees) {
+    analysis.evaluationTree = trees.evaluationTree;
+    analysis.treeSummary = trees.treeSummary;
+    analysis.treeScore = trees.treeScore;
   }
 
   // Derive legacy fields for analytics/dashboard compatibility.
