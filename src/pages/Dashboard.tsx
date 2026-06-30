@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Play, Loader2, TrendingUp, TrendingDown, Minus, ArrowRight,
-  Target, Sparkles, X, Briefcase, Boxes, Calculator,
+  Target, Sparkles, X, Briefcase, Boxes, Calculator, FileText, ChevronDown,
 } from 'lucide-react';
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine,
@@ -27,6 +27,21 @@ interface Dashboard {
   evidence: any[];
   insight: any | null;
 }
+
+interface HistoryItem {
+  sessionId: string; caseTitle: string; caseType?: string; industry?: string;
+  status: string; score: number | null; grade: string | null; durationSeconds: number | null; date: string;
+}
+
+const GRADE_LABEL: Record<string, { t: string; c: string }> = {
+  STRONG_PASS: { t: 'Strong Hire', c: 'bg-green-100 text-green-700' },
+  PASS: { t: 'Hire', c: 'bg-tertiary-fixed text-on-tertiary-fixed-variant' },
+  BORDERLINE: { t: 'Borderline', c: 'bg-amber-100 text-amber-700' },
+  FAIL: { t: 'No Hire', c: 'bg-error-container/60 text-error' },
+};
+const prettyType = (t?: string) => (t ? t.replace(/_/g, ' ').replace(/\b\w/g, (m) => m.toUpperCase()) : 'Case');
+const fmtDate = (d: string) => { try { return new Date(d).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }); } catch { return ''; } };
+const fmtDur = (s: number | null) => (s == null ? '' : `${Math.floor(s / 60)}m`);
 
 const trendIcon = (t: string) =>
   t === 'up' ? <TrendingUp className="w-3.5 h-3.5" /> : t === 'down' ? <TrendingDown className="w-3.5 h-3.5" /> : <Minus className="w-3.5 h-3.5" />;
@@ -55,6 +70,18 @@ export default function Dashboard({ user }: { user: AuthUser | null }) {
   const [loading, setLoading] = useState(true);
   const [drawer, setDrawer] = useState<{ kind: string; arg?: string } | null>(null);
   const [mod, setMod] = useState<'all' | 'case' | 'product' | 'guesstimate'>('all');
+  const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [histTotal, setHistTotal] = useState(0);
+  const [histPage, setHistPage] = useState(1);
+  const [histLoading, setHistLoading] = useState(false);
+
+  const loadHistory = (page: number) => {
+    setHistLoading(true);
+    api.get<{ history: HistoryItem[]; total: number }>(`/analytics/history?page=${page}&limit=8`)
+      .then((d) => { setHistory((prev) => (page === 1 ? d.history : [...prev, ...d.history])); setHistTotal(d.total); setHistPage(page); })
+      .catch(() => { /* keep prior */ }).finally(() => setHistLoading(false));
+  };
+  useEffect(() => { loadHistory(1); }, []);
 
   useEffect(() => {
     // Don't toggle the full-page loader on tab switches — keep the prior view
@@ -293,6 +320,51 @@ export default function Dashboard({ user }: { user: AuthUser | null }) {
             </div>
           </div>
         </div>
+      </div>
+
+      {/* ── SESSION HISTORY & REPORTS ── */}
+      <div>
+        <div className="flex items-baseline justify-between mb-4">
+          <h2 className="font-headline font-bold text-xl text-primary">Your sessions &amp; reports</h2>
+          <span className="text-[13px] text-secondary">{histTotal} completed · click any to open its report</span>
+        </div>
+        {history.length === 0 ? (
+          <div className="no-line-card p-6 text-sm text-secondary">No completed sessions yet. Finish a case to see its report here.</div>
+        ) : (
+          <div className="no-line-card overflow-hidden">
+            <div className="divide-y divide-outline-variant/10">
+              {history.map((h) => {
+                const g = h.grade ? GRADE_LABEL[h.grade] : null;
+                return (
+                  <button key={String(h.sessionId)} onClick={() => navigate(`/report/${h.sessionId}`)}
+                    className="w-full flex items-center gap-4 px-5 py-3.5 hover:bg-surface-container-low transition text-left group">
+                    <span className="w-9 h-9 rounded-lg bg-on-tertiary-container/10 flex items-center justify-center text-on-tertiary-container shrink-0">
+                      <FileText className="w-4 h-4" />
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-sm text-primary truncate">{h.caseTitle}</p>
+                      <p className="text-[11.5px] text-secondary truncate">
+                        {prettyType(h.caseType)}{h.industry ? ` · ${prettyType(h.industry)}` : ''} · {fmtDate(h.date)}{fmtDur(h.durationSeconds) ? ` · ${fmtDur(h.durationSeconds)}` : ''}
+                      </p>
+                    </div>
+                    {g && <span className={cn('shrink-0 text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded', g.c)}>{g.t}</span>}
+                    {h.score != null
+                      ? <span className="font-headline font-bold text-[15px] text-primary w-12 text-right shrink-0">{(h.score / 10).toFixed(1)}<span className="text-[11px] text-secondary">/10</span></span>
+                      : <span className="text-[11px] text-secondary italic w-12 text-right shrink-0">no score</span>}
+                    <ArrowRight className="w-4 h-4 text-secondary group-hover:text-on-tertiary-container group-hover:translate-x-0.5 transition shrink-0" />
+                  </button>
+                );
+              })}
+            </div>
+            {history.length < histTotal && (
+              <button onClick={() => loadHistory(histPage + 1)} disabled={histLoading}
+                className="w-full flex items-center justify-center gap-2 py-3 text-sm font-semibold text-on-tertiary-container border-t border-outline-variant/10 hover:bg-surface-container-low transition disabled:opacity-50">
+                {histLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <ChevronDown className="w-4 h-4" />}
+                {histLoading ? 'Loading…' : `Show more (${histTotal - history.length} more)`}
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {/* ── PATTERN GRID ── */}
