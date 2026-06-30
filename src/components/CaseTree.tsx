@@ -281,8 +281,9 @@ function ScoreCard({ score, idealSequence }: { score?: Record<string, any>; idea
   const pct = score.global?.percentage ?? score.percentage ?? 0;
   const gScore = score.global?.score ?? score.total ?? 0;
   const gMax = score.global?.max ?? score.max ?? 0;
-  // New dual-score shape; tolerate legacy branch_scores so old reports still show something.
-  const local: Record<string, any> = score.local ?? score.branch_scores ?? {};
+  // New dual-score shape; old reports only have branch_scores (no %/grade/idealPath).
+  const isLegacy = !score.local;
+  const local: Record<string, any> = score.local ?? {};
   const explored = Object.values(local).filter((b: any) => !b.not_explored);
   const notExplored = Object.values(local).filter((b: any) => b.not_explored);
   return (
@@ -305,6 +306,12 @@ function ScoreCard({ score, idealSequence }: { score?: Record<string, any>; idea
         </div>
         <p className="text-[10px] text-slate-400 mt-1">Coverage & prioritisation across the whole case.</p>
       </div>
+      {isLegacy && (
+        <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 text-[11px] text-amber-800 leading-relaxed">
+          This report predates the updated scoring. Click <b>Regenerate report</b> on the report to get per-branch grades, the recalibrated score and the ideal path.
+        </div>
+      )}
+      {!isLegacy && (
       <div>
         <p className="text-[10px] uppercase tracking-wide text-slate-500 font-bold mb-1.5">Branch scores (depth of thinking)</p>
         <div className="space-y-2">
@@ -334,6 +341,7 @@ function ScoreCard({ score, idealSequence }: { score?: Record<string, any>; idea
           )}
         </div>
       </div>
+      )}
       {Array.isArray(idealSequence) && idealSequence.length > 0 && (
         <div className="border-t border-slate-200 pt-2">
           <p className="text-[10px] uppercase tracking-wide text-slate-500 font-bold mb-1.5">Ideal sequence (max points)</p>
@@ -384,6 +392,8 @@ function Flow({ root, summary, score }: { root: RawNode; summary?: Record<string
     setCollapsed((prev) => { const n = new Set(prev); if (n.has(node.id)) n.delete(node.id); else n.add(node.id); return n; });
   }, []);
   const focusSolution = () => { const n = new Set<string>(); allNodes.forEach((x) => { if (refStatus(x.raw) !== 'correct') n.add(x.id); }); setCollapsed(n); setSolutionOnly(true); };
+  // One toggle: ON collapses+dims everything except the correct answer path; OFF restores.
+  const toggleSolutionOnly = () => { if (solutionOnly) { setCollapsed(new Set()); setSolutionOnly(false); } else { focusSolution(); } };
   const btn = 'text-xs px-3 py-1.5 rounded-md border bg-white transition';
 
   return (
@@ -400,16 +410,19 @@ function Flow({ root, summary, score }: { root: RawNode; summary?: Record<string
           <Controls showInteractive={false} />
           <MiniMap pannable zoomable nodeColor={(n) => miniColor(((n.data as NodeData)?.status) ?? 'neutral')} maskColor="rgba(241,245,249,0.6)" className="!bg-white !border !border-slate-200" />
           <Panel position="top-left" className="flex flex-wrap items-center gap-2">
-            <div className="flex rounded-md border border-slate-300 overflow-hidden">
-              <button onClick={() => setLens('journey')} className={`text-xs px-3 py-1.5 ${lens === 'journey' ? 'bg-emerald-600 text-white' : 'bg-white text-slate-500'}`}>Journey</button>
-              <button onClick={() => setLens('score')} className={`text-xs px-3 py-1.5 ${lens === 'score' ? 'bg-emerald-600 text-white' : 'bg-white text-slate-500'}`}>Score</button>
+            <div className="flex rounded-md border border-slate-300 overflow-hidden" title="Switch what each node shows">
+              <button title="Show what you did at each node (explored / quality)" onClick={() => setLens('journey')} className={`text-xs px-3 py-1.5 ${lens === 'journey' ? 'bg-emerald-600 text-white' : 'bg-white text-slate-500'}`}>Your path</button>
+              <button title="Show the points each node earned" onClick={() => setLens('score')} className={`text-xs px-3 py-1.5 ${lens === 'score' ? 'bg-emerald-600 text-white' : 'bg-white text-slate-500'}`}>Scoring</button>
             </div>
-            <button onClick={() => setSolutionOnly((s) => !s)} className={`${btn} ${solutionOnly ? 'border-emerald-500 text-emerald-600' : 'border-slate-300 text-slate-500'}`}>Solution Path</button>
-            {seqById.size > 0 && (
-              <button onClick={() => setShowSequence((s) => !s)} className={`${btn} ${showSequence ? 'border-emerald-500 text-emerald-600' : 'border-slate-300 text-slate-500'}`}>Ideal Sequence</button>
-            )}
-            <button onClick={() => { setCollapsed(new Set()); setSolutionOnly(false); }} className={`${btn} border-slate-300 text-slate-500`}>Expand All</button>
-            <button onClick={focusSolution} className={`${btn} border-slate-300 text-slate-500`}>Focus Solution</button>
+            <button title="Collapse to just the correct answer path" onClick={toggleSolutionOnly} className={`${btn} ${solutionOnly ? 'border-emerald-500 text-emerald-600' : 'border-slate-300 text-slate-500'}`}>Solution only</button>
+            <button title="Show every node again" onClick={() => { setCollapsed(new Set()); setSolutionOnly(false); }} className={`${btn} border-slate-300 text-slate-500`}>Expand all</button>
+            <button
+              title={seqById.size > 0 ? 'Number the highest-scoring order of moves on the map' : 'Regenerate this report to compute the ideal path'}
+              disabled={seqById.size === 0}
+              onClick={() => setShowSequence((s) => !s)}
+              className={`${btn} ${showSequence ? 'border-emerald-500 text-emerald-600' : 'border-slate-300 text-slate-500'} disabled:opacity-40 disabled:cursor-not-allowed`}>
+              Ideal sequence
+            </button>
           </Panel>
           <Panel position="bottom-left" className="flex items-center gap-2 bg-white border border-slate-200 rounded-md px-3 py-1.5 shadow-sm">
             <span className="text-[11px] text-slate-500">zoom</span>

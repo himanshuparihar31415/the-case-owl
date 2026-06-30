@@ -24,6 +24,13 @@ const decay = (c: number): number => (c <= 0 ? 1.0 : c === 1 ? 0.8 : c === 2 ? 0
 // Chain reward for sustained parent→child correct depth, capped at 1.3.
 const chainMult = (len: number): number => (len >= 7 ? 1.3 : len === 6 ? 1.25 : len === 5 ? 1.2 : len === 4 ? 1.15 : len === 3 ? 1.1 : 1.0);
 const DEAD_END_PENALTY = -5;
+// Answer-key trees are built 7-8 deep, but a candidate realistically drives a
+// branch to ~depth 5 in a 35-40 min case. Scoring against the full depth crushes
+// every branch (depth 5 of 8 ≈ 42% because the deepest nodes carry the most
+// points). So we measure against a REACHABLE frontier: a branch's "conclusion" is
+// its deepest correct node OR REACH_DEPTH, whichever is shallower, and both the
+// per-branch max and the global max are computed against that capped ideal.
+const REACH_DEPTH = 5;
 
 const statusOf = (n: RawNode): string => n.reference_status ?? n.status ?? 'neutral';
 const branchOf = (id: string): string => (id === 'root' ? 'root' : id.split('.')[0]);
@@ -98,7 +105,10 @@ interface WalkResult {
 
 // Core path walk: scores every visited node, accumulating per-branch totals and
 // the signals the global bonuses need. NO global bonuses applied here.
-function walkPath(map: Map<string, IndexedNode>, branchRank: Map<string, number>, traversal: Visit[]): WalkResult {
+// `conclusion` maps each branch → the depth at which it counts as "concluded"
+// (a terminal reached), so a candidate who drives a branch to its reachable
+// frontier gets credit for the terminal without hitting the literal deep leaf.
+function walkPath(map: Map<string, IndexedNode>, branchRank: Map<string, number>, traversal: Visit[], conclusion: Map<string, number>): WalkResult {
   const branchPoints = new Map<string, number>();
   const branchContam = new Map<string, number>();
   const branchNudges = new Map<string, number>();
@@ -150,9 +160,11 @@ function walkPath(map: Map<string, IndexedNode>, branchRank: Map<string, number>
       perNode[node.id] = s;
       branchPoints.set(br, (branchPoints.get(br) ?? 0) + s);
       branchMaxDepth.set(br, Math.max(branchMaxDepth.get(br) ?? 0, node.depth));
-      if (!node.hasCorrectChild) {
+      // Terminal = drove this branch's correct chain to its (reachable) conclusion.
+      const concl = conclusion.get(br);
+      if (concl != null && node.depth >= concl && !branchTerminal.get(br)) {
         branchTerminal.set(br, true);
-        terminalsReached.push({ id: node.id, rank: branchRank.get(br) ?? 99 });
+        terminalsReached.push({ id: br, rank: branchRank.get(br) ?? 99 });
       }
     } else if (node.status === 'neutral') {
       enteredBranches.add(br);
@@ -212,12 +224,13 @@ function globalBonuses(w: WalkResult, allTerminalRanks: number[]): number {
   return b;
 }
 
-// Ideal traversal: every correct node in parent→child order, branches in rank
-// order, no nudges, no wrong turns. Used to compute the per-branch + global max.
-function idealTraversal(root: RawNode): Visit[] {
+// Ideal traversal: every correct node in parent→child order (capped at the
+// reachable frontier), branches in rank order, no nudges/wrong turns. Used to
+// compute the per-branch + global max against a depth a candidate can realistically reach.
+function idealTraversal(root: RawNode, reach: number): Visit[] {
   const out: Visit[] = [{ id: String(root.id ?? 'root'), was_nudged: false }];
   const dfsCorrect = (n: RawNode) => {
-    const kids = (n.children ?? []).filter((c) => statusOf(c) === 'correct');
+    const kids = (n.children ?? []).filter((c) => statusOf(c) === 'correct' && (c.depth ?? 0) <= reach);
     for (const c of kids) { out.push({ id: String(c.id), was_nudged: false }); dfsCorrect(c); }
   };
   const buckets = (root.children ?? []).filter((c) => statusOf(c) === 'correct').sort((a, b) => (a.rank ?? 99) - (b.rank ?? 99));
@@ -230,19 +243,31 @@ export function scoreTraversal(root: RawNode, traversal: Visit[]): TreeScore {
   const branchRank = new Map<string, number>();
   for (const n of map.values()) if (n.depth === 1) branchRank.set(n.id, n.rank ?? 99);
 
-  // Terminals = correct leaves (no correct child). Total + their branch ranks.
-  const terminals = [...map.values()].filter((n) => n.status === 'correct' && !n.hasCorrectChild);
-  const totalTerminals = terminals.length;
-  const allTerminalRanks = terminals.map((t) => branchRank.get(branchOf(t.id)) ?? 99);
+  // Deepest correct depth per branch → each branch's reachable "conclusion" depth.
+  const branchDeepCorrect = new Map<string, number>();
+  for (const n of map.values()) {
+    if (n.status === 'correct' && n.depth >= 1) {
+      const br = branchOf(n.id);
+      branchDeepCorrect.set(br, Math.max(branchDeepCorrect.get(br) ?? 0, n.depth));
+    }
+  }
+  const conclusion = new Map<string, number>();
+  for (const [br, d] of branchDeepCorrect) conclusion.set(br, Math.min(d, REACH_DEPTH));
 
-  // Walk candidate + ideal (ideal gives per-branch + global maxima).
-  const actual = walkPath(map, branchRank, traversal);
-  const idealVisits = idealTraversal(root);
-  const ideal = walkPath(map, branchRank, idealVisits);
+  // One terminal per CORRECT branch (a branch with a real correct chain). Reaching
+  // its conclusion depth = "reached the terminal" — matching the 4-branch mental model.
+  const correctBranches = [...branchRank.keys()].filter((br) => (branchDeepCorrect.get(br) ?? 0) >= 2);
+  const totalTerminals = correctBranches.length;
+  const allTerminalRanks = correctBranches.map((br) => branchRank.get(br) ?? 99);
+
+  // Walk candidate + ideal (ideal, capped at the reachable frontier, gives the maxima).
+  const actual = walkPath(map, branchRank, traversal, conclusion);
+  const idealVisits = idealTraversal(root, REACH_DEPTH);
+  const ideal = walkPath(map, branchRank, idealVisits, conclusion);
 
   const actualGlobal = Math.max(0, Math.round(actual.pathPoints + globalBonuses(actual, allTerminalRanks)));
   const idealGlobal = Math.max(1, Math.round(ideal.pathPoints + globalBonuses(ideal, allTerminalRanks)));
-  const globalPct = Math.round((actualGlobal / idealGlobal) * 1000) / 10;
+  const globalPct = Math.min(100, Math.round((actualGlobal / idealGlobal) * 1000) / 10);
 
   // Per-branch local scores (only for branches the candidate entered; others = not explored).
   const local: Record<string, LocalBranch> = {};
@@ -252,7 +277,7 @@ export function scoreTraversal(root: RawNode, traversal: Visit[]): TreeScore {
     if (!actual.enteredBranches.has(brId)) { local[brId] = { label, not_explored: true }; continue; }
     const pts = Math.round(actual.branchPoints.get(brId) ?? 0);
     const max = Math.max(1, Math.round(ideal.branchPoints.get(brId) ?? 0));
-    const pct = Math.round((pts / max) * 1000) / 10;
+    const pct = Math.min(100, Math.round((pts / max) * 1000) / 10);
     local[brId] = {
       label, points: pts, max, percentage: pct, grade: branchGrade(pct),
       depth_reached: actual.branchMaxDepth.get(brId) ?? 0,

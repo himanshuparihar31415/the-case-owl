@@ -119,6 +119,17 @@ export default function Report() {
   const [idealError, setIdealError] = useState('');
   const [showIdeal, setShowIdeal] = useState(false);
 
+  const [regenLoading, setRegenLoading] = useState(false);
+  const regenerate = () => {
+    if (regenLoading) return;
+    setRegenLoading(true);
+    api.post(`/reports/${sessionId}/regenerate`)
+      .then(() => api.get<{ report: ReportData; solution: typeof solution; caseBrief: typeof caseBrief; transcript: typeof fullTranscript; supervisor?: typeof supervisor }>(`/reports/${sessionId}`))
+      .then((data) => { setReport(data.report); setSolution(data.solution ?? null); setCaseBrief(data.caseBrief ?? null); setIdealTranscript(null); })
+      .catch((e) => setError(e instanceof Error ? e.message : 'Failed to regenerate the report.'))
+      .finally(() => setRegenLoading(false));
+  };
+
   const loadIdealTranscript = () => {
     setShowIdeal(true);
     if (idealTranscript || idealLoading) return;
@@ -1024,6 +1035,9 @@ export default function Report() {
           </button>
         </div>
         <div className="flex gap-3 w-full sm:w-auto">
+          <button onClick={regenerate} disabled={regenLoading} className="flex-1 sm:flex-none flex items-center gap-2 px-5 py-3 border border-outline-variant/20 text-primary font-bold rounded-lg hover:bg-surface-container-low transition justify-center disabled:opacity-50 disabled:cursor-not-allowed">
+            {regenLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} {regenLoading ? 'Regenerating…' : 'Regenerate report'}
+          </button>
           <Link to="/config" className="flex-1 sm:flex-none flex items-center gap-2 px-5 py-3 border border-outline-variant/20 text-primary font-bold rounded-lg hover:bg-surface-container-low transition justify-center">
             <RefreshCw className="w-4 h-4" /> Retry Case
           </Link>
