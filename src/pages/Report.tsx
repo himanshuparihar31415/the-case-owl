@@ -40,10 +40,12 @@ function pillCls(s: number | null): string {
   return 'bg-green-100 text-green-800';
 }
 
-// A plain section block (the tab system is gone — the report is one scroll now).
-function Block({ id, title, action, children }: { id: string; title: string; action?: React.ReactNode; children: React.ReactNode }) {
+// A section block tied to a left-nav tab: only the active tab shows on screen,
+// but ALL render in print so Download/Print assembles the whole report.
+function Block({ id, title, action, children, tab, activeTab }: { id: string; title: string; action?: React.ReactNode; children: React.ReactNode; tab?: string; activeTab?: string }) {
+  const hidden = !!(tab && activeTab && tab !== activeTab);
   return (
-    <section id={id} className="scroll-mt-28">
+    <section id={id} className={cn('scroll-mt-28', hidden && 'hidden print:block')}>
       <div className="flex items-center justify-between mb-4">
         <h3 className="font-headline text-xl font-bold text-primary">{title}</h3>
         {action}
@@ -85,7 +87,7 @@ export default function Report() {
   const [error, setError] = useState('');
   const [openComp, setOpenComp] = useState<number | null>(null);
   const [showCase, setShowCase] = useState(false);
-  const [showAnswerKey, setShowAnswerKey] = useState(false);
+  const [activeTab, setActiveTab] = useState<string>('casemap');
   const [showAlso, setShowAlso] = useState(false);
   const [idealTranscript, setIdealTranscript] = useState<Array<{ role: string; text: string }> | null>(null);
   const [idealLoading, setIdealLoading] = useState(false);
@@ -221,8 +223,17 @@ export default function Report() {
   const badTime = (a.timeManagement ?? []).filter((t: any) => /short|brief|limited|insufficient|long|shallow/i.test(t?.assessment ?? ''));
   const hasAnswerKey = !!(a.candidateSolution || (solution && (solution.plausibleSolution || solution.solutionTree || (Array.isArray(solution.exhibits) && solution.exhibits.length) || (Array.isArray(solution.commonWrongTurns) && solution.commonWrongTurns.length) || (Array.isArray(solution.idealScript) && solution.idealScript.length))));
 
+  // Left-nav tabs — only the ones we have content for; Case Map leads.
+  const navTabs = ([
+    a.evaluationTree ? ['casemap', 'Case Map'] : null,
+    transcriptTurns.length ? ['tape', 'The Tape'] : null,
+    plan.length ? ['onething', 'Your One Thing'] : null,
+    hasAnswerKey ? ['answerkey', 'Answer Key'] : null,
+  ].filter(Boolean)) as [string, string][];
+  const effectiveTab = navTabs.some(([id]) => id === activeTab) ? activeTab : (navTabs[0]?.[0] ?? 'casemap');
+
   return (
-    <div className="max-w-4xl mx-auto space-y-8 py-6">
+    <div className="max-w-5xl mx-auto space-y-8 py-6">
       {/* ── MODULE 1 · THE VERDICT ── */}
       <header className="no-line-card p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-5">
         <div className="min-w-0">
@@ -284,9 +295,21 @@ export default function Report() {
         </div>
       )}
 
+      {/* ── SECTIONS with a left nav that switches the active one ── */}
+      <div className="grid grid-cols-1 xl:grid-cols-[180px_minmax(0,1fr)] gap-8">
+        <nav className="xl:sticky xl:top-32 self-start flex xl:flex-col gap-1 overflow-x-auto scrolling-log print:hidden -mx-1 px-1">
+          {navTabs.map(([id, label]) => (
+            <button key={id} onClick={() => setActiveTab(id)} className={cn('shrink-0 text-left px-3 py-2 rounded-md text-sm font-medium transition',
+              effectiveTab === id ? 'bg-primary text-on-primary' : 'text-secondary hover:text-primary hover:bg-surface-container-low')}>
+              {label}
+            </button>
+          ))}
+        </nav>
+
+        <div className="min-w-0 space-y-8">
       {/* ── MODULE · THE CASE MAP (centerpiece — unchanged) ── */}
       {a.evaluationTree && (
-        <Block id="casemap" title="Case Map" action={<span className="label-blueprint">your path vs. the answer key</span>}>
+        <Block id="casemap" title="Case Map" tab="casemap" activeTab={effectiveTab} action={<span className="label-blueprint">your path vs. the answer key</span>}>
           <div className="space-y-4">
             {a.treeScore && (() => {
               const ts = a.treeScore;
@@ -356,7 +379,7 @@ export default function Report() {
 
       {/* ── MODULE 2 · THE TAPE ── */}
       {transcriptTurns.length > 0 && (
-        <Block id="tape" title="The tape" action={<span className="label-blueprint">your interview, moment by moment</span>}>
+        <Block id="tape" title="The tape" tab="tape" activeTab={effectiveTab} action={<span className="label-blueprint">your interview, moment by moment</span>}>
           {badTime.length > 0 && (
             <p className="text-xs text-secondary mb-4">Pacing: {badTime.map((t: any) => `${t.stage} — ${String(t.assessment).toLowerCase()}`).join(' · ')}</p>
           )}
@@ -441,7 +464,7 @@ export default function Report() {
 
       {/* ── MODULE 3 · YOUR ONE THING ── */}
       {plan.length > 0 && (
-        <Block id="onething" title="Your one thing" action={<span className="label-blueprint">the highest-leverage fix</span>}>
+        <Block id="onething" title="Your one thing" tab="onething" activeTab={effectiveTab} action={<span className="label-blueprint">the highest-leverage fix</span>}>
           <div className="no-line-card p-5 border-l-4 border-on-tertiary-container space-y-2">
             <p className="text-base font-bold text-primary">{plan[0].action}</p>
             {(plan[0].evidenceExcerpt || plan[0].detail) && (
@@ -471,18 +494,10 @@ export default function Report() {
         </Block>
       )}
 
-      {/* ── MODULE 5 · THE ANSWER KEY (expandable) ── */}
+      {/* ── MODULE 5 · THE ANSWER KEY ── */}
       {hasAnswerKey && (
-        <div className="no-line-card overflow-hidden">
-          <button onClick={() => setShowAnswerKey((s) => !s)} className="w-full flex items-center justify-between gap-3 p-5 text-left hover:bg-surface-container-low transition">
-            <div>
-              <h3 className="font-headline text-lg font-bold text-primary">The answer key</h3>
-              <p className="text-xs text-secondary">Model solution, exhibits & common wrong turns — study the case itself.</p>
-            </div>
-            <ChevronDown className={cn('w-5 h-5 text-secondary transition-transform shrink-0', showAnswerKey && 'rotate-180')} />
-          </button>
-          {showAnswerKey && (
-            <div className="px-5 pb-5 space-y-4 border-t border-outline-variant/10 pt-4">
+        <Block id="answerkey" title="The answer key" tab="answerkey" activeTab={effectiveTab} action={<span className="label-blueprint">study the case itself</span>}>
+            <div className="space-y-4">
               {a.candidateSolution && (
                 <div className="border-l-4 border-amber-400 pl-4">
                   <p className="label-blueprint text-amber-700 font-bold mb-1">Your solution</p>
@@ -533,9 +548,10 @@ export default function Report() {
                 </div>
               )}
             </div>
-          )}
-        </div>
+        </Block>
       )}
+        </div>
+      </div>
 
       {/* Admin-only: silent-supervisor compliance flags */}
       {supervisor && (
