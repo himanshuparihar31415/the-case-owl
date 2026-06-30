@@ -229,12 +229,16 @@ function globalBonuses(w: WalkResult, allTerminalRanks: number[]): number {
 // compute the per-branch + global max against a depth a candidate can realistically reach.
 function idealTraversal(root: RawNode, reach: number): Visit[] {
   const out: Visit[] = [{ id: String(root.id ?? 'root'), was_nudged: false }];
-  const dfsCorrect = (n: RawNode) => {
-    const kids = (n.children ?? []).filter((c) => statusOf(c) === 'correct' && (c.depth ?? 0) <= reach);
-    for (const c of kids) { out.push({ id: String(c.id), was_nudged: false }); dfsCorrect(c); }
+  // Include correct AND neutral nodes — a candidate earns points on both, and
+  // correct nodes can live UNDER a neutral (optional) branch. Excluding neutral
+  // branches left those correct children out of the max → absurd >100% locals.
+  const include = (n: RawNode): boolean => { const s = statusOf(n); return s === 'correct' || s === 'neutral'; };
+  const dfs = (n: RawNode) => {
+    const kids = (n.children ?? []).filter((c) => include(c) && (c.depth ?? 0) <= reach);
+    for (const c of kids) { out.push({ id: String(c.id), was_nudged: false }); dfs(c); }
   };
-  const buckets = (root.children ?? []).filter((c) => statusOf(c) === 'correct').sort((a, b) => (a.rank ?? 99) - (b.rank ?? 99));
-  for (const bk of buckets) { out.push({ id: String(bk.id), was_nudged: false }); dfsCorrect(bk); }
+  const buckets = (root.children ?? []).filter(include).sort((a, b) => (a.rank ?? 99) - (b.rank ?? 99));
+  for (const bk of buckets) { out.push({ id: String(bk.id), was_nudged: false }); dfs(bk); }
   return out;
 }
 

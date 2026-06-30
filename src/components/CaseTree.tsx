@@ -411,8 +411,8 @@ function Flow({ root, summary, score }: { root: RawNode; summary?: Record<string
           <MiniMap pannable zoomable nodeColor={(n) => miniColor(((n.data as NodeData)?.status) ?? 'neutral')} maskColor="rgba(241,245,249,0.6)" className="!bg-white !border !border-slate-200" />
           <Panel position="top-left" className="flex flex-wrap items-center gap-2">
             <div className="flex rounded-md border border-slate-300 overflow-hidden" title="Switch what each node shows">
-              <button title="Show what you did at each node (explored / quality)" onClick={() => setLens('journey')} className={`text-xs px-3 py-1.5 ${lens === 'journey' ? 'bg-emerald-600 text-white' : 'bg-white text-slate-500'}`}>Your path</button>
-              <button title="Show the points each node earned" onClick={() => setLens('score')} className={`text-xs px-3 py-1.5 ${lens === 'score' ? 'bg-emerald-600 text-white' : 'bg-white text-slate-500'}`}>Scoring</button>
+              <button title="Show what you did at each node (explored / quality)" onClick={() => { setLens('journey'); setSelected(null); setSelectedId(null); }} className={`text-xs px-3 py-1.5 ${lens === 'journey' ? 'bg-emerald-600 text-white' : 'bg-white text-slate-500'}`}>Your path</button>
+              <button title="Show the points each node earned" onClick={() => { setLens('score'); setSelected(null); setSelectedId(null); }} className={`text-xs px-3 py-1.5 ${lens === 'score' ? 'bg-emerald-600 text-white' : 'bg-white text-slate-500'}`}>Scoring</button>
             </div>
             <button title="Collapse to just the correct answer path" onClick={toggleSolutionOnly} className={`${btn} ${solutionOnly ? 'border-emerald-500 text-emerald-600' : 'border-slate-300 text-slate-500'}`}>Solution only</button>
             <button title="Show every node again" onClick={() => { setCollapsed(new Set()); setSolutionOnly(false); }} className={`${btn} border-slate-300 text-slate-500`}>Expand all</button>
