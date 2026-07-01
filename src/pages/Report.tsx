@@ -388,11 +388,31 @@ export default function Report() {
                   <div key={p.key} className="no-line-card p-5">
                     <div className="flex items-center justify-between gap-3 mb-3">
                       <h4 className="font-bold text-primary">{p.label} <span className="text-secondary/60 text-xs font-normal">· {p.weightPct}% of total</span></h4>
-                      <span className="font-headline font-bold text-primary">{p.raw}<span className="text-sm text-secondary">/10</span> <span className="text-[11px] text-secondary font-normal">· ~{p.percentile}th</span></span>
+                      <span className="font-headline font-bold text-primary">{p.raw}<span className="text-sm text-secondary">/10</span></span>
                     </div>
-                    <div className="grid sm:grid-cols-2 gap-x-6 gap-y-3">
-                      {p.subs.map((s: any) => <div key={s.key}><SubBar s={s} /></div>)}
-                    </div>
+                    {p.navDetail ? (
+                      <div className="text-sm space-y-2">
+                        <p className="text-on-surface-variant leading-relaxed">
+                          The case map is scored by its own engine — its <b className="text-primary">{p.navDetail.grade}</b> grade sets the band
+                          (<span className="font-mono">{p.navDetail.floor}–{p.navDetail.ceil}</span>), and your <b className="text-primary">{p.navDetail.globalPct}% Global</b> positions you within it.
+                        </p>
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                          {([
+                            ['Grade', p.navDetail.grade],
+                            ['Global', `${p.navDetail.globalPct}%`],
+                            ['Terminals', p.navDetail.terminalsReached != null ? `${p.navDetail.terminalsReached}/${p.navDetail.terminalsTotal}` : '—'],
+                            ['Strong branches', p.navDetail.strongBranches ?? '—'],
+                          ] as [string, any][]).map(([l, v]) => (
+                            <div key={l} className="bg-surface-container-low rounded-lg p-2.5"><div className="font-headline font-bold text-primary">{v}</div><div className="label-blueprint">{l}</div></div>
+                          ))}
+                        </div>
+                        <button onClick={() => setActiveTab('casemap')} className="text-xs font-semibold text-on-tertiary-container hover:underline">Open the case map →</button>
+                      </div>
+                    ) : (
+                      <div className="grid sm:grid-cols-2 gap-x-6 gap-y-3">
+                        {p.subs.map((s: any) => <div key={s.key}><SubBar s={s} /></div>)}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>

@@ -460,16 +460,9 @@ export async function generateReport(sessionId: string, userId: string): Promise
   // composite → percentile → verdict. Consulting cases only (needs the case map).
   if ((caseDoc.module ?? 'case') === 'case' && trees?.treeScore) {
     try {
-      const comps = (analysis.competencies as any[] | undefined) ?? [];
-      const quantComp = comps.find((c) => /quant|math/i.test(String(c?.key)) || /quant|math/i.test(String(c?.label)));
-      const quantRaw = typeof quantComp?.score === 'number' ? quantComp.score : 5;
-      analysis.pillarScore = computePillarScore({
-        treeScore: trees.treeScore,
-        treeSummary: trees.treeSummary,
-        evalTree: trees.evaluationTree,
-        quantRaw,
-        scorecard: analysis.scorecard,
-      });
+      // Navigation (40%) is derived from the case map's own grade + Global%;
+      // Structure/Communication (30/30) from the LLM scorecard.
+      analysis.pillarScore = computePillarScore({ treeScore: trees.treeScore, scorecard: analysis.scorecard });
     } catch (e) {
       console.error('pillar composite failed (non-fatal):', e);
     }
