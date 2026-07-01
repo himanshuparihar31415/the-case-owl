@@ -245,7 +245,9 @@ export default function Report() {
           <div className="hidden xl:block px-3 pb-3 mb-1 border-b border-outline-variant/15">
             <div className="label-blueprint text-on-tertiary-container font-bold">Feedback</div>
             <div className="font-headline font-extrabold text-primary leading-tight mt-1 text-sm line-clamp-2">{a.caseTitle ?? 'Report'}</div>
-            {!suppressed && <div className="font-headline text-2xl font-extrabold text-primary mt-1">{score10.toFixed(1)}<span className="text-sm text-secondary">/10</span></div>}
+            {!suppressed && (ps
+              ? <div className="mt-1"><div className="font-headline text-2xl font-extrabold text-primary leading-none">{ps.composite}<span className="text-sm text-secondary">/10</span></div><div className="text-[11px] font-semibold text-on-tertiary-container">~{ps.percentile}th pct</div></div>
+              : <div className="font-headline text-2xl font-extrabold text-primary mt-1">{score10.toFixed(1)}<span className="text-sm text-secondary">/10</span></div>)}
           </div>
           {navTabs.map(([id, label]) => (
             <button key={id} onClick={() => setActiveTab(id)} className={cn('shrink-0 text-left px-3 py-2 rounded-md text-sm font-medium transition',
@@ -264,7 +266,7 @@ export default function Report() {
               <div className="no-line-card p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-5">
                 <div className="min-w-0">
                   <h1 className="font-headline text-2xl font-extrabold text-primary">{a.caseTitle ?? 'Performance Report'}</h1>
-                  <p className={cn('mt-1.5 font-bold', DECISION_COLOR[decision] ?? 'text-primary')}>{decision}{a.difficultyLabel ? ` · ${a.difficultyLabel}` : ''}</p>
+                  <p className={cn('mt-1.5 font-bold', DECISION_COLOR[(ps?.verdict ?? decision)] ?? 'text-primary')}>{ps?.verdict ?? decision}{a.difficultyLabel ? ` · ${a.difficultyLabel}` : ''}</p>
                   <div className="flex items-center gap-3 mt-3 flex-wrap">
                     {caseBrief && (caseBrief.prompt || caseBrief.scenario) && (
                       <button onClick={() => setShowCase(true)} className="inline-flex items-center gap-1.5 text-sm font-bold text-on-tertiary-container hover:underline">
@@ -280,8 +282,13 @@ export default function Report() {
                   )}
                   <div className="text-right">
                     {suppressed ? <div className="font-headline text-lg font-bold text-error leading-tight max-w-[12rem]">Scores withheld</div>
-                      : <div className="font-headline text-5xl font-extrabold text-primary leading-none">{score10.toFixed(1)}<span className="text-2xl text-secondary">/10</span></div>}
-                    <div className="label-blueprint mt-1">Confidence: {confidence}</div>
+                      : ps ? (
+                        <>
+                          <div className="font-headline text-5xl font-extrabold text-primary leading-none">{ps.composite}<span className="text-2xl text-secondary">/10</span></div>
+                          <div className="text-sm font-bold text-on-tertiary-container mt-1">~{ps.percentile}th percentile</div>
+                        </>
+                      ) : <div className="font-headline text-5xl font-extrabold text-primary leading-none">{score10.toFixed(1)}<span className="text-2xl text-secondary">/10</span></div>}
+                    <div className="label-blueprint mt-1">{ps ? `AI read: ${score10.toFixed(1)}/10 · ${confidence}` : `Confidence: ${confidence}`}</div>
                   </div>
                 </div>
               </div>
