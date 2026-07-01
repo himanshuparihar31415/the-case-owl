@@ -319,6 +319,7 @@ export function EVALUATION_PROMPT(ctx: EvaluationContext): string {
     : 'Stages: Understanding the problem, Structuring, Analysis, Risk assessment, Final recommendation.';
 
   return `You are a demanding, evidence-driven ${kind} interview evaluator writing a post-interview report for the CANDIDATE. Be HONEST and SPECIFIC, never encouraging-for-its-own-sake. Never inflate scores. Never praise vaguely without quoting evidence. Every judgement must cite a real timestamp from the transcript.
+VOICE: Write EVERY piece of feedback in the SECOND PERSON — address the candidate directly as "you" / "your". NEVER write "the candidate", "they", or "their" when referring to the person being evaluated (e.g. "You jumped to costs before structuring", not "The candidate jumped…"). Only the reference to an ideal ("a strong candidate would…") may stay third person.
 
 CASE: "${ctx.caseTitle}" (${ctx.caseType})
 DIFFICULTY: ${ctx.difficultyLabel}
@@ -378,7 +379,7 @@ Return ONLY valid JSON matching this EXACT schema. Scores are 0–10. Cite real 
     "primaryStrengths": ["string", "string"], "criticalGaps": ["string", "string"],
     "hintDependencyNote": "string — one line on hint reliance"
   },
-  "candidateSolution": "string — 3-5 sentences reconstructing the recommendation/answer the candidate ACTUALLY arrived at by the end, in THEIR OWN logic (paraphrased faithfully from the transcript — their structure, their numbers, their final call). Do NOT improve it or add steps they skipped. If they never reached a clear recommendation, say exactly that and describe how far they got and where they stopped.",
+  "candidateSolution": "string — 3-5 sentences, SECOND PERSON ('you'), reconstructing the recommendation/answer YOU actually arrived at by the end, in your own logic (paraphrased faithfully from the transcript — your structure, your numbers, your final call). Do NOT improve it or add steps you skipped. If you never reached a clear recommendation, say exactly that and describe how far you got and where you stopped.",
   "competencies": [
     // EXACTLY these competencies, in this order — use these EXACT keys + labels:
     // ${comps.map((c) => `${c.key} ("${c.label}" — ${c.focus})`).join('; ')}
@@ -387,9 +388,9 @@ Return ONLY valid JSON matching this EXACT schema. Scores are 0–10. Cite real 
       "assessed": true,                          // FALSE if fewer than 2 relevant transcript moments exist for this competency
       "score": number,                           // 0-10; if assessed=false, use null
       "evidenceCount": number,                   // how many relevant moments you found
-      "currentAnchor": { "level": number, "text": "string — concrete behavioural anchor describing what the candidate did AT THIS LEVEL (their 'you are here')" },
+      "currentAnchor": { "level": number, "text": "string — SECOND PERSON: concrete behavioural anchor describing what YOU did at this level (your 'you are here')" },
       "nextAnchor": { "level": number, "text": "string — the anchor for the NEXT level up: the specific behaviour that would raise the score" },
-      "assessment": "string — 4-6 sentences: what they did (quote a moment), what was strong, the specific gap with evidence, why it matters, and what a top candidate does differently.",
+      "assessment": "string — 4-6 sentences, SECOND PERSON ('you'): what you did (quote a moment), what was strong, the specific gap with evidence, why it matters, and what a top candidate does differently.",
       "evidence": [ { "timestamp": "mm:ss", "note": "what happened" } ]
     }
     // ... one entry per competency listed above (same order). Score = the highest anchor the candidate CONSISTENTLY hit (>=60% of relevant moments), not a one-off.
@@ -412,7 +413,7 @@ Return ONLY valid JSON matching this EXACT schema. Scores are 0–10. Cite real 
       "coherenceRate": number,                   // 0-100: % of responses that ADVANCED the case vs stalled/repeated/deflected
       "firstResponseRate": number,               // 0-100: when asked a new question, how often the FIRST attempt actually answered it (vs needing follow-up)
       "topRepetitions": [                          // the 3 most impactful repetitions WITH context (or [] if none)
-        { "timestamps": "mm:ss–mm:ss", "phrase": "what they kept saying", "note": "why it mattered — e.g. rephrased without advancing" }
+        { "timestamps": "mm:ss–mm:ss", "phrase": "what you kept saying", "note": "why it mattered — e.g. rephrased without advancing" }
       ],
       "observations": [ { "timestamp": "mm:ss", "note": "fluency observation incl. WHERE pauses clustered" } ]
     },
@@ -436,7 +437,7 @@ Return ONLY valid JSON matching this EXACT schema. Scores are 0–10. Cite real 
     {
       "timestamp": "mm:ss",
       "setup": "string — what the interviewer asked and the HIDDEN test behind it (what skill they were probing)",
-      "yourMove": "string — what the candidate actually did and what it signalled",
+      "yourMove": "string — SECOND PERSON: what you actually did and what it signalled",
       "gap": "string — the SPECIFIC cognitive step skipped (not 'missed strategic implications' but the precise missing move)",
       "practicePattern": "string — a repeatable mental checklist for this type of question, with a drill",
       "habitTag": "rush_structuring" | "invent_number" | "skip_validation" | "clarity" | "no_hypothesis" | "shallow_risk" | "weak_synthesis"
@@ -446,9 +447,9 @@ Return ONLY valid JSON matching this EXACT schema. Scores are 0–10. Cite real 
     // v2 three-layer comparison. 2-3 for the biggest questions. The modelAnswer MUST be substantively different and show internal reasoning, not a rephrase.
     {
       "question": "the interviewer question",
-      "candidateAnswer": "what the candidate actually said",
+      "candidateAnswer": "what you actually said",
       "skillTested": "string — Layer 1: the cognitive skill being probed (not the topic)",
-      "diagnosis": "string — Layer 2: the precise missing cognitive step in their response (not 'be more concise')",
+      "diagnosis": "string — Layer 2, SECOND PERSON: the precise missing cognitive step in your response (not 'be more concise')",
       "modelAnswer": "string — Layer 3: the ideal answer WITH the visible reasoning chain (the technique named + the first step walked through + the hypothesis and why)"
     }
   ],
@@ -839,7 +840,7 @@ Return ONLY valid JSON: the branch node (its original id, label, depth 1, status
 // Stage 3: overlay the candidate's actual journey (from the transcript) onto the
 // reference tree. Produces the eval tree + summary metrics shown after the case.
 export function POST_INTERVIEW_TREE_PROMPT(referenceTreeJson: string, transcript: string): string {
-  return `You are the evaluator for "The Case Owl". An interview just ended. Overlay what the candidate ACTUALLY did onto the reference tree (the pre-built answer key). Be honest — no inflation.
+  return `You are the evaluator for "The Case Owl". An interview just ended. Overlay what the candidate ACTUALLY did onto the reference tree (the pre-built answer key). Be honest — no inflation. Write all candidate-facing text (evaluation_note, recommended_path, summary) in the SECOND PERSON — address the candidate as "you", never "the candidate" or "they".
 
 REFERENCE TREE (answer key):
 """
@@ -861,10 +862,10 @@ Do NOT re-emit the tree structure. The full tree (with its depth) is kept separa
     "time_spent": "approx from timestamps, e.g. '3m 20s'",
     "quality": "strong" | "adequate" | "weak" | "wrong",
     "candidate_quotes": ["1-3 verbatim, most diagnostic quotes at this node"],
-    "evaluation_note": "judgment of THIS node — what was good, missed, what it reveals",
+    "evaluation_note": "SECOND PERSON ('you') judgment of THIS node — what you did well, missed, what it reveals",
     "exhibit_shared": "which exhibits were actually shared here (or null)",
     "was_nudged": true/false,
-    "recommended_path": "ONLY for wrong_turn/dead_end_hit: the correct path they should have taken from the same parent + where (timestamp) they were redirected (else null)"
+    "recommended_path": "ONLY for wrong_turn/dead_end_hit, SECOND PERSON: the correct path you should have taken from the same parent + where (timestamp) you were redirected (else null)"
   }
 ]
 
