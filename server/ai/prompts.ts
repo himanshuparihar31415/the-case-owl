@@ -473,7 +473,31 @@ Return ONLY valid JSON matching this EXACT schema. Scores are 0–10. Cite real 
       "practiceDrill": "string — a specific cognitive pattern to drill (e.g. 'Before any calc, say out loud: I expect X because Y, let me verify.')",
       "completionCriteria": "string — a MEASURABLE target (e.g. 'Record 5 cases; 80%+ of quant steps preceded by an explicit hypothesis.')"
     }
-  ]
+  ],
+  "scorecard": {
+    // Score each sub-metric 1-10 on this rubric: 1-2 poor · 3-4 weak · 5-6 adequate · 7-8 strong · 9-10 exceptional.
+    // "note" = ONE short second-person line of evidence. Do NOT score navigation here (computed from the case map).
+    "structure": {
+      "framework":     { "score": number, "note": "" },   // clear MECE framework stated before diving (9-10: crisp MECE in <90s; 1-2: none, jumped in)
+      "mece":          { "score": number, "note": "" },   // mutually exclusive, collectively exhaustive (9-10: MECE + tailored; 1-2: random)
+      "topDown":       { "score": number, "note": "" },   // led with the conclusion before detail (9-10: 80%+ answer-first; 1-2: buried every point)
+      "signposting":   { "score": number, "note": "" },   // announced transitions between sections
+      "timeAllocation":{ "score": number, "note": "" },   // time distributed well across phases vs ideal
+      "synthesis":     { "score": number, "note": "" },   // tied findings into a clear final recommendation (9-10: quantified rec+risks+next steps; 1-2: no rec)
+      "prioritization":{ "score": number, "note": "" },   // worked highest-impact areas first
+      "askQuality":    { "score": number, "note": "" }    // questions were specific & hypothesis-driven
+    },
+    "communication": {
+      "filler":     { "score": number, "note": "" },      // filler words/min (9-10: <0.5; 1-2: 8+/min)
+      "conciseness":{ "score": number, "note": "" },      // % concise, no rambling (9-10: 85%+; 1-2: <40%)
+      "vocabulary": { "score": number, "note": "" },      // precise business language vs vague hedging
+      "coherence":  { "score": number, "note": "" },      // logically connected, correct language (1-2: incoherent/language-switching)
+      "pause":      { "score": number, "note": "" },      // long-pause frequency/clustering (9-10: 0-1; 1-2: 15+)
+      "recovery":   { "score": number, "note": "" },      // how you handled a challenge/redirect
+      "confidence": { "score": number, "note": "" },      // peer-level presence vs asking permission
+      "listening":  { "score": number, "note": "" }       // answered the actual question asked (9-10: 95%+ on-target)
+    }
+  }
 }
 
 Scoring (0-10): 0-3 poor/failed, 4-5 below bar, 6-7 borderline, 8-9 strong, 10 exceptional. Decision: Strong Hire ≥8, Hire 6.5-7.9, Borderline 5-6.4, No Hire <5. If a strong answer only emerged AFTER hints, lower the score and note it. When integrity status is SUPPRESSED, still fill in scores honestly (the report layer handles suppression). Be the evaluator a candidate needs, not the one they want.`;

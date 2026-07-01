@@ -30,9 +30,23 @@ const READINESS_COLOR: Record<string, string> = {
   'Strong candidate': 'bg-green-100 text-green-800',
 };
 const DECISION_COLOR: Record<string, string> = {
-  'No Hire': 'text-error', 'Lean No': 'text-orange-600', Borderline: 'text-amber-600',
-  Hire: 'text-on-tertiary-container', 'Strong Hire': 'text-green-600',
+  'No Hire': 'text-error', 'Lean No': 'text-orange-600', 'Lean No Hire': 'text-orange-600', Borderline: 'text-amber-600',
+  'Lean Hire': 'text-amber-600', Hire: 'text-on-tertiary-container', 'Strong Hire': 'text-green-600',
 };
+
+// Three-pillar sub-metric bar (1-10) — a small labelled meter.
+function SubBar({ s }: { s: any }) {
+  return (
+    <div className="text-xs">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-secondary truncate">{s.label} <span className="text-secondary/50">· {Math.round(s.weight * 100)}%</span></span>
+        <span className="font-mono font-bold text-primary shrink-0">{s.score}</span>
+      </div>
+      <div className="h-1.5 bg-surface-container-highest rounded-full overflow-hidden mt-0.5"><div className={cn('h-full', scoreColor(s.score))} style={{ width: `${(s.score / 10) * 100}%` }} /></div>
+      {s.note && <p className="text-[11px] text-on-surface-variant mt-0.5 leading-snug">{s.note}</p>}
+    </div>
+  );
+}
 function scoreColor(s: number): string {
   if (s < 4) return 'bg-error';
   if (s < 6) return 'bg-amber-500';
@@ -210,8 +224,10 @@ export default function Report() {
   const hasComm = !!(comm.effectiveness || comm.fluency || comm.vocabulary || (comm.clarityIssues ?? []).length || comm.grammar);
   const hasAnswerKey = !!(a.candidateSolution || (solution && (solution.plausibleSolution || solution.solutionTree || (Array.isArray(solution.exhibits) && solution.exhibits.length) || (Array.isArray(solution.commonWrongTurns) && solution.commonWrongTurns.length) || (Array.isArray(solution.idealScript) && solution.idealScript.length))));
 
+  const ps = a.pillarScore;
   const navTabs = ([
     ['overview', 'Overview'],
+    ps ? ['scorecard', 'Scorecard'] : null,
     a.evaluationTree ? ['casemap', 'Case Map'] : null,
     competencies.length ? ['competencies', 'Structure & Skills'] : null,
     hasComm ? ['communication', 'Communication'] : null,
@@ -277,6 +293,31 @@ export default function Report() {
                 </div>
               )}
 
+              {/* Three-pillar composite verdict */}
+              {ps && !suppressed && (
+                <div className="no-line-card p-5">
+                  <div className="flex items-center justify-between gap-4 mb-4">
+                    <div>
+                      <div className="label-blueprint">Weighted verdict · Nav 40 / Structure 30 / Comms 30</div>
+                      <div className={cn('font-headline text-2xl font-extrabold', DECISION_COLOR[ps.verdict] ?? 'text-primary')}>{ps.verdict}</div>
+                      <div className="text-xs text-secondary">{ps.band} · ~{ps.percentile}th percentile · composite {ps.composite}/10</div>
+                    </div>
+                    <button onClick={() => setActiveTab('scorecard')} className="shrink-0 text-xs font-semibold text-on-tertiary-container hover:underline">Full scorecard →</button>
+                  </div>
+                  <div className="space-y-2.5">
+                    {ps.pillars.map((p: any) => (
+                      <div key={p.key} className="text-sm">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-primary font-medium">{p.label} <span className="text-secondary/60 text-xs">· {p.weightPct}%</span></span>
+                          <span className="font-mono font-bold text-primary shrink-0">{p.raw}/10</span>
+                        </div>
+                        <div className="h-2 bg-surface-container-highest rounded-full overflow-hidden mt-1"><div className={cn('h-full', scoreColor(p.raw))} style={{ width: `${(p.raw / 10) * 100}%` }} /></div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* Summary + competency pills */}
               <div className="no-line-card p-6 space-y-4">
                 {verdictLine && <p className="text-on-surface-variant leading-relaxed">{verdictLine}</p>}
@@ -321,6 +362,35 @@ export default function Report() {
               )}
             </div>
           </Block>
+
+          {/* ── SCORECARD (three-pillar breakdown) ── */}
+          {ps && (
+            <Block id="scorecard" title="Scorecard" tab="scorecard" activeTab={effectiveTab} action={<span className="label-blueprint">how the verdict is built</span>}>
+              <div className="space-y-4">
+                <div className="no-line-card p-5 flex items-center gap-5">
+                  <div className="text-center shrink-0">
+                    <div className={cn('font-headline text-2xl font-extrabold leading-none', DECISION_COLOR[ps.verdict] ?? 'text-primary')}>{ps.composite}</div>
+                    <div className="label-blueprint mt-1">/ 10</div>
+                  </div>
+                  <div>
+                    <div className={cn('font-bold', DECISION_COLOR[ps.verdict] ?? 'text-primary')}>{ps.verdict} · {ps.band}</div>
+                    <p className="text-xs text-secondary mt-0.5">~{ps.percentile}th percentile. Composite = Navigation×0.40 + Structure×0.30 + Communication×0.30, scored against the rubric bands. Navigation is measured from the case map; Structure &amp; Communication from the transcript.</p>
+                  </div>
+                </div>
+                {ps.pillars.map((p: any) => (
+                  <div key={p.key} className="no-line-card p-5">
+                    <div className="flex items-center justify-between gap-3 mb-3">
+                      <h4 className="font-bold text-primary">{p.label} <span className="text-secondary/60 text-xs font-normal">· {p.weightPct}% of total</span></h4>
+                      <span className="font-headline font-bold text-primary">{p.raw}<span className="text-sm text-secondary">/10</span> <span className="text-[11px] text-secondary font-normal">· ~{p.percentile}th</span></span>
+                    </div>
+                    <div className="grid sm:grid-cols-2 gap-x-6 gap-y-3">
+                      {p.subs.map((s: any) => <div key={s.key}><SubBar s={s} /></div>)}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Block>
+          )}
 
           {/* ── CASE MAP (unchanged) ── */}
           {a.evaluationTree && (
