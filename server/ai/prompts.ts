@@ -827,12 +827,14 @@ Node schema for the children you add:
   "candidate_signal": "SHORT pattern of what the candidate says/asks that maps here",
   "exhibit_trigger": "exhibit+layer, e.g. 'C-surface' (or null)",
   "redirect_if_wrong": "ONLY on explored_wrong/dead_end: a SHORT redirect question (else null)",
+  "critical": "true ONLY on the single make-or-break 'must-find' insight in THIS branch — the finding a candidate has to reach for the branch to matter (e.g. the real cost driver). At most ONE per branch; omit/false on every other node.",
   "children": [ ... ] }
 
 RULES:
 - Place under THIS branch every solution move, wrong answer, and exhibit from the package that belongs here (per the branch's scope) — nothing orphaned.
 - Correct sub-paths reach depth 7-8 (unit economics / build-vs-buy / NPV grounded in exhibit data). Wrong answers go 1-2 levels then a redirect.
 - 12-22 nodes in this subtree. candidate_signal must be distinct across nodes.
+- Mark AT MOST ONE node "critical": true — only if this branch holds one of the case's genuine must-find insights; otherwise mark none.
 
 Return ONLY valid JSON: the branch node (its original id, label, depth 1, status) WITH its full nested "children". No "scope" field.`;
 }

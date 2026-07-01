@@ -303,6 +303,7 @@ function mergeOverlay(
     depth: node.depth,
     insight: node.insight ?? null, // the right move / why-it-matters (teaching content)
     rank: node.rank ?? null,       // depth-1 buckets: impact rank (for the scorecard)
+    critical: node.critical === true || node.critical === 'true', // must-find insight (Navigation critical-path)
     reference_status: node.reference_status ?? node.status ?? 'neutral',
     candidate_status: o?.candidate_status ?? 'skipped',
     quality: o?.quality ?? 'n/a',

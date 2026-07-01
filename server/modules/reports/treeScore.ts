@@ -19,11 +19,14 @@ const CORRECT_W: Record<number, number> = { 0: 0, 1: 5, 2: 10, 3: 20, 4: 35, 5: 
 const correctWeight = (d: number): number => CORRECT_W[d] ?? (d > 8 ? 120 : 0);
 // Soft nudge: a hint is a flag, not a punishment. Nudged node ×0.85, next ×0.95.
 const nudgeMultFor = (countdown: number): number => (countdown === 2 ? 0.85 : countdown === 1 ? 0.95 : 1.0);
-// Contamination decay after wrong turns / dead ends on a branch (softened).
-const decay = (c: number): number => (c <= 0 ? 1.0 : c === 1 ? 0.8 : c === 2 ? 0.65 : c === 3 ? 0.5 : 0.4);
+// Contamination decay after wrong turns / dead ends on a branch. Kept GENTLE —
+// a wrong turn shouldn't crater the branch, just lightly dampen what follows.
+const decay = (c: number): number => (c <= 0 ? 1.0 : c === 1 ? 0.9 : c === 2 ? 0.8 : c === 3 ? 0.7 : 0.6);
 // Chain reward for sustained parent→child correct depth, capped at 1.3.
 const chainMult = (len: number): number => (len >= 7 ? 1.3 : len === 6 ? 1.25 : len === 5 ? 1.2 : len === 4 ? 1.15 : len === 3 ? 1.1 : 1.0);
-const DEAD_END_PENALTY = -5;
+// Dead ends earn nothing and no longer subtract points — reaching one already
+// forfeits the correct-path points; a small -1 keeps a faint signal only.
+const DEAD_END_PENALTY = -1;
 // Answer-key trees are built 7-8 deep, but a candidate realistically drives a
 // branch to ~depth 5 in a 35-40 min case. Scoring against the full depth crushes
 // every branch (depth 5 of 8 ≈ 42% because the deepest nodes carry the most
@@ -211,11 +214,10 @@ function globalBonuses(w: WalkResult, allTerminalRanks: number[]): number {
     if (w.terminalsReached[1].rank === remainingTop) b += 5;
   }
 
-  // coverage (soft)
+  // coverage (soft, reward-only — no penalty for reaching few terminals)
   if (R >= T) b += 30;
   else if (R === T - 1) b += 20;
   else if (R === T - 2) b += 10;
-  else if (R === 0) b -= 10;
 
   // structure (scan then dive)
   if (w.branchesBeforeDeep >= 3) b += 15;
@@ -279,7 +281,7 @@ export function scoreTraversal(root: RawNode, traversal: Visit[]): TreeScore {
     void brRank;
     const label = map.get(brId)?.label ?? brId;
     if (!actual.enteredBranches.has(brId)) { local[brId] = { label, not_explored: true }; continue; }
-    const pts = Math.round(actual.branchPoints.get(brId) ?? 0);
+    const pts = Math.max(0, Math.round(actual.branchPoints.get(brId) ?? 0));
     const max = Math.max(1, Math.round(ideal.branchPoints.get(brId) ?? 0));
     const pct = Math.min(100, Math.round((pts / max) * 1000) / 10);
     local[brId] = {
