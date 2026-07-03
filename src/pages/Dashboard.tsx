@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Play, Loader2, TrendingUp, TrendingDown, Minus, ArrowRight,
-  Target, X, Briefcase, Boxes, Calculator, ChevronDown, GraduationCap,
+  Target, X, Briefcase, Boxes, Calculator, ChevronDown, GraduationCap, BarChart3,
 } from 'lucide-react';
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine,
@@ -120,6 +120,7 @@ export default function Dashboard({ user }: { user: AuthUser | null }) {
   const ins = data.insight;
   const evidenceFor = (tag?: string) => data.evidence.filter((e) => !tag || e.habitTag === tag);
   const primaryTag: string | undefined = ins?.bottleneck?.chain?.[0]?.tag;
+  const recentTrajectory = data.trajectory.slice(-5);
 
   return (
     <div className="space-y-6 py-2">
@@ -132,38 +133,41 @@ export default function Dashboard({ user }: { user: AuthUser | null }) {
           </div>
           <h1 className="font-headline font-bold text-xl text-primary leading-tight truncate">Welcome back, {firstName}.</h1>
         </div>
-        <div className="flex items-center gap-3 shrink-0">
-          <div className="hidden sm:flex items-center gap-2.5 px-3 py-1.5 rounded-xl bg-surface-container-low">
-            <span className="font-headline font-extrabold text-lg text-primary leading-none">{data.readiness.overall.toFixed(1)}<span className="text-[11px] text-secondary font-medium">/10</span></span>
-            <div className="flex flex-col leading-tight">
-              <span className="text-[11px] font-semibold text-primary">{data.readiness.band}</span>
-              <span className={cn('text-[10px] font-semibold', data.readiness.delta3 >= 0 ? 'text-green-700' : 'text-error')}>
-                {data.readiness.delta3 >= 0 ? '+' : ''}{data.readiness.delta3.toFixed(1)} last 3
-              </span>
-            </div>
-          </div>
-          <div className="inline-flex bg-surface-container-low rounded-full p-0.5">
-            {(['focus', 'stats'] as const).map((v) => (
-              <button key={v} onClick={() => setView(v)}
-                className={cn('px-4 py-1.5 rounded-full text-xs font-semibold capitalize transition',
-                  view === v ? 'bg-primary text-on-primary shadow-sm' : 'text-secondary hover:text-primary')}>
-                {v}
-              </button>
-            ))}
+        <div className="flex items-center gap-2.5 px-3 py-1.5 rounded-xl bg-surface-container-low shrink-0">
+          <span className="font-headline font-extrabold text-lg text-primary leading-none">{data.readiness.overall.toFixed(1)}<span className="text-[11px] text-secondary font-medium">/10</span></span>
+          <div className="flex flex-col leading-tight">
+            <span className="text-[11px] font-semibold text-primary">{data.readiness.band}</span>
+            <span className={cn('text-[10px] font-semibold', data.readiness.delta3 >= 0 ? 'text-green-700' : 'text-error')}>
+              {data.readiness.delta3 >= 0 ? '+' : ''}{data.readiness.delta3.toFixed(1)} last 3
+            </span>
           </div>
         </div>
       </div>
 
-      {/* Track filter — scopes both views */}
-      <div className="flex items-center gap-1.5 overflow-x-auto scrolling-log -mx-1 px-1 -mt-2">
-        <span className="text-[11px] font-medium text-secondary mr-0.5 shrink-0">Track</span>
-        {([['all', 'All'], ['case', 'Consulting'], ['product', 'Product'], ['guesstimate', 'Guesstimate']] as const).map(([id, label]) => (
-          <button key={id} onClick={() => setMod(id)}
-            className={cn('shrink-0 px-3 py-1 rounded-full text-xs font-semibold transition',
-              mod === id ? 'bg-primary text-on-primary' : 'bg-surface-container-low text-secondary hover:text-primary')}>
-            {label}
-          </button>
-        ))}
+      {/* View switch (prominent) + track filter — scope both views */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="inline-flex items-center bg-surface-container-low rounded-xl p-1 gap-1">
+          {([['focus', 'Focus', Target, 'what to do next'], ['stats', 'Stats', BarChart3, 'all your numbers']] as const).map(([id, label, Icon]) => (
+            <button key={id} onClick={() => setView(id)}
+              className={cn('flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-bold transition',
+                view === id ? 'bg-surface-container-lowest text-primary shadow-sm ring-1 ring-outline-variant/15' : 'text-secondary hover:text-primary')}>
+              <Icon className="w-4 h-4" /> {label}
+            </button>
+          ))}
+          <span className="hidden md:inline text-[12px] text-secondary pl-2 pr-3">
+            {view === 'focus' ? 'Your next move' : 'All your numbers'}
+          </span>
+        </div>
+        <div className="flex items-center gap-1.5 overflow-x-auto scrolling-log -mx-1 px-1 shrink-0">
+          <span className="text-[11px] font-medium text-secondary mr-0.5 shrink-0">Track</span>
+          {([['all', 'All'], ['case', 'Consulting'], ['product', 'Product'], ['guesstimate', 'Guesstimate']] as const).map(([id, label]) => (
+            <button key={id} onClick={() => setMod(id)}
+              className={cn('shrink-0 px-3 py-1 rounded-full text-xs font-semibold transition',
+                mod === id ? 'bg-primary text-on-primary' : 'bg-surface-container-low text-secondary hover:text-primary')}>
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
       {mod !== 'all' && data.totals.sessions === 0 && (
         <p className="text-xs text-secondary italic -mt-3">No sessions in this track yet.</p>
@@ -205,30 +209,37 @@ export default function Dashboard({ user }: { user: AuthUser | null }) {
                     </div>
                   )}
 
-                  {/* The two-step move */}
-                  <div className="grid sm:grid-cols-2 gap-3 mt-5">
+                  {/* The two-step move — the heart of the loop */}
+                  <div className="grid sm:grid-cols-2 gap-3.5 mt-5">
+                    {/* Step 1 · the lesson */}
                     <Link to={primaryTag ? `/lesson/${primaryTag}` : '/learn'}
-                      className="group flex items-start gap-3 rounded-xl border border-outline-variant/15 bg-surface-container-lowest p-4 hover:border-on-tertiary-container/50 hover:shadow-md transition">
-                      <span className="w-7 h-7 rounded-lg bg-on-tertiary-container/10 text-on-tertiary-container flex items-center justify-center font-headline font-bold text-sm shrink-0">1</span>
-                      <div className="min-w-0">
-                        <div className="font-headline font-bold text-sm text-primary flex items-center gap-1.5"><GraduationCap className="w-4 h-4 text-on-tertiary-container" /> Read the 2-min lesson</div>
-                        <p className="text-[12px] text-secondary leading-snug mt-0.5">Model answers from real cases for exactly this pattern.</p>
+                      className="group relative overflow-hidden rounded-2xl border border-on-tertiary-container/25 bg-on-tertiary-container/[0.06] p-5 hover:shadow-lg hover:-translate-y-0.5 transition">
+                      <div className="flex items-center gap-2.5 mb-3">
+                        <span className="w-9 h-9 rounded-xl bg-on-tertiary-container text-white flex items-center justify-center shrink-0"><GraduationCap className="w-5 h-5" /></span>
+                        <span className="label-blueprint text-on-tertiary-container">Step 1 · 2-min read</span>
                       </div>
-                      <ArrowRight className="w-4 h-4 text-secondary group-hover:text-on-tertiary-container group-hover:translate-x-0.5 transition ml-auto shrink-0 mt-0.5" />
+                      <h3 className="font-headline font-bold text-base text-primary">Read the 2-min lesson</h3>
+                      <p className="text-[12.5px] text-secondary leading-snug mt-1">Model answers from real cases for exactly this pattern.</p>
+                      <span className="inline-flex items-center gap-1.5 mt-3 text-[13px] font-semibold text-on-tertiary-container">Open lesson <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition" /></span>
                     </Link>
+                    {/* Step 2 · try the next case (primary CTA) */}
                     <Link to="/config"
-                      className="group flex items-start gap-3 rounded-xl border border-outline-variant/15 bg-surface-container-lowest p-4 hover:border-on-tertiary-container/50 hover:shadow-md transition">
-                      <span className="w-7 h-7 rounded-lg bg-on-tertiary-container/10 text-on-tertiary-container flex items-center justify-center font-headline font-bold text-sm shrink-0">2</span>
-                      <div className="min-w-0">
-                        <div className="font-headline font-bold text-sm text-primary flex items-center gap-1.5"><Play className="w-3.5 h-3.5 fill-current text-on-tertiary-container" /> Practice it in a case</div>
-                        <p className="text-[12px] text-secondary leading-snug mt-0.5">Run a case — the next report scores this exact skill.</p>
+                      className="group relative overflow-hidden rounded-2xl p-5 text-white hover:shadow-lg hover:-translate-y-0.5 transition" style={{ background: 'linear-gradient(150deg,#08aae4,#002046)' }}>
+                      <div className="absolute -right-10 -top-10 w-40 h-40 rounded-full" style={{ background: 'radial-gradient(circle,rgba(255,255,255,.16),transparent 70%)' }} />
+                      <div className="relative">
+                        <div className="flex items-center gap-2.5 mb-3">
+                          <span className="w-9 h-9 rounded-xl bg-white/15 flex items-center justify-center shrink-0"><Play className="w-4 h-4 fill-current" /></span>
+                          <span className="label-blueprint text-white/60">Step 2 · put it to work</span>
+                        </div>
+                        <h3 className="font-headline font-bold text-base">Try your next case</h3>
+                        <p className="text-[12.5px] text-white/75 leading-snug mt-1">Run a case — the next report scores this exact skill.</p>
+                        <span className="inline-flex items-center gap-1.5 mt-3 text-[13px] font-semibold">Start now <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition" /></span>
                       </div>
-                      <ArrowRight className="w-4 h-4 text-secondary group-hover:text-on-tertiary-container group-hover:translate-x-0.5 transition ml-auto shrink-0 mt-0.5" />
                     </Link>
                   </div>
 
                   <button onClick={() => setDrawer({ kind: 'evidence' })}
-                    className="mt-3 inline-flex items-center gap-1.5 text-[12px] font-mono text-on-tertiary-container hover:underline">
+                    className="mt-3.5 inline-flex items-center gap-1.5 text-[12px] font-mono text-on-tertiary-container hover:underline">
                     See the transcript evidence →
                   </button>
                 </div>
@@ -273,7 +284,7 @@ export default function Dashboard({ user }: { user: AuthUser | null }) {
           <div>
             <div className="flex items-baseline justify-between mb-3">
               <h2 className="font-headline font-bold text-base text-primary">Is it working?</h2>
-              <span className="text-[12px] text-secondary">Each point is a session · click to open its report</span>
+              <span className="text-[12px] text-secondary">Last {recentTrajectory.length} sessions · click a point for its report</span>
             </div>
             <div className="no-line-card p-4">
               <div className="flex items-center gap-3 mb-2 text-[11px] font-medium text-secondary">
@@ -283,7 +294,7 @@ export default function Dashboard({ user }: { user: AuthUser | null }) {
                 <span className="flex items-center gap-1.5"><i className="w-3 h-0.5 rounded" style={{ background: '#1FA971' }} /> Target</span>
               </div>
               <ResponsiveContainer width="100%" height={200}>
-                <LineChart data={data.trajectory} onClick={(s: any) => { const p = s?.activePayload?.[0]?.payload; if (p?.sessionId) navigate(`/report/${p.sessionId}`); }} style={{ cursor: 'pointer' }}>
+                <LineChart data={recentTrajectory} onClick={(s: any) => { const p = s?.activePayload?.[0]?.payload; if (p?.sessionId) navigate(`/report/${p.sessionId}`); }} style={{ cursor: 'pointer' }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#EEF1F6" vertical={false} />
                   <XAxis dataKey="n" tick={{ fontSize: 11 }} />
                   <YAxis domain={[0, 10]} tick={{ fontSize: 11 }} width={24} />
