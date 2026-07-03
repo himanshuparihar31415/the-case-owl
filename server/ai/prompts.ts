@@ -1,4 +1,5 @@
 import { CaseType, Industry } from '../models/Case.js';
+import { HABITS_BY_MODULE, HABIT_LABELS, normalizeHabitModule } from './habits.js';
 
 const DIFFICULTY_LABELS: Record<number, string> = {
   1: 'Beginner',
@@ -310,6 +311,9 @@ export function EVALUATION_PROMPT(ctx: EvaluationContext): string {
     ? m.fillerWords.map((f) => `"${f.word}" — ${f.count}`).join(', ')
     : 'none detected';
   const evalModule = ctx.module ?? 'case';
+  const habitTagsForModule = HABITS_BY_MODULE[normalizeHabitModule(evalModule)];
+  const habitEnum = habitTagsForModule.map((t) => `"${t}"`).join(' | ');
+  const habitLegend = habitTagsForModule.map((t) => `${t} = ${HABIT_LABELS[t]}`).join('; ');
   const comps = COMPETENCIES_BY_MODULE[evalModule];
   const kind = evalModule === 'product' ? 'product management' : evalModule === 'guesstimate' ? 'estimation / guesstimate' : 'McKinsey case';
   const stagesHint = evalModule === 'product'
@@ -440,7 +444,7 @@ Return ONLY valid JSON matching this EXACT schema. Scores are 0–10. Cite real 
       "yourMove": "string — SECOND PERSON: what you actually did and what it signalled",
       "gap": "string — the SPECIFIC cognitive step skipped (not 'missed strategic implications' but the precise missing move)",
       "practicePattern": "string — a repeatable mental checklist for this type of question, with a drill",
-      "habitTag": "rush_structuring" | "invent_number" | "skip_validation" | "clarity" | "no_hypothesis" | "shallow_risk" | "weak_synthesis"
+      "habitTag": ${habitEnum}   // pick the closest. Legend — ${habitLegend}
     }
   ],
   "idealAnswers": [

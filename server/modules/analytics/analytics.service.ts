@@ -4,6 +4,7 @@ import { Session } from '../../models/Session.js';
 import { Case } from '../../models/Case.js';
 import { ProgressInsight } from '../../models/ProgressInsight.js';
 import { generateProgressInsight } from '../../ai/client.js';
+import { HABIT_LABELS } from '../../ai/habits.js';
 
 export async function getOverview(userId: string) {
   const reports = await Report.find({ userId });
@@ -109,16 +110,6 @@ export async function getHistory(userId: string, page = 1, limit = 10) {
 
 /* ─────────────────────────── Dashboard intelligence ─────────────────────────── */
 /* eslint-disable @typescript-eslint/no-explicit-any */
-
-const HABIT_LABELS: Record<string, string> = {
-  rush_structuring: 'Rushed structuring phase',
-  invent_number: 'Unvalidated assumptions',
-  skip_validation: 'Skipped validation',
-  clarity: 'Communication breaks down',
-  no_hypothesis: 'No hypothesis-first thinking',
-  shallow_risk: 'Shallow risk analysis',
-  weak_synthesis: 'Weak synthesis / close',
-};
 
 // Display skills → (rich competency key, legacy competency key)
 const MOVER_SKILLS: Array<{ key: string; label: string; rich: string; legacy: string }> = [

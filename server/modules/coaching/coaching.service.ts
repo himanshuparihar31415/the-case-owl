@@ -1,10 +1,11 @@
 import { Report } from '../../models/Report.js';
 import { Session } from '../../models/Session.js';
 import { LessonView } from '../../models/LessonView.js';
+import { HABIT_META, HABITS_BY_MODULE, normalizeHabitModule, type HabitModule } from '../../ai/habits.js';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-export type ModuleId = 'case' | 'product' | 'guesstimate';
+export type ModuleId = HabitModule;
 export interface Framework { name: string; idea: string }
 
 export const MODULES: Array<{ id: ModuleId; label: string; blurb: string }> = [
@@ -13,12 +14,7 @@ export const MODULES: Array<{ id: ModuleId; label: string; blurb: string }> = [
   { id: 'guesstimate', label: 'Guesstimate', blurb: 'Market-sizing & estimation — decomposition, assumptions, sanity-checks.' },
 ];
 
-const normalizeModule = (x?: string): ModuleId => {
-  const s = String(x || '').toLowerCase();
-  if (/product|\bpm\b/.test(s)) return 'product';
-  if (/guess|estimat|sizing/.test(s)) return 'guesstimate';
-  return 'case';
-};
+const normalizeModule = normalizeHabitModule;
 
 // General frameworks per broader category — the "what good structure looks like"
 // toolkit shown across that category's lessons.
@@ -46,64 +42,7 @@ export const MODULE_FRAMEWORKS: Record<ModuleId, Framework[]> = {
   ],
 };
 
-// The 7 canonical habits (mirrors analytics HABIT_LABELS) plus the editorial
-// framing and the matchers used to pull LIVE exemplars out of stored reports.
-//   skillMatch → which idealAnswers[].skillTested count as a model example
-//   stageMatch → which timeManagement[].stage measures this habit (loop closure)
-export const HABIT_META: Record<string, {
-  label: string; skill: string; intro: string; skillMatch: RegExp; stageMatch: RegExp;
-}> = {
-  rush_structuring: {
-    label: 'Rushed structuring phase',
-    skill: 'Structuring',
-    intro: 'Strong candidates spend real time up front building a clean, MECE structure before diving in. These are model structuring moments pulled from real cases — notice the framework stated up front and why each one holds together.',
-    skillMatch: /structur|framework|mece|approach|break.?down/i,
-    stageMatch: /structur|framework|approach/i,
-  },
-  no_hypothesis: {
-    label: 'No hypothesis-first thinking',
-    skill: 'Hypothesis-first thinking',
-    intro: 'Top candidates lead with a hypothesis, then let it drive which questions they ask and which data they seek. These are model moments where a hypothesis came first and shaped the path.',
-    skillMatch: /hypothes/i,
-    stageMatch: /hypothes|analy/i,
-  },
-  weak_synthesis: {
-    label: 'Weak synthesis / close',
-    skill: 'Synthesis',
-    intro: 'A strong close ties findings into a 30-second recommendation with quantified impact, the key risk, and next steps. Study how these model recommendations land.',
-    skillMatch: /synth|recommend|conclu|close|so.?what/i,
-    stageMatch: /synth|recommend|conclu|close/i,
-  },
-  invent_number: {
-    label: 'Unvalidated assumptions',
-    skill: 'Grounded assumptions',
-    intro: 'Instead of inventing a number, strong candidates state the assumption out loud, anchor it to something real, and flag it for validation. See how these model answers source their numbers.',
-    skillMatch: /assumpt|estimat|number|quant|math|driver/i,
-    stageMatch: /quant|analy|math/i,
-  },
-  skip_validation: {
-    label: 'Skipped validation',
-    skill: 'Validation & sanity-checks',
-    intro: 'Every number and every conclusion deserves a sanity check. These model moments show candidates validating a result before moving on.',
-    skillMatch: /valid|sanity|check|reasonab|plausib/i,
-    stageMatch: /quant|synth|analy/i,
-  },
-  shallow_risk: {
-    label: 'Shallow risk analysis',
-    skill: 'Risk analysis',
-    intro: 'A recommendation with no risks reads as naive. See how model answers surface the real downside risks and how they would mitigate them.',
-    skillMatch: /risk|downside|mitigat|tradeoff/i,
-    stageMatch: /synth|recommend|risk/i,
-  },
-  clarity: {
-    label: 'Communication breaks down',
-    skill: 'Structured communication',
-    intro: 'Interviewers reward top-down, signposted answers: the headline first, then the supporting logic. These model answers show that shape in action.',
-    skillMatch: /communicat|clar|top.?down|signpost|concise|structure/i,
-    stageMatch: /./,
-  },
-};
-
+// Habit taxonomy (labels, framing, matchers) is shared — see ../../ai/habits.
 export const HABIT_TAGS = Object.keys(HABIT_META);
 
 // Curated further reading — stable, reputable sources shown across lessons.
@@ -257,8 +196,12 @@ export async function getLessonIndex(userId: string, moduleArg?: string): Promis
       if (t && HABIT_META[t]) counts.set(t, (counts.get(t) ?? 0) + 1);
     }
   }
-  const topHabit = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
-  const lessons = HABIT_TAGS.map((tag) => ({
+  // Only this category's habits, ordered by the taxonomy.
+  const tags = HABITS_BY_MODULE[module] ?? HABIT_TAGS;
+  const topHabit = [...counts.entries()]
+    .filter(([t]) => tags.includes(t))
+    .sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+  const lessons = tags.map((tag) => ({
     habitTag: tag,
     label: HABIT_META[tag].label,
     skill: HABIT_META[tag].skill,
