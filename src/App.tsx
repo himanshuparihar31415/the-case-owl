@@ -8,6 +8,8 @@ import Library from './pages/Library';
 import Config from './pages/Config';
 import Session from './pages/Session';
 import Report from './pages/Report';
+import Learn from './pages/Learn';
+import Lesson from './pages/Lesson';
 import Billing from './pages/Billing';
 import Landing from './pages/Landing';
 import AuthModal from './components/auth/AuthModal';
@@ -101,6 +103,14 @@ function AppContent() {
           <Route
             path="/report/:sessionId"
             element={isAuthenticated ? <Report /> : <Navigate to="/" replace />}
+          />
+          <Route
+            path="/learn"
+            element={isAuthenticated ? <Learn /> : <Navigate to="/" replace />}
+          />
+          <Route
+            path="/lesson/:habitTag"
+            element={isAuthenticated ? <Lesson /> : <Navigate to="/" replace />}
           />
           <Route
             path="/billing"

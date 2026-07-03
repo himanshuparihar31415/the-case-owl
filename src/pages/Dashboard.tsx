@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Play, Loader2, TrendingUp, TrendingDown, Minus, ArrowRight,
-  Target, X, Briefcase, Boxes, Calculator, ChevronDown,
+  Target, X, Briefcase, Boxes, Calculator, ChevronDown, GraduationCap,
 } from 'lucide-react';
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine,
@@ -208,6 +208,12 @@ export default function Dashboard({ user }: { user: AuthUser | null }) {
                   </React.Fragment>
                 ))}
               </div>
+              {ins.bottleneck.chain?.[0]?.tag && (
+                <Link to={`/lesson/${ins.bottleneck.chain[0].tag}`} onClick={(e) => e.stopPropagation()}
+                  className="inline-flex items-center gap-1.5 mt-3 text-[12.5px] font-semibold text-on-tertiary-container hover:underline">
+                  <GraduationCap className="w-3.5 h-3.5" /> Read the 2-min lesson before your next case →
+                </Link>
+              )}
             </div>
             <div className="p-5 border-l border-outline-variant/10 flex flex-col justify-center min-w-[120px]">
               <div className="font-headline font-extrabold text-3xl text-error leading-none">{ins.bottleneck.pointLossPct ?? '—'}%</div>
@@ -312,6 +318,9 @@ export default function Dashboard({ user }: { user: AuthUser | null }) {
                   </div>
                 );
               })}
+              <Link to="/learn" className="inline-flex items-center gap-1.5 mt-3 text-[12.5px] font-semibold text-on-tertiary-container hover:underline">
+                <GraduationCap className="w-3.5 h-3.5" /> Browse focus lessons →
+              </Link>
             </div>
           ) : <div />}
           {data.timeSignature.length > 0 && (

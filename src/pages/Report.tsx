@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   CheckCircle, AlertCircle, AlertTriangle, Loader2, ArrowRight, Download,
-  RefreshCw, ChevronDown, FileText, X,
+  RefreshCw, ChevronDown, FileText, X, GraduationCap,
 } from 'lucide-react';
 import { cn } from '@/src/lib/utils';
 import { Link, useParams } from 'react-router-dom';
@@ -110,6 +110,7 @@ export default function Report() {
   const [idealError, setIdealError] = useState('');
   const [showIdeal, setShowIdeal] = useState(false);
   const [regenLoading, setRegenLoading] = useState(false);
+  const [loop, setLoop] = useState<any>(null);
 
   const regenerate = () => {
     if (regenLoading) return;
@@ -136,6 +137,14 @@ export default function Report() {
     api.get<{ report: ReportData; solution: typeof solution; caseBrief: typeof caseBrief; transcript: typeof fullTranscript; supervisor?: typeof supervisor }>(`/reports/${sessionId}`)
       .then((data) => { setReport(data.report); setSolution(data.solution ?? null); setCaseBrief(data.caseBrief ?? null); setFullTranscript(data.transcript ?? []); setSupervisor(data.supervisor ?? null); setLoading(false); })
       .catch((err) => { setError(err instanceof Error ? err.message : 'Failed to load report.'); setLoading(false); });
+  }, [sessionId]);
+
+  // Coaching-loop callback: did the user review a focus lesson before this case?
+  useEffect(() => {
+    if (!sessionId) return;
+    api.get<{ callback: any }>(`/coaching/loop/${sessionId}`)
+      .then((d) => setLoop(d.callback ?? null))
+      .catch(() => setLoop(null));
   }, [sessionId]);
 
   const downloadTranscript = () => {
@@ -682,6 +691,23 @@ export default function Report() {
           {/* ── YOUR ONE THING ── */}
           {plan.length > 0 && (
             <Block id="onething" title="Your one thing" tab="onething" activeTab={effectiveTab} action={<span className="label-blueprint">the highest-leverage fix</span>}>
+              {loop && (
+                <div className="no-line-card p-4 mb-3 border-l-4 border-green-600 bg-green-50/40">
+                  <div className="flex items-center gap-2 label-blueprint text-green-700 mb-1">
+                    <GraduationCap className="w-3.5 h-3.5" /> Coaching loop
+                  </div>
+                  <p className="text-sm text-on-surface-variant leading-relaxed">
+                    You reviewed the <b className="text-primary">{loop.skill}</b> lesson before this case.
+                    {loop.stage && loop.thisLabel && (
+                      <> This time you spent <b className="text-primary">{loop.thisLabel}</b> on {loop.stage}{loop.priorLabel ? <> (your prior average was {loop.priorLabel})</> : null}.</>
+                    )}
+                    {loop.assessment ? ` ${loop.assessment}` : ''}
+                  </p>
+                  <Link to={`/lesson/${loop.habitTag}`} className="inline-flex items-center gap-1.5 mt-2 text-[12.5px] font-semibold text-on-tertiary-container hover:underline">
+                    Revisit the lesson <ArrowRight className="w-3.5 h-3.5" />
+                  </Link>
+                </div>
+              )}
               <div className="no-line-card p-5 border-l-4 border-on-tertiary-container space-y-2">
                 <p className="text-base font-bold text-primary">{plan[0].action}</p>
                 {(plan[0].evidenceExcerpt || plan[0].detail) && <p className="text-sm text-on-surface-variant leading-relaxed"><span className="font-bold text-on-tertiary-container">Why: </span>{plan[0].evidenceExcerpt || plan[0].detail}</p>}

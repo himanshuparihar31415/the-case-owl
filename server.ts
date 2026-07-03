@@ -21,6 +21,7 @@ import caseRoutes from './server/modules/cases/case.routes.js';
 import sessionRoutes from './server/modules/sessions/session.routes.js';
 import reportRoutes from './server/modules/reports/report.routes.js';
 import analyticsRoutes from './server/modules/analytics/analytics.routes.js';
+import coachingRoutes from './server/modules/coaching/coaching.routes.js';
 import billingRoutes from './server/modules/billing/billing.routes.js';
 import adminRoutes from './server/modules/admin/admin.routes.js';
 import { webhook as razorpayWebhook } from './server/modules/billing/billing.controller.js';
@@ -57,6 +58,7 @@ app.use('/api/cases', caseRoutes);
 app.use('/api/sessions', sessionRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/analytics', analyticsRoutes);
+app.use('/api/coaching', coachingRoutes);
 app.use('/api/billing', billingRoutes);
 app.use('/api/admin', adminRoutes);
 
