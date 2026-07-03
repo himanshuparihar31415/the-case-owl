@@ -7,13 +7,14 @@ import { Case } from '../../../models/Case.js';
 import { Session } from '../../../models/Session.js';
 import { OpenAiStt } from './openai-stt.js';
 import { streamTts, TtsHandle } from './elevenlabs-tts.js';
+import { buildForbiddenList, deterministicCheck } from '../supervisor.js';
 
-// EXPERIMENTAL: run a CONSULTING case on the STT→LLM→TTS pipeline (OpenAI
-// transcription + gpt-4o + ElevenLabs) instead of the all-in-one Realtime model.
-// Gated to energy-profitability only (see voice.ws.ts). Uses the SAME consulting
-// interviewer prompt + exhibit framework as the Realtime path — exhibits are
-// surfaced via gpt-4o function-calling (the chat-completion analog of the
-// Realtime show_exhibit tool). Nothing else (case gen, report) changes.
+// Run a CONSULTING case on the STT→LLM→TTS pipeline (OpenAI transcription +
+// gpt-4o + ElevenLabs). This is the path for ALL consulting cases. Uses the same
+// consulting interviewer prompt + exhibit framework; exhibits are surfaced via
+// gpt-4o function-calling (the chat-completion analog of the Realtime
+// show_exhibit tool). The silent supervisor observes each turn and records
+// LED/FED_DATA compliance flags. Nothing else (case gen, report) changes.
 
 type CaseDoc = InstanceType<typeof Case>;
 type SessionDoc = InstanceType<typeof Session>;
@@ -45,6 +46,12 @@ export function handleConsultingPipeline(args: Args): void {
 
   // Full conversation thread for the chat-completion turns.
   const messages: Array<Record<string, unknown>> = [{ role: 'system', content: systemPrompt }];
+
+  // Silent supervisor: flag if the interviewer LEADS or FEEDS data the candidate
+  // hadn't earned. Observe-only, deduped per term, persisted for the admin block.
+  const forbidden = buildForbiddenList(caseDoc);
+  const candidateHistory: string[] = [];
+  const flaggedTerms = new Set<string>();
 
   const stt = new OpenAiStt();
   let currentTts: TtsHandle | null = null;
@@ -136,6 +143,17 @@ export function handleConsultingPipeline(args: Args): void {
       appendTranscript(sessionId, { role: 'interviewer', text: reply, timestamp: new Date() })
         .catch((e) => console.error('appendTranscript (interviewer) failed:', e));
 
+      // Supervisor (observe-only): flag if this turn led or fed unearned data.
+      const check = deterministicCheck(reply, candidateHistory, forbidden);
+      if (check.verdict !== 'OK' && check.term && !flaggedTerms.has(check.term)) {
+        flaggedTerms.add(check.term);
+        console.warn(`[supervisor] session=${sessionId} ${check.verdict} term="${check.term}"`);
+        Session.updateOne(
+          { _id: sessionId },
+          { $push: { supervisorFlags: { verdict: check.verdict, term: check.term, at: new Date().toISOString() } } }
+        ).catch((e) => console.error('supervisorFlags persist failed:', e));
+      }
+
       speaking = true;
       let pcmBytes = 0;
       currentTts = streamTts(reply, (chunk) => {
@@ -175,6 +193,7 @@ export function handleConsultingPipeline(args: Args): void {
 
   stt.on('final', (text: string) => {
     if (!text.trim()) return;
+    candidateHistory.push(text); // supervisor: what the candidate has earned
     sendToClient(clientWs, { type: 'transcript', role: 'candidate', text });
     appendTranscript(sessionId, { role: 'candidate', text, timestamp: new Date() })
       .catch((e) => console.error('appendTranscript (candidate) failed:', e));
