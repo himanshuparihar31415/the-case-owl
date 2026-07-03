@@ -125,7 +125,7 @@ export default function Dashboard({ user }: { user: AuthUser | null }) {
   const lessonHref = (tag?: string) => (tag ? `/lesson/${tag}?m=${lessonModule}` : `/learn?m=${lessonModule}`);
 
   return (
-    <div className="space-y-6 py-2">
+    <div className="space-y-5 py-1">
       {/* ── HEADER: greeting + readiness chip + Focus/Stats toggle ── */}
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
         <div className="min-w-0">
@@ -177,7 +177,7 @@ export default function Dashboard({ user }: { user: AuthUser | null }) {
 
       {view === 'focus' ? (
         /* ═══════════════ FOCUS: the coaching loop ═══════════════ */
-        <div className="space-y-6">
+        <div className="space-y-5">
           {/* THE loop card — what to fix, why, and the two steps to fix it */}
           {ins?.bottleneck ? (
             <section className="no-line-card overflow-hidden">
@@ -348,7 +348,7 @@ export default function Dashboard({ user }: { user: AuthUser | null }) {
         </div>
       ) : (
         /* ═══════════════ STATS: the reference data ═══════════════ */
-        <div className="space-y-6">
+        <div className="space-y-5">
           {/* Where you stand */}
           <div>
             <h2 className="font-headline font-bold text-base text-primary mb-3">Where you stand</h2>

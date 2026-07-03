@@ -33,14 +33,14 @@ export default function Learn() {
   const activeModule = data?.modules.find((m) => m.id === module);
 
   return (
-    <div className="space-y-7 py-2">
+    <div className="space-y-5 py-1">
       {/* Hero */}
-      <div className="rounded-2xl p-6 text-white relative overflow-hidden" style={{ background: 'linear-gradient(150deg,#08aae4,#002046)' }}>
+      <div className="rounded-2xl p-5 text-white relative overflow-hidden" style={{ background: 'linear-gradient(150deg,#08aae4,#002046)' }}>
         <div className="absolute -right-12 -top-12 w-56 h-56 rounded-full" style={{ background: 'radial-gradient(circle,rgba(255,255,255,.16),transparent 70%)' }} />
         <div className="relative">
-          <div className="flex items-center gap-2 label-blueprint text-white/60 mb-2"><GraduationCap className="w-3.5 h-3.5" /> Focus lessons</div>
-          <h1 className="font-headline font-extrabold text-2xl md:text-3xl leading-tight max-w-2xl">Frameworks, model answers, and drills — 2 minutes each.</h1>
-          <p className="text-white/75 text-sm mt-2 max-w-2xl leading-relaxed">
+          <div className="flex items-center gap-2 label-blueprint text-white/60 mb-1.5"><GraduationCap className="w-3.5 h-3.5" /> Focus lessons</div>
+          <h1 className="font-headline font-extrabold text-xl md:text-2xl leading-tight max-w-2xl">Frameworks, model answers, and drills — 2 minutes each.</h1>
+          <p className="text-white/75 text-[13px] mt-1.5 max-w-2xl leading-relaxed">
             Pick your track, learn the framework, read real model answers from actual cases, then run a case. Everything below adapts to the category you choose.
           </p>
         </div>

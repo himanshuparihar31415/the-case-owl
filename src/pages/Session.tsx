@@ -490,15 +490,15 @@ export default function Session() {
   // ── Panels ──────────────────────────────────────────────────────────────
   const caseBriefPanel = (
     <section style={panelStyle('case')} className="no-line-card flex flex-col min-h-0 flex-grow overflow-hidden">
-      <header className="px-5 py-3 border-b border-outline-variant/15 shrink-0 flex items-center gap-2">
+      <header className="px-4 py-3 border-b border-outline-variant/15 shrink-0 flex items-center gap-2">
         <FileText className="w-4 h-4 text-on-tertiary-container" />
         <span className="label-blueprint">Case Brief</span>
       </header>
-      <div className="overflow-y-auto scrolling-log p-5 space-y-6">
+      <div className="overflow-y-auto scrolling-log p-4 space-y-4">
         {caseDoc ? (
           <>
             <div>
-              <h2 className="font-headline font-bold text-lg text-primary mb-2">{caseDoc.title}</h2>
+              <h2 className="font-headline font-bold text-base text-primary mb-2">{caseDoc.title}</h2>
               <p className="text-sm text-on-surface-variant leading-relaxed whitespace-pre-line">{caseDoc.scenario}</p>
             </div>
             {caseDoc.keyDataPoints.length > 0 && (
@@ -552,11 +552,11 @@ export default function Session() {
 
   const workspacePanel = (
     <section style={panelStyle('workspace')} className="no-line-card flex flex-col min-h-0 flex-grow overflow-hidden">
-      <header className="px-5 py-3 border-b border-outline-variant/15 shrink-0 flex items-center gap-2">
+      <header className="px-4 py-3 border-b border-outline-variant/15 shrink-0 flex items-center gap-2">
         <NotebookPen className="w-4 h-4 text-on-tertiary-container" />
         <span className="label-blueprint">Workspace</span>
       </header>
-      <div className="flex flex-col min-h-0 flex-grow p-5 gap-4">
+      <div className="flex flex-col min-h-0 flex-grow p-4 gap-4">
         {/* Current question + contextual hints */}
         <div className="shrink-0 bg-surface-container-low rounded-lg p-4 border-l-4 border-on-tertiary-container">
           <div className="label-blueprint mb-1">{moduleKind === 'case' ? 'Current Question' : 'Latest from interviewer'}</div>
@@ -739,7 +739,7 @@ export default function Session() {
   );
 
   return (
-    <div className="h-[calc(100vh-6rem)] flex flex-col gap-3 py-3">
+    <div className="h-[calc(100vh-5rem)] flex flex-col gap-3 py-3">
       {/* Top strip: case title · progress · focus modes */}
       <div className="flex items-center justify-between gap-4 px-1 shrink-0">
         <div className="min-w-0">
@@ -827,7 +827,7 @@ export default function Session() {
       </div>
 
       {/* Action bar */}
-      <div className="shrink-0 no-line-card flex items-center justify-between gap-3 px-4 py-3">
+      <div className="shrink-0 no-line-card flex items-center justify-between gap-3 px-4 py-2">
         <div className="flex items-center gap-3 min-w-0">
           <button
             onClick={() => setMicMuted((m) => { micMutedRef.current = !m; return !m; })}

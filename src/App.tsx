@@ -80,7 +80,7 @@ function AppContent() {
       )}
       <main className={cn(
         "flex-grow w-full mx-auto",
-        isLanding ? "" : isSession ? "pt-24 px-4 lg:px-6" : "pt-24 pb-20 px-8 max-w-7xl"
+        isLanding ? "" : isSession ? "pt-20 px-4 lg:px-6" : "pt-20 pb-12 px-4 lg:px-6 max-w-7xl"
       )}>
         <Routes>
           <Route path="/" element={<Landing onOpenAuth={() => setIsAuthModalOpen(true)} />} />

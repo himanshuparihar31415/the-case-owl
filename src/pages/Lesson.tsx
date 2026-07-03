@@ -46,19 +46,19 @@ export default function Lesson() {
   }
 
   return (
-    <div className="space-y-6 py-2 max-w-3xl">
+    <div className="space-y-5 py-1 max-w-3xl">
       <Link to={`/learn?m=${lesson.module}`} className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-secondary hover:text-primary transition"><ArrowLeft className="w-4 h-4" /> {MODULE_LABEL[lesson.module] ?? 'Focus'} lessons</Link>
 
       {/* Header */}
       <div>
         <div className="label-blueprint text-on-tertiary-container mb-1">{MODULE_LABEL[lesson.module] ?? ''} · {lesson.skill} · 2-min read</div>
-        <h1 className="font-headline font-bold text-2xl text-primary leading-tight">{lesson.label}</h1>
+        <h1 className="font-headline font-bold text-xl text-primary leading-tight">{lesson.label}</h1>
         <p className="text-secondary text-sm mt-2 leading-relaxed">{lesson.intro}</p>
       </div>
 
       {/* Frameworks for this category */}
       {lesson.frameworks.length > 0 && (
-        <div className="no-line-card p-5">
+        <div className="no-line-card p-4">
           <div className="flex items-center gap-2 label-blueprint text-on-tertiary-container mb-3">
             <Compass className="w-3.5 h-3.5" /> Frameworks to reach for
           </div>
@@ -78,7 +78,7 @@ export default function Lesson() {
 
       {/* The pattern to drill */}
       {lesson.drills.length > 0 && (
-        <div className="no-line-card p-5 border-l-4 border-on-tertiary-container">
+        <div className="no-line-card p-4 border-l-4 border-on-tertiary-container">
           <div className="flex items-center gap-2 label-blueprint text-on-tertiary-container mb-3">
             <Lightbulb className="w-3.5 h-3.5" /> The pattern to drill
           </div>
@@ -98,13 +98,13 @@ export default function Lesson() {
         <h2 className="font-headline font-bold text-base text-primary mb-1">What good looks like</h2>
         <p className="text-[12.5px] text-secondary mb-3">Model answers pulled from real {MODULE_LABEL[lesson.module] ?? ''} cases on the platform.</p>
         {lesson.exemplars.length === 0 ? (
-          <div className="no-line-card p-5 text-sm text-secondary leading-relaxed">
+          <div className="no-line-card p-4 text-sm text-secondary leading-relaxed">
             Real examples for this habit will appear here as more {MODULE_LABEL[lesson.module] ?? ''} sessions accumulate. In the meantime, study the frameworks above and drill the pattern, then start a case.
           </div>
         ) : (
           <div className="space-y-3">
             {lesson.exemplars.map((e, i) => (
-              <div key={i} className="no-line-card p-5">
+              <div key={i} className="no-line-card p-4">
                 <div className="flex items-center gap-2 mb-2 flex-wrap">
                   <span className="text-[10px] font-bold uppercase tracking-wide bg-on-tertiary-container/10 text-on-tertiary-container px-2 py-0.5 rounded">{e.caseType}</span>
                   <span className="text-[11px] text-secondary/70">{e.skillTested}</span>
@@ -143,7 +143,7 @@ export default function Lesson() {
       )}
 
       {/* CTA */}
-      <div className="no-line-card p-5 flex items-center justify-between gap-4 flex-wrap"
+      <div className="no-line-card p-4 flex items-center justify-between gap-4 flex-wrap"
         style={{ background: 'linear-gradient(150deg,#08aae4,#002046)' }}>
         <div>
           <p className="font-headline font-bold text-white">Now put it into practice.</p>

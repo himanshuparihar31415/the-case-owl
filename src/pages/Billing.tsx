@@ -60,10 +60,10 @@ export default function Billing({ user }: { user: AuthUser | null }) {
   }
 
   return (
-    <div className="space-y-12 py-4">
+    <div className="space-y-6">
       <header>
-        <span className="label-blueprint text-on-tertiary-container font-bold block mb-2">Billing &amp; Credits</span>
-        <h1 className="power-gap-h1 text-primary">Reps &amp; receipts.</h1>
+        <span className="label-blueprint text-on-tertiary-container font-bold block mb-1">Billing &amp; Credits</span>
+        <h1 className="font-headline font-extrabold text-2xl text-primary">Reps &amp; receipts.</h1>
       </header>
 
       {msg && (
@@ -73,13 +73,13 @@ export default function Billing({ user }: { user: AuthUser | null }) {
       )}
 
       {/* Wallet */}
-      <section className="no-line-card p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-6">
-        <div className="flex items-center gap-4">
-          <div className="w-12 h-12 rounded-xl bg-surface-container flex items-center justify-center text-on-tertiary-container"><WalletIcon className="w-6 h-6" /></div>
+      <section className="no-line-card p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-surface-container flex items-center justify-center text-on-tertiary-container"><WalletIcon className="w-5 h-5" /></div>
           <div>
             <div className="label-blueprint">Your balance</div>
-            <div className="font-headline font-extrabold text-2xl text-primary flex items-center gap-2">
-              {wallet?.unlimited ? <><InfinityIcon className="w-6 h-6" /> Unlimited</> : <>{wallet?.spendable ?? 0} <span className="text-base text-secondary font-bold">credit-minutes</span></>}
+            <div className="font-headline font-extrabold text-xl text-primary flex items-center gap-2">
+              {wallet?.unlimited ? <><InfinityIcon className="w-5 h-5" /> Unlimited</> : <>{wallet?.spendable ?? 0} <span className="text-sm text-secondary font-bold">credit-minutes</span></>}
             </div>
           </div>
         </div>
@@ -92,21 +92,21 @@ export default function Billing({ user }: { user: AuthUser | null }) {
 
       {/* Plans */}
       <section>
-        <h2 className="font-headline font-bold text-xl text-primary mb-5">Choose your reps</h2>
-        <div className="grid md:grid-cols-3 gap-5">
+        <h2 className="font-headline font-bold text-[15px] text-primary mb-3">Choose your reps</h2>
+        <div className="grid md:grid-cols-3 gap-4">
           {plans.map((p) => {
             const current = wallet?.planCode === p.code;
             const featured = p.family === 'pro';
             return (
-              <div key={p.code} className={cn('rounded-2xl p-6 border flex flex-col', featured ? 'border-on-tertiary-container shadow-lg' : 'border-outline-variant/15 bg-surface-container-lowest')}>
+              <div key={p.code} className={cn('rounded-2xl p-4 border flex flex-col', featured ? 'border-on-tertiary-container shadow-lg' : 'border-outline-variant/15 bg-surface-container-lowest')}>
                 {featured && <div className="label-blueprint text-on-tertiary-container mb-1 flex items-center gap-1"><Sparkles className="w-3.5 h-3.5" /> Most reps</div>}
-                <h3 className="font-headline font-bold text-lg text-primary">{p.name}</h3>
+                <h3 className="font-headline font-bold text-base text-primary">{p.name}</h3>
                 <p className="text-[13px] text-secondary min-h-[38px] mt-1">{FAMILY_BLURB[p.family] ?? ''}</p>
-                <div className="font-headline font-extrabold text-3xl text-primary mt-3">
+                <div className="font-headline font-extrabold text-2xl text-primary mt-2">
                   {inr(p.priceMinor)}<span className="text-sm text-secondary font-medium">/{p.interval === '2week' ? '2wk' : 'mo'}</span>
                 </div>
-                <div className="text-[11px] text-secondary mb-4">+{p.gstPercent}% GST · {inr(p.grossMinor)} total</div>
-                <ul className="space-y-2 text-[13px] text-on-surface-variant flex-grow mb-5">
+                <div className="text-[11px] text-secondary mb-3">+{p.gstPercent}% GST · {inr(p.grossMinor)} total</div>
+                <ul className="space-y-1.5 text-[13px] text-on-surface-variant flex-grow mb-4">
                   <li className="flex gap-2"><Check className="w-4 h-4 text-on-tertiary-container shrink-0" /> {p.unlimited ? 'Unlimited interviews' : `${p.credits} credit-minutes / cycle`}</li>
                   <li className="flex gap-2"><Check className="w-4 h-4 text-on-tertiary-container shrink-0" /> Up to {p.perInterviewCapMinutes} min per interview</li>
                   <li className="flex gap-2"><Check className="w-4 h-4 text-on-tertiary-container shrink-0" /> Full report + transcript + dashboard</li>
@@ -114,7 +114,7 @@ export default function Billing({ user }: { user: AuthUser | null }) {
                 <button
                   onClick={() => buy(p)}
                   disabled={!!busy || current}
-                  className={cn('w-full py-3 rounded-xl font-headline font-bold text-sm transition disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2',
+                  className={cn('w-full py-2.5 rounded-xl font-headline font-bold text-sm transition disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2',
                     featured ? 'bg-on-tertiary-container text-white hover:brightness-110' : 'bg-primary text-on-primary hover:bg-primary-container')}
                 >
                   {busy === p.code ? <Loader2 className="w-4 h-4 animate-spin" /> : current ? 'Current plan' : `Choose ${p.name}`}
@@ -123,16 +123,16 @@ export default function Billing({ user }: { user: AuthUser | null }) {
             );
           })}
         </div>
-        <p className="text-xs text-secondary mt-4">Secure payments by Razorpay · GST invoice issued on payment · cancel anytime.</p>
+        <p className="text-xs text-secondary mt-3">Secure payments by Razorpay · GST invoice issued on payment · cancel anytime.</p>
       </section>
 
       {/* Ledger */}
       {ledger.length > 0 && (
         <section className="no-line-card overflow-hidden">
-          <div className="px-6 py-4 border-b border-outline-variant/15"><h2 className="font-headline font-bold text-base text-primary">Credit history</h2></div>
-          <div className="divide-y divide-outline-variant/10 max-h-80 overflow-y-auto scrolling-log">
+          <div className="px-4 py-3 border-b border-outline-variant/15"><h2 className="font-headline font-bold text-[15px] text-primary">Credit history</h2></div>
+          <div className="divide-y divide-outline-variant/10 max-h-64 overflow-y-auto scrolling-log">
             {ledger.map((l) => (
-              <div key={l._id} className="px-6 py-3 flex items-center justify-between text-sm">
+              <div key={l._id} className="px-4 py-2.5 flex items-center justify-between text-sm">
                 <div>
                   <span className="font-medium text-primary capitalize">{l.type.replace(/_/g, ' ')}</span>
                   {l.reason && <span className="text-secondary"> · {l.reason}</span>}

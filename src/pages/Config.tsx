@@ -146,10 +146,10 @@ export default function Config() {
   };
 
   return (
-    <div className="max-w-3xl mx-auto px-4 py-10 space-y-8">
+    <div className="max-w-3xl mx-auto space-y-5">
       {/* Header */}
       <header>
-        <h1 className="font-headline text-2xl font-extrabold text-primary">New case session</h1>
+        <h1 className="font-headline text-xl font-extrabold text-primary">New case session</h1>
         <p className="text-secondary text-sm mt-1">
           Pick a case type and tune the difficulty — we&apos;ll generate a unique case, or you can import your own.
         </p>
@@ -247,7 +247,7 @@ export default function Config() {
       )}
 
       {/* Difficulty + Style */}
-      <section className="grid sm:grid-cols-2 gap-8">
+      <section className="grid sm:grid-cols-2 gap-4">
         <div>
           <div className="flex items-baseline justify-between mb-3">
             <label className="label-blueprint">Difficulty</label>
@@ -398,7 +398,7 @@ export default function Config() {
       )}
 
       {/* Action bar */}
-      <div className="flex items-center justify-between gap-4 pt-6 border-t border-outline-variant/20">
+      <div className="sticky bottom-0 z-10 -mx-4 lg:-mx-6 px-4 lg:px-6 py-3 bg-surface/90 backdrop-blur border-t border-outline-variant/15 flex items-center justify-between gap-4">
         <div className="min-w-0">
           <p className="text-xs text-secondary">~45 min · spoken interview</p>
           {error && <p className="text-sm text-red-500 font-medium mt-1">{error}</p>}

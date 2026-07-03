@@ -67,8 +67,8 @@ function Block({ id, title, action, children, tab, activeTab }: { id: string; ti
   const hidden = !!(tab && activeTab && tab !== activeTab);
   return (
     <section id={id} className={cn('scroll-mt-28', hidden && 'hidden print:block')}>
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="font-headline text-xl font-bold text-primary">{title}</h3>
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="font-headline text-base font-bold text-primary">{title}</h3>
         {action}
       </div>
       {children}
@@ -247,10 +247,10 @@ export default function Report() {
   const effectiveTab = navTabs.some(([id]) => id === activeTab) ? activeTab : (navTabs[0]?.[0] ?? 'overview');
 
   return (
-    <div className="max-w-6xl mx-auto py-6">
-      <div className="grid grid-cols-1 xl:grid-cols-[200px_minmax(0,1fr)] gap-8">
-        {/* ── LEFT NAV (top-aligned) ── */}
-        <nav className="xl:sticky xl:top-24 self-start flex xl:flex-col gap-1 overflow-x-auto scrolling-log print:hidden -mx-1 px-1">
+    <div className="max-w-6xl mx-auto py-2">
+      <div className="grid grid-cols-1 xl:grid-cols-[200px_minmax(0,1fr)] gap-6">
+        {/* ── LEFT NAV (sticky on all sizes; horizontal strip on mobile) ── */}
+        <nav className="sticky top-16 xl:top-24 z-20 self-start flex xl:flex-col gap-1 overflow-x-auto scrolling-log print:hidden -mx-4 px-4 xl:-mx-1 xl:px-1 py-1.5 xl:py-0 bg-surface/95 backdrop-blur xl:bg-transparent xl:backdrop-blur-none border-b border-outline-variant/10 xl:border-0">
           <div className="hidden xl:block px-3 pb-3 mb-1 border-b border-outline-variant/15">
             <div className="label-blueprint text-on-tertiary-container font-bold">Feedback</div>
             <div className="font-headline font-extrabold text-primary leading-tight mt-1 text-sm line-clamp-2">{a.caseTitle ?? 'Report'}</div>
@@ -267,14 +267,14 @@ export default function Report() {
         </nav>
 
         {/* ── CONTENT ── */}
-        <div className="min-w-0 space-y-8">
+        <div className="min-w-0 space-y-5">
           {/* ── OVERVIEW ── */}
           <Block id="overview" title="Overview" tab="overview" activeTab={effectiveTab}>
             <div className="space-y-5">
               {/* Verdict card */}
-              <div className="no-line-card p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-5">
+              <div className="no-line-card p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div className="min-w-0">
-                  <h1 className="font-headline text-2xl font-extrabold text-primary">{a.caseTitle ?? 'Performance Report'}</h1>
+                  <h1 className="font-headline text-xl font-extrabold text-primary">{a.caseTitle ?? 'Performance Report'}</h1>
                   <p className={cn('mt-1.5 font-bold', DECISION_COLOR[(ps?.verdict ?? decision)] ?? 'text-primary')}>{ps?.verdict ?? decision}{a.difficultyLabel ? ` · ${a.difficultyLabel}` : ''}</p>
                   <div className="flex items-center gap-3 mt-3 flex-wrap">
                     {caseBrief && (caseBrief.prompt || caseBrief.scenario) && (
