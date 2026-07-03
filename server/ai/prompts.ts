@@ -870,7 +870,7 @@ Return ONLY valid JSON: the branch node (its original id, label, depth 1, status
 // Stage 3: overlay the candidate's actual journey (from the transcript) onto the
 // reference tree. Produces the eval tree + summary metrics shown after the case.
 export function POST_INTERVIEW_TREE_PROMPT(referenceTreeJson: string, transcript: string): string {
-  return `You are the evaluator for "The Case Owl". An interview just ended. Overlay what the candidate ACTUALLY did onto the reference tree (the pre-built answer key). Be honest — no inflation. Write all candidate-facing text (evaluation_note, recommended_path, summary) in the SECOND PERSON — address the candidate as "you", never "the candidate" or "they".
+  return `You are the evaluator for "The Case Owl". An interview just ended. Overlay what the candidate ACTUALLY did onto the reference tree (the pre-built answer key). Credit SUBSTANCE over wording: if the candidate addressed a node's CONCEPT in their own words — even briefly or imperfectly — mark it engaged (at least "mentioned"); reserve "skipped" for ideas they genuinely never raised. When you're unsure whether they touched a node, lean toward crediting it, not skipping it. Stay truthful (don't invent coverage that isn't there), but match by MEANING, not exact phrasing. Write all candidate-facing text (evaluation_note, recommended_path, summary) in the SECOND PERSON — address the candidate as "you", never "the candidate" or "they".
 
 REFERENCE TREE (answer key):
 """
@@ -900,10 +900,12 @@ Do NOT re-emit the tree structure. The full tree (with its depth) is kept separa
 ]
 
 RULES:
-- Emit an overlay ONLY for nodes the candidate engaged with. Every other reference node is auto-marked skipped — don't list them.
-- candidate_status: explored = visited + engaged; mentioned = touched briefly, didn't dig; wrong_turn = went down a wrong path; dead_end_hit = hit a dead end.
+- Emit an overlay for every node the candidate engaged with — including ones they only gestured at or paraphrased. Match by MEANING: if what they said maps to a node's idea, credit that node even if their words differ from its label. Only nodes they truly never approached are left off (auto-skipped).
+- candidate_status: explored = visited + engaged; mentioned = touched briefly OR raised the idea in passing/paraphrase (use this generously rather than skipping); wrong_turn = went down a wrong path; dead_end_hit = hit a dead end.
+- quality reflects DEPTH, not vocabulary — don't mark "weak" just because they were brief or used different words. "weak" is for genuinely shallow or partly-wrong engagement; a correct-but-quick hit is "adequate".
+- When torn between "skipped" and "mentioned", choose "mentioned".
 - Getting to a correct node UNPROMPTED (was_nudged=false) is better than after a nudge.
-- ids MUST exactly match reference-tree node ids, else the overlay won't attach.
+- Prefer matching each overlay to a node by its id; if you're unsure of the exact id, still emit it with the closest label — we attach by meaning too.
 
 Then also return a "summary" object:
 {

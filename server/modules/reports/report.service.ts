@@ -287,17 +287,43 @@ function serializeCasePackage(c: InstanceType<typeof Case>): string {
 
 const normLabel = (s: unknown): string => String(s ?? '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 
+// Meaningful tokens (drop stopwords + tiny words) for fuzzy label matching.
+const LABEL_STOP = new Set(['the', 'and', 'of', 'to', 'for', 'with', 'in', 'on', 'or', 'vs', 'by', 'is', 'are', 'their', 'from', 'into', 'a', 'an']);
+const labelTokens = (s: unknown): string[] => normLabel(s).split(' ').filter((t) => t.length > 2 && !LABEL_STOP.has(t));
+
+// Fuzzy fallback: attach an overlay whose label shares enough meaningful words
+// with the node's label, so a paraphrased-but-correct node isn't marked skipped.
+// Conservative: needs ≥2 shared tokens and ≥60% overlap of the shorter label.
+function fuzzyOverlay(
+  label: unknown,
+  byTokens: Array<{ tokens: string[]; o: Record<string, unknown> }>,
+): Record<string, unknown> | undefined {
+  const toks = labelTokens(label);
+  if (toks.length === 0) return undefined;
+  let best: Record<string, unknown> | undefined;
+  let bestScore = 0;
+  for (const { tokens, o } of byTokens) {
+    if (!tokens.length) continue;
+    const overlap = toks.filter((t) => tokens.includes(t)).length;
+    if (overlap < 2) continue;
+    const score = overlap / Math.min(toks.length, tokens.length);
+    if (score >= 0.6 && score > bestScore) { bestScore = score; best = o; }
+  }
+  return best;
+}
+
 // Merge the per-node candidate overlay onto the full reference tree (recursively),
 // preserving every node, its depth, and its teaching `insight`. Matches the
-// overlay by id first, then by label (so a slightly-off id still attaches).
-// Nodes with no overlay are 'skipped'.
+// overlay by id first, then exact label, then a fuzzy (meaning) match — so a
+// paraphrased or slightly-off node still attaches. Unmatched nodes are 'skipped'.
 function mergeOverlay(
   node: Record<string, unknown>,
   byId: Map<string, Record<string, unknown>>,
   byLabel: Map<string, Record<string, unknown>>,
+  byTokens: Array<{ tokens: string[]; o: Record<string, unknown> }>,
 ): Record<string, unknown> {
   const id = node.id != null ? String(node.id) : '';
-  const o = byId.get(id) ?? byLabel.get(normLabel(node.label));
+  const o = byId.get(id) ?? byLabel.get(normLabel(node.label)) ?? fuzzyOverlay(node.label, byTokens);
   const children = Array.isArray(node.children) ? (node.children as Array<Record<string, unknown>>) : [];
   return {
     id: node.id,
@@ -315,7 +341,7 @@ function mergeOverlay(
     exhibit_shared: o?.exhibit_shared ?? null,
     was_nudged: o?.was_nudged ?? false,
     recommended_path: o?.recommended_path ?? null,
-    children: children.map((c) => mergeOverlay(c, byId, byLabel)),
+    children: children.map((c) => mergeOverlay(c, byId, byLabel, byTokens)),
   };
 }
 
@@ -349,7 +375,8 @@ async function buildCaseTrees(
     const overlays = Array.isArray(evalOut.overlays) ? (evalOut.overlays as Array<Record<string, unknown>>) : [];
     const byId = new Map(overlays.filter((o) => o.id != null).map((o) => [String(o.id), o]));
     const byLabel = new Map(overlays.filter((o) => o.label != null).map((o) => [normLabel(o.label), o]));
-    const merged = mergeOverlay(refTree as Record<string, unknown>, byId, byLabel);
+    const byTokens = overlays.filter((o) => o.label != null).map((o) => ({ tokens: labelTokens(o.label), o }));
+    const merged = mergeOverlay(refTree as Record<string, unknown>, byId, byLabel, byTokens);
 
     // Deterministic traversal score (spec engine) from the ordered visit list.
     const traversal = Array.isArray(evalOut.traversal) ? (evalOut.traversal as Array<{ id?: string; was_nudged?: boolean }>) : [];
