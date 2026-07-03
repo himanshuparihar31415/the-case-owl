@@ -121,6 +121,8 @@ export default function Dashboard({ user }: { user: AuthUser | null }) {
   const evidenceFor = (tag?: string) => data.evidence.filter((e) => !tag || e.habitTag === tag);
   const primaryTag: string | undefined = ins?.bottleneck?.chain?.[0]?.tag;
   const recentTrajectory = data.trajectory.slice(-5);
+  const lessonModule = mod === 'all' ? 'case' : mod; // scope lessons to the active category
+  const lessonHref = (tag?: string) => (tag ? `/lesson/${tag}?m=${lessonModule}` : `/learn?m=${lessonModule}`);
 
   return (
     <div className="space-y-6 py-2">
@@ -212,7 +214,7 @@ export default function Dashboard({ user }: { user: AuthUser | null }) {
                   {/* The two-step move — the heart of the loop */}
                   <div className="grid sm:grid-cols-2 gap-3.5 mt-5">
                     {/* Step 1 · the lesson */}
-                    <Link to={primaryTag ? `/lesson/${primaryTag}` : '/learn'}
+                    <Link to={lessonHref(primaryTag)}
                       className="group relative overflow-hidden rounded-2xl border border-on-tertiary-container/25 bg-on-tertiary-container/[0.06] p-5 hover:shadow-lg hover:-translate-y-0.5 transition">
                       <div className="flex items-center gap-2.5 mb-3">
                         <span className="w-9 h-9 rounded-xl bg-on-tertiary-container text-white flex items-center justify-center shrink-0"><GraduationCap className="w-5 h-5" /></span>
@@ -259,24 +261,36 @@ export default function Dashboard({ user }: { user: AuthUser | null }) {
               <p className="text-sm text-secondary max-w-md mx-auto leading-relaxed">Nothing is dragging you down disproportionately. Keep practicing to hold your edge, or sharpen a specific skill with a focus lesson.</p>
               <div className="flex items-center justify-center gap-3">
                 <Link to="/config" className="inline-flex items-center gap-2 px-5 py-2.5 bg-primary text-on-primary font-headline font-bold rounded-lg text-sm hover:scale-[0.98] transition">Start a case <Play className="w-4 h-4 fill-current" /></Link>
-                <Link to="/learn" className="inline-flex items-center gap-1.5 text-sm font-semibold text-on-tertiary-container hover:underline"><GraduationCap className="w-4 h-4" /> Browse lessons</Link>
+                <Link to={lessonHref()} className="inline-flex items-center gap-1.5 text-sm font-semibold text-on-tertiary-container hover:underline"><GraduationCap className="w-4 h-4" /> Browse lessons</Link>
               </div>
             </section>
           )}
 
-          {/* This week's plan — the granular version of the move */}
-          {ins?.weeklyPlan && (
-            <div className="no-line-card p-4">
-              <h2 className="font-headline font-bold text-sm text-primary mb-2">This week's plan</h2>
-              {ins.weeklyPlan.map((p: any, i: number) => {
-                const c = p.kind === 'FIX' ? 'bg-error-container/60 text-error' : p.kind === 'GROW' ? 'bg-amber-100 text-amber-700' : 'bg-tertiary-fixed text-on-tertiary-fixed-variant';
-                return (
-                  <div key={i} className="flex gap-3 py-2.5 border-b border-outline-variant/10 last:border-0">
-                    <span className={cn('font-mono text-[10px] font-semibold px-2 py-1 rounded h-fit', c)}>{p.kind}</span>
-                    <div><b className="font-headline font-semibold text-[13px] block mb-0.5">{p.title}</b><span className="text-[12px] text-secondary leading-snug">{p.detail}</span></div>
-                  </div>
-                );
-              })}
+          {/* This week's plan — top 3 moves, each linked to its lesson */}
+          {ins?.weeklyPlan && ins.weeklyPlan.length > 0 && (
+            <div>
+              <div className="flex items-baseline justify-between mb-3">
+                <h2 className="font-headline font-bold text-base text-primary">This week's plan</h2>
+                <Link to={lessonHref()} className="text-[12px] font-semibold text-on-tertiary-container hover:underline">All lessons →</Link>
+              </div>
+              <div className="grid sm:grid-cols-3 gap-3">
+                {ins.weeklyPlan.slice(0, 3).map((p: any, i: number) => {
+                  const c = p.kind === 'FIX' ? 'bg-error-container/60 text-error' : p.kind === 'GROW' ? 'bg-amber-100 text-amber-700' : 'bg-tertiary-fixed text-on-tertiary-fixed-variant';
+                  return (
+                    <div key={i} className="no-line-card p-4 flex flex-col hover:shadow-md transition">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className={cn('font-mono text-[10px] font-bold px-2 py-1 rounded', c)}>{p.kind}</span>
+                        <span className="text-[10px] font-semibold uppercase tracking-wide text-secondary/70">{i === 0 ? 'Start here' : `Move ${i + 1}`}</span>
+                      </div>
+                      <b className="font-headline font-bold text-[13.5px] text-primary leading-snug">{p.title}</b>
+                      <p className="text-[12px] text-secondary leading-snug mt-1 flex-1">{p.detail}</p>
+                      <Link to={lessonHref(p.tag)} className="inline-flex items-center gap-1.5 mt-3 text-[12.5px] font-semibold text-on-tertiary-container hover:underline">
+                        <GraduationCap className="w-3.5 h-3.5" /> Read the lesson <ArrowRight className="w-3.5 h-3.5" />
+                      </Link>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           )}
 

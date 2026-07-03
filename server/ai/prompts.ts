@@ -540,9 +540,9 @@ Return ONLY valid JSON:
     "pointLossPct": number   // your estimate (0-100) of how much of their lost points trace to this chain
   },
   "weeklyPlan": [
-    { "kind": "FIX", "title": "string", "detail": "string — ties to the bottleneck" },
-    { "kind": "GROW", "title": "string", "detail": "string" },
-    { "kind": "STRETCH", "title": "string", "detail": "string — often: try an untested case type" }
+    { "kind": "FIX", "title": "string", "detail": "string — ties to the bottleneck", "tag": "the single closest habit machine-tag this item trains (one of: rush_structuring, invent_number, skip_validation, clarity, no_hypothesis, shallow_risk, weak_synthesis)" },
+    { "kind": "GROW", "title": "string", "detail": "string", "tag": "closest habit machine-tag" },
+    { "kind": "STRETCH", "title": "string", "detail": "string — often: try an untested case type", "tag": "closest habit machine-tag" }
   ]
 }`;
 }

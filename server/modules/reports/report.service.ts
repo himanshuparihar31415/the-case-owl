@@ -6,6 +6,7 @@ import { generateEvaluationWithAI, embedTexts, cosineSimilarity, buildReferenceT
 import { scoreTraversal } from './treeScore.js';
 import { computePillarScore } from './pillarScore.js';
 import { EvaluationContext } from '../../ai/prompts.js';
+import { invalidateLessonCache } from '../coaching/coaching.service.js';
 
 const DIFFICULTY_LABELS: Record<number, string> = {
   1: 'Beginner', 2: 'Intermediate', 3: 'Advanced', 4: 'Expert',
@@ -508,7 +509,7 @@ export async function generateReport(sessionId: string, userId: string): Promise
 
   await Report.deleteOne({ sessionId, userId });
 
-  return Report.create({
+  const created = await Report.create({
     sessionId,
     userId,
     overallScore,
@@ -521,4 +522,8 @@ export async function generateReport(sessionId: string, userId: string): Promise
     progress,
     generatedAt: new Date(),
   });
+
+  // New session data changes the live lesson exemplars — refresh the cache.
+  invalidateLessonCache();
+  return created;
 }

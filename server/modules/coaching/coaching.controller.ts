@@ -4,7 +4,7 @@ import { AuthRequest } from '../../middleware/auth.js';
 
 export async function getLessonIndex(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
   try {
-    res.json(await coachingService.getLessonIndex(req.userId!));
+    res.json(await coachingService.getLessonIndex(req.userId!, req.query.module as string | undefined));
   } catch (err) {
     next(err);
   }
@@ -12,7 +12,7 @@ export async function getLessonIndex(req: AuthRequest, res: Response, next: Next
 
 export async function getLesson(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
   try {
-    const lesson = await coachingService.getLesson(req.params.habitTag);
+    const lesson = await coachingService.getLesson(req.params.habitTag, req.query.module as string | undefined);
     if (!lesson) {
       res.status(404).json({ error: 'Unknown lesson' });
       return;

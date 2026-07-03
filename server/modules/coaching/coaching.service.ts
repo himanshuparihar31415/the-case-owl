@@ -4,6 +4,48 @@ import { LessonView } from '../../models/LessonView.js';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
+export type ModuleId = 'case' | 'product' | 'guesstimate';
+export interface Framework { name: string; idea: string }
+
+export const MODULES: Array<{ id: ModuleId; label: string; blurb: string }> = [
+  { id: 'case', label: 'Consulting', blurb: 'Profitability, market entry, M&A, pricing — structure, quant & synthesis.' },
+  { id: 'product', label: 'Product', blurb: 'PM interviews — design, strategy, root-cause, prioritization & metrics.' },
+  { id: 'guesstimate', label: 'Guesstimate', blurb: 'Market-sizing & estimation — decomposition, assumptions, sanity-checks.' },
+];
+
+const normalizeModule = (x?: string): ModuleId => {
+  const s = String(x || '').toLowerCase();
+  if (/product|\bpm\b/.test(s)) return 'product';
+  if (/guess|estimat|sizing/.test(s)) return 'guesstimate';
+  return 'case';
+};
+
+// General frameworks per broader category — the "what good structure looks like"
+// toolkit shown across that category's lessons.
+export const MODULE_FRAMEWORKS: Record<ModuleId, Framework[]> = {
+  case: [
+    { name: 'Profitability tree', idea: 'Profit = Revenue − Cost. Split revenue (price × volume) and cost (fixed vs. variable) into drivers before touching numbers.' },
+    { name: 'Market entry', idea: 'Market attractiveness → competition → your capability → economics & entry mode. Decide the question order before you ask.' },
+    { name: 'M&A / deal', idea: 'Standalone value → synergies (revenue & cost) → price & risks → integration plan.' },
+    { name: 'Pricing', idea: 'Triangulate three lenses: cost-plus, competitor benchmark, and customer willingness-to-pay.' },
+    { name: 'Pyramid principle', idea: 'Answer first, then the three supporting reasons, then the detail. Never make them wait for your conclusion.' },
+  ],
+  product: [
+    { name: 'CIRCLES (design)', idea: 'Comprehend → Identify user → Report needs → Cut/prioritize → List solutions → Evaluate → Summarize.' },
+    { name: 'Users & JTBD', idea: 'Segment users, then state the job each is "hiring" the product to do. Design for the job, not the demographic.' },
+    { name: 'RICE prioritization', idea: 'Score ideas by Reach × Impact × Confidence ÷ Effort so tradeoffs are explicit and defensible.' },
+    { name: 'Metrics (AARRR)', idea: 'Acquisition → Activation → Retention → Referral → Revenue. Pick the one metric that moves the stated goal.' },
+    { name: 'Root-cause (funnel)', idea: 'Walk the funnel step by step to localize where the metric actually drops before proposing fixes.' },
+  ],
+  guesstimate: [
+    { name: 'Top-down decomposition', idea: 'Start from a big known population and narrow it with rates (penetration, frequency).' },
+    { name: 'Bottom-up build', idea: 'Build from a single unit (per store / per person / per day) and scale up.' },
+    { name: 'Segmentation', idea: 'Split the population into groups that behave differently, size each, then sum.' },
+    { name: 'Population × rate', idea: 'Quantity = population × penetration × frequency × unit size. State each factor out loud.' },
+    { name: 'Sanity check', idea: 'Compare your answer to a known benchmark; if it is off by an order of magnitude, find the bad assumption.' },
+  ],
+};
+
 // The 7 canonical habits (mirrors analytics HABIT_LABELS) plus the editorial
 // framing and the matchers used to pull LIVE exemplars out of stored reports.
 //   skillMatch → which idealAnswers[].skillTested count as a model example
@@ -14,7 +56,7 @@ export const HABIT_META: Record<string, {
   rush_structuring: {
     label: 'Rushed structuring phase',
     skill: 'Structuring',
-    intro: 'Strong candidates spend real time up front building a clean, MECE structure before diving in. These are model structuring moments pulled from real cases on the platform — notice the framework stated up front and why each one holds together.',
+    intro: 'Strong candidates spend real time up front building a clean, MECE structure before diving in. These are model structuring moments pulled from real cases — notice the framework stated up front and why each one holds together.',
     skillMatch: /structur|framework|mece|approach|break.?down/i,
     stageMatch: /structur|framework|approach/i,
   },
@@ -64,6 +106,14 @@ export const HABIT_META: Record<string, {
 
 export const HABIT_TAGS = Object.keys(HABIT_META);
 
+// Curated further reading — stable, reputable sources shown across lessons.
+export const RESOURCES: Array<{ label: string; detail: string; url: string }> = [
+  { label: 'Victor Cheng — Case Interview Fundamentals', detail: 'The classic frameworks-and-fundamentals primer.', url: 'https://www.caseinterview.com/' },
+  { label: 'Management Consulted — Case Guide', detail: 'Frameworks, math drills, and worked examples.', url: 'https://managementconsulted.com/' },
+  { label: 'RocketBlocks — Skill Drills', detail: 'Targeted structuring, math, and synthesis practice.', url: 'https://www.rocketblocks.me/' },
+  { label: 'McKinsey — Interview Prep', detail: 'What top firms actually look for in the room.', url: 'https://www.mckinsey.com/careers/interviewing' },
+];
+
 // Sample the most recent N reports globally when building lesson content. We
 // only ever read AI-generated fields (modelAnswer / practicePattern), never a
 // candidate's own words, so cross-user aggregation stays privacy-safe.
@@ -71,6 +121,13 @@ const SAMPLE_LIMIT = 300;
 const EXEMPLARS_PER_LESSON = 6;
 const EXEMPLARS_PER_CASE_TYPE = 2;
 const DRILLS_PER_LESSON = 5;
+
+// In-memory cache of built lessons, keyed by `${habitTag}:${module}`. Content
+// only changes when a new report is written, so we invalidate on report
+// generation (see reports.service) and keep a TTL as a backstop.
+const lessonCache = new Map<string, { payload: LessonPayload; at: number }>();
+const CACHE_TTL_MS = 15 * 60 * 1000;
+export function invalidateLessonCache(): void { lessonCache.clear(); }
 
 const norm = (s: string) => s.toLowerCase().replace(/\s+/g, ' ').trim();
 const prettyType = (t: string) =>
@@ -92,26 +149,34 @@ function fmtMin(v: number | null): string | null {
 
 export interface Exemplar { caseType: string; skillTested: string; question: string; modelAnswer: string; }
 export interface LessonPayload {
-  habitTag: string; label: string; skill: string; intro: string;
+  habitTag: string; module: ModuleId; label: string; skill: string; intro: string;
+  frameworks: Framework[];
   drills: string[]; exemplars: Exemplar[];
+  resources: typeof RESOURCES;
   stats: { reportsAnalyzed: number; exemplarCount: number; drillCount: number };
 }
 
-// Build a single lesson from live session data, keyed by habit.
-export async function getLesson(habitTag: string): Promise<LessonPayload | null> {
+// Build a single lesson from live session data, scoped to a broader category.
+export async function getLesson(habitTag: string, moduleArg?: string): Promise<LessonPayload | null> {
   const meta = HABIT_META[habitTag];
   if (!meta) return null;
+  const module = normalizeModule(moduleArg);
+
+  const cacheKey = `${habitTag}:${module}`;
+  const cached = lessonCache.get(cacheKey);
+  if (cached && Date.now() - cached.at < CACHE_TTL_MS) return cached.payload;
 
   const reports = await Report.find({}, { analysis: 1, sessionId: 1 })
     .sort({ generatedAt: -1 }).limit(SAMPLE_LIMIT).lean();
 
-  // Resolve case type per report (for exemplar variety) via the session.
+  // Resolve module + case type per report (via the session) for filtering & labels.
   const sessionIds = reports.map((r: any) => r.sessionId).filter(Boolean);
-  const sessions = await Session.find({ _id: { $in: sessionIds } }, { config: 1 })
-    .populate('caseId', 'type').lean();
-  const caseTypeBySession = new Map<string, string>();
+  const sessions = await Session.find({ _id: { $in: sessionIds } }, { config: 1, interviewType: 1 })
+    .populate('caseId', 'type module').lean();
+  const metaBySession = new Map<string, { module: ModuleId; caseType: string }>();
   for (const s of sessions as any[]) {
-    caseTypeBySession.set(String(s._id), prettyType(s.config?.caseType || (s.caseId as any)?.type));
+    const mod = normalizeModule((s.caseId as any)?.module || s.interviewType || s.config?.caseType);
+    metaBySession.set(String(s._id), { module: mod, caseType: prettyType(s.config?.caseType || (s.caseId as any)?.type) });
   }
 
   const drillSeen = new Set<string>();
@@ -121,7 +186,9 @@ export async function getLesson(habitTag: string): Promise<LessonPayload | null>
 
   for (const r of reports as any[]) {
     const a = r.analysis || {};
-    const caseType = caseTypeBySession.get(String(r.sessionId)) || 'Case';
+    const sm = metaBySession.get(String(r.sessionId));
+    if (sm && sm.module !== module) continue; // scope to the chosen category
+    const caseType = sm?.caseType || 'Case';
 
     for (const m of (a.missedOpportunities as any[] | undefined) ?? []) {
       if (m?.habitTag !== habitTag) continue;
@@ -142,29 +209,49 @@ export async function getLesson(habitTag: string): Promise<LessonPayload | null>
     }
   }
 
-  return {
+  const payload: LessonPayload = {
     habitTag,
+    module,
     label: meta.label,
     skill: meta.skill,
     intro: meta.intro,
+    frameworks: MODULE_FRAMEWORKS[module],
     drills: drills.slice(0, DRILLS_PER_LESSON),
     exemplars: exemplars.slice(0, EXEMPLARS_PER_LESSON),
+    resources: RESOURCES,
     stats: {
       reportsAnalyzed: reports.length,
       exemplarCount: Math.min(exemplars.length, EXEMPLARS_PER_LESSON),
       drillCount: Math.min(drills.length, DRILLS_PER_LESSON),
     },
   };
+  lessonCache.set(cacheKey, { payload, at: Date.now() });
+  return payload;
 }
 
-// The lesson library index + which habit is THIS user's top bottleneck.
-export async function getLessonIndex(userId: string): Promise<{
+// The lesson library index for one category + which habit is the user's top
+// bottleneck within it.
+export async function getLessonIndex(userId: string, moduleArg?: string): Promise<{
+  module: ModuleId;
+  modules: typeof MODULES;
+  frameworks: Framework[];
   lessons: Array<{ habitTag: string; label: string; skill: string; intro: string; yourCount: number }>;
   topHabit: string | null;
+  resources: typeof RESOURCES;
 }> {
-  const reports = await Report.find({ userId }, { analysis: 1 }).lean();
+  const module = normalizeModule(moduleArg);
+
+  const reports = await Report.find({ userId }, { analysis: 1, sessionId: 1 }).lean();
+  const sessions = await Session.find({ userId }, { interviewType: 1, config: 1 })
+    .populate('caseId', 'module').lean();
+  const moduleBySession = new Map<string, ModuleId>();
+  for (const s of sessions as any[]) {
+    moduleBySession.set(String(s._id), normalizeModule((s.caseId as any)?.module || s.interviewType || s.config?.caseType));
+  }
+
   const counts = new Map<string, number>();
   for (const r of reports as any[]) {
+    if (moduleBySession.get(String(r.sessionId)) !== module) continue;
     for (const m of (r.analysis?.missedOpportunities as any[] | undefined) ?? []) {
       const t = m?.habitTag;
       if (t && HABIT_META[t]) counts.set(t, (counts.get(t) ?? 0) + 1);
@@ -178,7 +265,7 @@ export async function getLessonIndex(userId: string): Promise<{
     intro: HABIT_META[tag].intro,
     yourCount: counts.get(tag) ?? 0,
   }));
-  return { lessons, topHabit };
+  return { module, modules: MODULES, frameworks: MODULE_FRAMEWORKS[module], lessons, topHabit, resources: RESOURCES };
 }
 
 export async function recordView(userId: string, habitTag?: string): Promise<void> {
