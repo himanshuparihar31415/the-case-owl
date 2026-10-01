@@ -22,7 +22,13 @@ export default defineConfig(({mode}) => {
       proxy: {
         // Port 5000 is taken by macOS AirPlay Receiver; backend runs on 5050.
         // ws:true so the voice WebSocket (/api/voice) is proxied too.
-        '/api': { target: 'http://localhost:5050', ws: true },
+        // Set API_PROXY_TARGET in .env.local to use a hosted backend instead.
+        '/api': {
+          target: env.API_PROXY_TARGET || 'http://localhost:5050',
+          ws: true,
+          changeOrigin: true,
+          secure: true,
+        },
       },
     },
   };
