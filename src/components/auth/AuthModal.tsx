@@ -3,6 +3,8 @@ import { X, Mail, Lock, User, ArrowRight, Github, Chrome, AlertCircle } from 'lu
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '@/src/lib/utils';
 import { api } from '@/src/lib/api';
+import { useNavigate } from 'react-router-dom';
+import { BETA_INVITE_ONLY } from '@/src/lib/betaAccess';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -39,7 +41,15 @@ export default function AuthModal({ isOpen, onClose, onLogin }: AuthModalProps) 
     }
   };
 
+  const navigate = useNavigate();
+
   const handleModeSwitch = () => {
+    // Private beta: no self-serve accounts — send people to the access request form.
+    if (BETA_INVITE_ONLY && mode === 'signin') {
+      onClose();
+      navigate('/request-access');
+      return;
+    }
     setMode(mode === 'signin' ? 'signup' : 'signin');
     setError('');
   };
@@ -179,12 +189,14 @@ export default function AuthModal({ isOpen, onClose, onLogin }: AuthModalProps) 
 
               <div className="mt-10 text-center">
                 <p className="text-sm text-secondary font-body">
-                  {mode === 'signin' ? "Don't have an account?" : "Already have an account?"}{' '}
+                  {mode === 'signin'
+                    ? (BETA_INVITE_ONLY ? "Don't have access yet?" : "Don't have an account?")
+                    : "Already have an account?"}{' '}
                   <button
                     onClick={handleModeSwitch}
                     className="text-on-tertiary-container font-bold hover:underline"
                   >
-                    {mode === 'signin' ? 'Sign Up' : 'Sign In'}
+                    {mode === 'signin' ? (BETA_INVITE_ONLY ? 'Request beta access' : 'Sign Up') : 'Sign In'}
                   </button>
                 </p>
               </div>

@@ -9,6 +9,7 @@ import {
 import { Link, useNavigate } from 'react-router-dom';
 import { cn } from '@/src/lib/utils';
 import { api } from '@/src/lib/api';
+import { MagneticDock } from '@/src/components/ui/magnetic-dock';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 interface AuthUser { name: string; email: string }
@@ -125,7 +126,19 @@ export default function Dashboard({ user }: { user: AuthUser | null }) {
   const lessonHref = (tag?: string) => (tag ? `/lesson/${tag}?m=${lessonModule}` : `/learn?m=${lessonModule}`);
 
   return (
-    <div className="space-y-5 py-1">
+    <div className="space-y-5 py-1 pb-32">
+      {/* Focus / Stats switch — floating magnetic dock, bottom-center */}
+      <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-40">
+        <MagneticDock
+          iconSize={52}
+          maxScale={1.4}
+          items={[
+            { id: 'focus', label: 'Coach · your next move', icon: <Target className="w-full h-full text-primary" />, isActive: view === 'focus', onClick: () => setView('focus') },
+            { id: 'stats', label: 'Analytics · all your numbers', icon: <BarChart3 className="w-full h-full text-primary" />, isActive: view === 'stats', onClick: () => setView('stats') },
+          ]}
+        />
+      </div>
+
       {/* ── HEADER: greeting + readiness chip + Focus/Stats toggle ── */}
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
         <div className="min-w-0">
@@ -148,6 +161,11 @@ export default function Dashboard({ user }: { user: AuthUser | null }) {
 
       {/* View switch (prominent) + track filter — scope both views */}
       <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-baseline gap-2">
+          <span className="font-headline font-bold text-sm text-primary">{view === 'focus' ? 'Coach' : 'Analytics'}</span>
+          <span className="text-[12px] text-secondary">{view === 'focus' ? 'Your next move' : 'All your numbers'}</span>
+        </div>
+        {/* BETA: Focus/Stats toggle replaced by the floating MagneticDock below — restore by removing this comment wrapper.
         <div className="inline-flex items-center bg-surface-container-low rounded-xl p-1 gap-1">
           {([['focus', 'Focus', Target, 'what to do next'], ['stats', 'Stats', BarChart3, 'all your numbers']] as const).map(([id, label, Icon]) => (
             <button key={id} onClick={() => setView(id)}
@@ -160,6 +178,8 @@ export default function Dashboard({ user }: { user: AuthUser | null }) {
             {view === 'focus' ? 'Your next move' : 'All your numbers'}
           </span>
         </div>
+        */}
+        {/* BETA: track filter hidden for the beta launch — restore by removing this comment wrapper.
         <div className="flex items-center gap-1.5 overflow-x-auto scrolling-log -mx-1 px-1 shrink-0">
           <span className="text-[11px] font-medium text-secondary mr-0.5 shrink-0">Track</span>
           {([['all', 'All'], ['case', 'Consulting'], ['product', 'Product'], ['guesstimate', 'Guesstimate']] as const).map(([id, label]) => (
@@ -170,10 +190,13 @@ export default function Dashboard({ user }: { user: AuthUser | null }) {
             </button>
           ))}
         </div>
+        */}
       </div>
+      {/* BETA: track filter hidden — this note only applies to a scoped track.
       {mod !== 'all' && data.totals.sessions === 0 && (
         <p className="text-xs text-secondary italic -mt-3">No sessions in this track yet.</p>
       )}
+      */}
 
       {view === 'focus' ? (
         /* ═══════════════ FOCUS: the coaching loop ═══════════════ */
@@ -267,6 +290,7 @@ export default function Dashboard({ user }: { user: AuthUser | null }) {
           )}
 
           {/* This week's plan — top 3 moves, each linked to its lesson */}
+          {/* BETA: hidden for the beta launch — restore by removing this comment wrapper.
           {ins?.weeklyPlan && ins.weeklyPlan.length > 0 && (
             <div>
               <div className="flex items-baseline justify-between mb-3">
@@ -293,8 +317,10 @@ export default function Dashboard({ user }: { user: AuthUser | null }) {
               </div>
             </div>
           )}
+          */}
 
           {/* Is it working? — the proof */}
+          {/* BETA: hidden for the beta launch — restore by removing this comment wrapper.
           <div>
             <div className="flex items-baseline justify-between mb-3">
               <h2 className="font-headline font-bold text-base text-primary">Is it working?</h2>
@@ -324,8 +350,10 @@ export default function Dashboard({ user }: { user: AuthUser | null }) {
               )}
             </div>
           </div>
+          */}
 
           {/* Start a case */}
+          {/* BETA: hidden for the beta launch — restore by removing this comment wrapper.
           <div>
             <h2 className="font-headline font-bold text-base text-primary mb-3">Start a case</h2>
             <section className="grid grid-cols-3 gap-3">
@@ -345,6 +373,7 @@ export default function Dashboard({ user }: { user: AuthUser | null }) {
               ))}
             </section>
           </div>
+          */}
         </div>
       ) : (
         /* ═══════════════ STATS: the reference data ═══════════════ */

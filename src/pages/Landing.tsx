@@ -5,7 +5,7 @@ interface LandingProps {
   onOpenAuth: () => void;
 }
 
-const OwlMark = () => (
+export const OwlMark = () => (
   <svg className="owl-mini" viewBox="0 0 40 40">
     <circle cx="20" cy="20" r="19" fill="#13294A" />
     <circle cx="13.5" cy="17" r="5.2" fill="#fff" />

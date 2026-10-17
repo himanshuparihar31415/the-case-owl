@@ -12,6 +12,7 @@ import Learn from './pages/Learn';
 import Lesson from './pages/Lesson';
 import Billing from './pages/Billing';
 import Landing from './pages/Landing';
+import RequestAccess from './pages/RequestAccess';
 import AuthModal from './components/auth/AuthModal';
 import { api } from './lib/api';
 
@@ -52,7 +53,8 @@ function AppContent() {
 
   const isAuthenticated = user !== null;
   const isSession = location.pathname.startsWith('/session');
-  const isLanding = location.pathname === '/';
+  // Marketing pages are self-contained (own nav, no app chrome).
+  const isLanding = location.pathname === '/' || location.pathname === '/request-access';
 
   if (!authChecked) {
     return null; // Brief loading flash while validating token
@@ -84,6 +86,7 @@ function AppContent() {
       )}>
         <Routes>
           <Route path="/" element={<Landing onOpenAuth={() => setIsAuthModalOpen(true)} />} />
+          <Route path="/request-access" element={<RequestAccess onOpenAuth={() => setIsAuthModalOpen(true)} />} />
           <Route
             path="/dashboard"
             element={isAuthenticated ? <Dashboard user={user} /> : <Navigate to="/" replace />}

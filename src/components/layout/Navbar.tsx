@@ -1,6 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
-import { UserCircle, Timer, LogOut, Coins, Infinity as InfinityIcon, Menu, X } from 'lucide-react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import {
+  UserCircle, Timer, LogOut, Coins, Infinity as InfinityIcon, Menu, X,
+  LayoutDashboard, GraduationCap, Library, CreditCard, Settings,
+} from 'lucide-react';
+import { MagneticDock } from '@/src/components/ui/magnetic-dock';
 import { cn } from '@/src/lib/utils';
 import { api } from '@/src/lib/api';
 
@@ -20,6 +24,7 @@ export default function Navbar({
   onLogin 
 }: NavbarProps) {
   const location = useLocation();
+  const navigate = useNavigate();
   const [credits, setCredits] = useState<{ unlimited: boolean; spendable: number } | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
 
@@ -35,12 +40,18 @@ export default function Navbar({
   }, [isAuthenticated, location.pathname]);
 
   const navItems = [
-    { name: 'Dashboard', path: '/dashboard' },
-    { name: 'Learn', path: '/learn' },
-    { name: 'Library', path: '/library' },
-    { name: 'Plans', path: '/billing' },
-    { name: 'Settings', path: '/settings' },
+    { name: 'Dashboard', path: '/dashboard', Icon: LayoutDashboard },
+    { name: 'Learn', path: '/learn', Icon: GraduationCap },
+    { name: 'Library', path: '/library', Icon: Library },
+    { name: 'Plans', path: '/billing', Icon: CreditCard },
+    { name: 'Settings', path: '/settings', Icon: Settings },
   ];
+
+  // A module stays highlighted on its sub-pages (lessons belong to Learn).
+  const isActivePath = (path: string) =>
+    location.pathname === path ||
+    location.pathname.startsWith(path + '/') ||
+    (path === '/learn' && location.pathname.startsWith('/lesson/'));
 
   return (
     <header className="fixed top-0 z-50 w-full glass-nav border-b border-outline-variant/15">
@@ -49,6 +60,30 @@ export default function Navbar({
           The Case Owl
         </Link>
 
+        {/* Primary nav — magnetic dock with labels under the icons (desktop) */}
+        {isAuthenticated && (
+          <nav className="hidden md:flex items-start h-12" aria-label="Primary">
+            <MagneticDock
+              position="top"
+              variant="transparent"
+              labelPosition="below"
+              iconSize={30}
+              activeScale={1.2}
+              maxScale={1.35}
+              magneticDistance={110}
+              className="p-0 gap-8 shadow-none"
+              items={navItems.map(({ name, path, Icon }) => ({
+                id: path,
+                label: name,
+                icon: <Icon className="w-full h-full text-primary" strokeWidth={2.2} />,
+                isActive: isActivePath(path),
+                onClick: () => navigate(path),
+              }))}
+            />
+          </nav>
+        )}
+
+        {/* Previous text-link nav, replaced by the dock above — restore by removing this comment wrapper.
         {isAuthenticated && (
           <nav className="hidden md:flex items-center gap-6">
             {navItems.map((item) => {
@@ -70,6 +105,7 @@ export default function Navbar({
             })}
           </nav>
         )}
+        */}
 
         <div className="flex items-center gap-3">
           {showTimer && (

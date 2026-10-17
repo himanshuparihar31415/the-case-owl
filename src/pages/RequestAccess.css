@@ -1,0 +1,88 @@
+/* Beta access request page. Builds on the landing tokens in Landing.css and
+   stays scoped under .owl-landing.ra. */
+.owl-landing.ra {
+  background:var(--bg-2);
+
+  .brand { color:var(--ink); }
+
+  .ra-grid { display:grid; grid-template-columns:.85fr 1.15fr; gap:28px; padding-top:36px; padding-bottom:72px; align-items:start; }
+
+  /* pitch panel */
+  .ra-side { border-radius:20px; padding:40px 36px; position:sticky; top:98px; }
+  .ra-side h1 { font-size:clamp(30px,3.4vw,42px); color:#fff; margin-top:14px; position:relative; }
+  .ra-side h1 .cy { color:var(--cyan); }
+  .ra-side > p { color:#A9B9D2; font-size:16px; margin-top:16px; position:relative; }
+  .ra-steps { list-style:none; margin:30px 0 0; padding:0; display:grid; gap:18px; position:relative; }
+  .ra-steps li { display:flex; gap:14px; align-items:flex-start; }
+  .ra-steps b { flex-shrink:0; width:30px; height:30px; border-radius:50%; display:grid; place-items:center; font-family:"JetBrains Mono"; font-size:13px; font-weight:500; color:var(--cyan); border:1.5px solid rgba(27,166,225,.45); }
+  .ra-steps strong { display:block; font-family:"Poppins"; font-weight:600; font-size:15px; color:#fff; }
+  .ra-steps span { display:block; font-size:13.5px; color:#8FA3C2; margin-top:2px; }
+  .ra-side-foot { margin-top:34px; padding-top:20px; border-top:1px solid rgba(255,255,255,.12); font-size:14px; color:#8FA3C2; position:relative; }
+  .ra-side-foot a { color:var(--cyan); font-weight:600; cursor:pointer; }
+
+  /* form card */
+  .ra-card { background:#fff; border:1px solid var(--line); border-radius:20px; padding:38px 40px; box-shadow:0 36px 70px -48px rgba(19,41,74,.35); }
+  .ra-card h2 { font-size:30px; }
+  .ra-sub { color:var(--muted); font-size:14px; margin-top:6px; }
+  .ra-section { margin-top:26px; padding-top:24px; border-top:1px solid var(--line); }
+  .ra-section:first-of-type { border-top:none; padding-top:0; }
+  .ra-row { display:grid; gap:16px; margin-top:14px; }
+  .ra-row:first-child { margin-top:0; }
+  .ra-row.two { grid-template-columns:1fr 1fr; }
+
+  .ra-field { display:flex; flex-direction:column; gap:6px; min-width:0; }
+  .ra-field > span, .ra-label { font-size:13px; font-weight:600; color:var(--ink-2); }
+  .ra-label { margin-bottom:10px; }
+  .ra-input, .ra-phone { width:100%; font:inherit; font-size:15px; color:var(--ink); background:#fff; border:1.5px solid #d5dde9; border-radius:11px; padding:11px 14px; outline:none; transition:border-color .15s, box-shadow .15s; }
+  .ra-input::placeholder, .ra-phone input::placeholder { color:var(--muted-2); }
+  .ra-input:focus, .ra-phone:focus-within { border-color:var(--cyan); box-shadow:0 0 0 3px rgba(27,166,225,.15); }
+  select.ra-input { appearance:none; background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%); background-position:calc(100% - 18px) 50%,calc(100% - 13px) 50%; background-size:5px 5px; background-repeat:no-repeat; padding-right:36px; }
+  .bad, .ra-phone.bad { border-color:var(--red); }
+  .ra-err, .ra-field > .ra-err { font-size:12.5px; font-weight:500; color:var(--red); }
+
+  .ra-phone { display:flex; align-items:center; padding:0; overflow:hidden; }
+  .ra-phone select { flex-shrink:0; width:112px; font:inherit; font-size:14px; color:var(--ink); border:none; border-right:1.5px solid var(--line); background:var(--bg); padding:11px 8px 11px 12px; outline:none; height:100%; }
+  .ra-phone input { flex:1; min-width:0; font:inherit; font-size:15px; color:var(--ink); border:none; outline:none; padding:11px 14px; background:transparent; }
+
+  .ra-roles { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; }
+  .ra-role { text-align:left; font:inherit; cursor:pointer; background:#fff; border:1.5px solid #d5dde9; border-radius:14px; padding:14px 16px; transition:border-color .15s, background .15s, box-shadow .15s; }
+  .ra-role strong { display:block; font-family:"Poppins"; font-weight:600; font-size:14.5px; color:var(--ink); line-height:1.3; }
+  .ra-role span { display:block; font-size:12.5px; color:var(--muted); margin-top:5px; line-height:1.4; }
+  .ra-role:hover { border-color:var(--ink); }
+  .ra-role.on { border-color:var(--cyan); background:var(--cyan-wash); box-shadow:0 0 0 3px rgba(27,166,225,.15); }
+  .ra-reveal { margin-top:18px; padding:18px; border-radius:14px; background:var(--bg); animation:ra-in .25s ease; }
+
+  .ra-chips { display:flex; flex-wrap:wrap; gap:10px; }
+  .ra-chip { font:inherit; font-size:14px; font-weight:500; cursor:pointer; color:var(--ink-2); background:#fff; border:1.5px solid #d5dde9; border-radius:99px; padding:8px 16px; transition:all .15s; }
+  .ra-chip:hover { border-color:var(--ink); }
+  .ra-chip.on { color:var(--cyan-d); border-color:var(--cyan); background:var(--cyan-wash); }
+  .ra-section .ra-row.two { margin-top:18px; }
+
+  .ra-submit { width:100%; justify-content:center; margin-top:30px; padding:16px 26px; }
+  .ra-submit:disabled { opacity:.7; cursor:wait; }
+  .ra-submit-err { margin-top:22px; font-size:14px; color:var(--red); background:#fdeceb; border-radius:10px; padding:11px 14px; }
+  .ra-fine { text-align:center; font-size:12.5px; color:var(--muted-2); margin-top:14px; }
+
+  /* success */
+  .ra-done { text-align:center; padding:30px 6px; }
+  .ra-done-mark { display:grid; place-items:center; width:76px; height:76px; border-radius:50%; background:var(--cyan-wash); margin:0 auto 20px; }
+  .ra-done .eyebrow { display:block; }
+  .ra-done-mark .owl-mini { width:44px; height:44px; }
+  .ra-done h2 { font-size:38px; margin-top:12px; }
+  .ra-done p { color:var(--muted); font-size:16px; max-width:420px; margin:16px auto 0; }
+  .ra-done p b { color:var(--ink); font-weight:600; overflow-wrap:anywhere; }
+  .ra-done-cta { display:flex; gap:12px; justify-content:center; flex-wrap:wrap; margin-top:30px; }
+
+  @media(max-width:900px) {
+    .ra-grid { grid-template-columns:1fr; padding-top:20px; }
+    .ra-side { position:relative; top:auto; padding:30px 26px; }
+    .ra-roles { grid-template-columns:1fr; }
+  }
+  @media(max-width:560px) {
+    .wrap { padding:0 16px; }
+    .ra-card { padding:28px 20px; }
+    .ra-row.two { grid-template-columns:1fr; }
+  }
+}
+
+@keyframes ra-in { from { opacity:0; transform:translateY(-4px); } to { opacity:1; transform:none; } }
