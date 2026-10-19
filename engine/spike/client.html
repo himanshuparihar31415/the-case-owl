@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Phase 0 Spike</title>
+<style>
+:root { --bg:#0e1116; --panel:#161b22; --field:#0e1116; --line:#2a323d; --text:#e6edf3; --muted:#8b97a5;
+  --accent:#4f9dff; --user:#25405f; --bot:#1f2a36; --ok:#3fb950; --warn:#d29922; --bad:#f85149; }
+@media (prefers-color-scheme: light) { :root { --bg:#f4f6f8; --panel:#fff; --field:#f6f8fa; --line:#d8dee4;
+  --text:#1f2328; --muted:#636c76; --accent:#0969da; --user:#dbeafe; --bot:#eef1f4; --ok:#1a7f37; --warn:#9a6700; --bad:#cf222e; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:14px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; }
+header { display:flex; gap:12px; align-items:center; flex-wrap:wrap; padding:12px 16px; border-bottom:1px solid var(--line); }
+h1 { margin:0; font-size:16px; } h2 { margin:0 0 8px; font-size:12px; letter-spacing:.04em; text-transform:uppercase; color:var(--muted); }
+main { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:14px; padding:14px 16px; max-width:1300px; margin:0 auto; }
+@media (max-width:900px) { main { grid-template-columns:minmax(0,1fr); } }
+.col { display:flex; flex-direction:column; gap:14px; min-width:0; }
+.card { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:12px; }
+.row { display:flex; gap:8px; flex-wrap:wrap; align-items:end; }
+label { display:block; font-size:12px; color:var(--muted); margin-bottom:2px; }
+select, input { padding:6px 8px; background:var(--field); color:var(--text); border:1px solid var(--line); border-radius:6px; font:inherit; }
+button { padding:7px 12px; border-radius:6px; border:1px solid var(--line); background:var(--field); color:var(--text); font:inherit; cursor:pointer; }
+button.primary { background:var(--accent); border-color:var(--accent); color:#fff; font-weight:600; }
+button:disabled { opacity:.45; cursor:not-allowed; }
+.pill { padding:2px 10px; border-radius:999px; border:1px solid var(--line); font-size:12px; color:var(--muted); }
+.pill.listening { color:var(--warn); border-color:var(--warn); }
+.hint { color:var(--muted); font-size:12px; }
+.bars { display:grid; grid-template-columns:auto 1fr; gap:4px 10px; align-items:center; font-size:12px; color:var(--muted); margin-top:10px; }
+.bar { height:6px; border-radius:3px; background:var(--field); border:1px solid var(--line); overflow:hidden; } .bar i { display:block; height:100%; width:0; background:var(--accent); }
+.chat { height:300px; overflow-y:auto; display:flex; flex-direction:column; gap:6px; }
+.msg { max-width:88%; padding:6px 10px; border-radius:10px; white-space:pre-wrap; overflow-wrap:anywhere; }
+.msg.candidate { align-self:flex-end; background:var(--user); } .msg.interviewer { align-self:flex-start; background:var(--bot); }
+.log { height:160px; overflow:auto; font:12px/1.5 ui-monospace,Menlo,Consolas,monospace; white-space:pre-wrap; background:var(--field); border:1px solid var(--line); border-radius:6px; padding:6px; }
+.err { color:var(--bad); }
+table { width:100%; border-collapse:collapse; font-size:12px; } th, td { text-align:left; padding:3px 4px; border-bottom:1px solid var(--line); vertical-align:top; }
+th { color:var(--muted); font-weight:500; } td.num { text-align:right; font-variant-numeric:tabular-nums; }
+.pass { color:var(--ok); font-weight:600; } .fail { color:var(--bad); font-weight:600; } .unk { color:var(--muted); }
+pre { max-height:240px; overflow:auto; font-size:11px; background:var(--field); border:1px solid var(--line); border-radius:6px; padding:6px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Phase 0 spike: engine on the sideband</h1>
+  <span class="pill" id="status">idle</span>
+  <span class="pill" id="stage">waiting</span>
+  <span class="pill" id="mode">conversation</span>
+  <span class="hint">Audio goes browser ⇄ OpenAI over WebRTC; this server only steers. Use headphones unless you are testing echo.</span>
+</header>
+<main>
+  <div class="col">
+    <section class="card">
+      <div class="row">
+        <div><label for="source">Audio source</label><select id="source"><option value="mic">Microphone</option><option value="silent">Silent track (probes only)</option></select></div>
+        <div><label for="dc">Browser data channel</label><select id="dc"><option value="off">Off (recommended)</option><option value="on">On (for the control test)</option></select></div>
+        <div><label for="model">Model</label><select id="model"><option>gpt-realtime-2.1</option><option>gpt-realtime-2</option></select></div>
+        <div><label for="reasoning">Reasoning effort</label><select id="reasoning"><option>low</option><option>minimal</option><option>medium</option><option>high</option><option value="">model default</option></select></div>
+        <div><label for="vad">Turn end</label><select id="vad"><option value="server">Silence window</option><option value="semantic">Semantic (model judges)</option></select></div>
+        <div><label for="note">Steering note</label><select id="note"><option value="item">Conversation item</option><option value="item_keep">Conversation item, keep old notes</option><option value="instructions">In instructions (cache test)</option><option value="off">Off</option></select></div>
+        <div><label for="silence">Silence window (ms)</label><input id="silence" type="number" min="200" max="3000" step="50" value="1000" style="width:90px"></div>
+        <div><label for="voice">Voice</label><select id="voice"><option>marin</option><option>cedar</option><option>alloy</option><option>ash</option><option>coral</option><option>sage</option><option>verse</option></select></div>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <button class="primary" id="connect">Connect</button>
+        <button id="end" disabled>End and save results</button>
+        <button id="probes" disabled>Run API probes</button>
+        <button id="control" disabled>Browser control test</button>
+      </div>
+      <div class="bars"><span>Mic</span><div class="bar"><i id="micBar"></i></div><span>Interviewer</span><div class="bar"><i id="outBar"></i></div></div>
+    </section>
+    <section class="card"><h2>Conversation</h2><div class="chat" id="chat"></div>
+      <div class="row" style="margin-top:8px"><input id="typed" type="text" placeholder="Type a candidate turn (testing without a mic)" style="flex:1;min-width:0" disabled><button id="sendTyped" disabled>Send</button></div>
+    </section>
+    <section class="card"><h2>Engine decisions and errors</h2><div class="log" id="log"></div></section>
+  </div>
+  <div class="col">
+    <section class="card">
+      <h2>Latency per turn (ms)</h2>
+      <table><thead><tr><th>Reason</th><th class="num">Decision</th><th class="num">To response.created</th><th class="num">To audio (server)</th><th class="num">Felt (browser)</th></tr></thead><tbody id="turns"></tbody></table>
+      <p class="hint">Server columns start at speech_stopped on the engine's clock. Felt starts when your mic level last dropped and ends when interviewer audio starts in the browser, so it includes the silence window.</p>
+    </section>
+    <section class="card"><h2>Tokens and cost</h2><div id="cost" class="hint">No responses yet.</div></section>
+    <section class="card"><h2>API probes</h2><table><tbody id="probeTable"></tbody></table>
+      <p class="hint">Run probes while staying silent. "Browser control" needs the data channel on; PASS there means the browser can change the session, which is the risk the default setting avoids.</p></section>
+    <section class="card"><h2>Session summary</h2><pre id="summary">Ends with the session.</pre></section>
+  </div>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+const PROBE_LABELS = {
+  server_sdp_exchange: 'Server-side SDP exchange (/realtime/calls)',
+  location_header_has_call_id: 'Location header returns the call ID',
+  sideband_connect: 'Sideband connects with call_id',
+  session_update_transcription_and_reasoning: 'session.update: transcription model and reasoning',
+  call_without_data_channel: 'Call works without a browser data channel',
+  system_role_item_create: 'System-role conversation item',
+  item_delete: 'conversation.item.delete',
+  sideband_response_create: 'response.create over the sideband',
+  sideband_response_cancel: 'response.cancel over the sideband',
+  output_audio_buffer_clear: 'output_audio_buffer.clear over the sideband',
+  sideband_sees_output_audio_buffer: 'Sideband receives output_audio_buffer events',
+  vad_events_have_audio_ms: 'VAD events carry audio_start_ms and audio_end_ms',
+  browser_can_control_session: 'Browser can change the session',
+};
+const MIC_T = 0.08, OUT_T = 0.03, OUT_QUIET_MS = 400;
+let pc, ws, dc, stream, audioEl, ctx, micAn, outAn, callId;
+let serverReady = false, mediaUp = false, started = false, probes = {};
+let lastMicActive = 0, lastRemoteEnd = 0, remoteActive = false, quietSince = 0;
+let pendingFelt = null;
+const said = new Map();  // interviewer item id -> its bubble, so replies nobody heard can be taken back
+
+function status(text) { $('status').textContent = text; }
+function log(text, cls) {
+  const line = document.createElement('div'); line.textContent = `${new Date().toLocaleTimeString()}  ${text}`;
+  if (cls) line.className = cls; $('log').append(line); $('log').scrollTop = $('log').scrollHeight;
+}
+function send(obj) { if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj)); }
+function bubble(role, text) {
+  const el = document.createElement('div'); el.className = `msg ${role}`; el.textContent = text;
+  $('chat').append(el); $('chat').scrollTop = $('chat').scrollHeight; return el;
+}
+function analyser(s) { const an = ctx.createAnalyser(); an.fftSize = 512; ctx.createMediaStreamSource(s).connect(an); return an; }
+const buf = new Uint8Array(512);
+function level(an) {
+  if (!an) return 0; an.getByteTimeDomainData(buf);
+  let sum = 0; for (const b of buf) { const x = (b - 128) / 128; sum += x * x; }
+  return Math.min(1, Math.sqrt(sum / buf.length) * 4);
+}
+
+function loop() {
+  const now = performance.now(), mic = level(micAn), out = level(outAn);
+  $('micBar').style.width = `${mic * 100}%`; $('outBar').style.width = `${out * 100}%`;
+  if (mic > MIC_T) lastMicActive = now;
+  if (!remoteActive && out > OUT_T) {
+    remoteActive = true; quietSince = 0;
+    if (lastMicActive > lastRemoteEnd && now - lastMicActive < 15000) {
+      const ms = Math.round(now - lastMicActive); pendingFelt = ms; send({ type: 'felt', ms });
+    }
+    send({ type: 'playback', state: 'started' });
+  } else if (remoteActive && out <= OUT_T) {
+    if (!quietSince) quietSince = now;
+    if (now - quietSince > OUT_QUIET_MS) { remoteActive = false; lastRemoteEnd = now; quietSince = 0; send({ type: 'playback', state: 'stopped' }); }
+  } else if (out > OUT_T) quietSince = 0;
+  if (pc) requestAnimationFrame(loop);
+}
+
+function maybeStart() {
+  if (started || !serverReady || !mediaUp) return;
+  started = true; send({ type: 'start' }); log('greeting requested');
+}
+
+function renderProbes(p) {
+  probes = { ...probes, ...p };
+  const rows = Object.entries(PROBE_LABELS).filter(([k]) => k in probes).map(([k, label]) => {
+    const v = probes[k], ok = v && typeof v === 'object' ? v.ok : v;
+    const [cls, word] = ok === true ? ['pass', 'PASS'] : ok === false ? ['fail', 'FAIL'] : ['unk', 'UNKNOWN'];
+    const detail = v && typeof v === 'object' ? [v.status, v.detail, v.event, v.ms != null ? `${v.ms} ms` : null].filter((x) => x != null).join(' · ') : '';
+    return `<tr><td>${label}</td><td class="${cls}">${word}</td><td class="hint">${String(detail).replace(/</g, '&lt;')}</td></tr>`;
+  });
+  $('probeTable').innerHTML = rows.join('');
+}
+
+function onMessage(m) {
+  switch (m.type) {
+    case 'hello': renderProbes(m.probes || {}); break;
+    case 'ready': serverReady = true; renderProbes(m.probes || {}); $('probes').disabled = false;
+      $('typed').disabled = false; $('sendTyped').disabled = false; log('sideband ready'); maybeStart(); break;
+    case 'transcript':
+      if (m.role === 'interviewer' && said.has(m.item_id)) said.get(m.item_id).textContent = m.text;
+      else { const el = bubble(m.role, m.text || '(inaudible)'); if (m.role === 'interviewer') said.set(m.item_id, el); }
+      break;
+    case 'delta':
+      if (!said.has(m.item_id)) said.set(m.item_id, bubble('interviewer', ''));
+      said.get(m.item_id).textContent += m.text; break;
+    case 'retract': for (const id of m.item_ids || []) { said.get(id)?.remove(); said.delete(id); } break;
+    case 'engine': log(m.text); break;
+    case 'mode': $('mode').textContent = m.mode; $('mode').className = `pill ${m.mode}`; log(`mode → ${m.mode}`); break;
+    case 'stage': $('stage').textContent = m.stage; log(`stage → ${m.stage}`); break;
+    case 'turn': {
+      const r = m.row, tr = document.createElement('tr');
+      const felt = pendingFelt; pendingFelt = null;
+      tr.innerHTML = `<td>${r.reason}</td><td class="num">${r.decision_ms}</td><td class="num">${r.to_created_ms ?? '—'}</td><td class="num">${r.to_audio_ms}</td><td class="num">${felt ?? '—'}</td>`;
+      $('turns').prepend(tr); break;
+    }
+    case 'usage': {
+      const u = m.usage, share = u.input ? Math.round(100 * u.cached / u.input) : 0;
+      $('cost').innerHTML = `${u.responses} responses (${u.cancelled} cancelled) · input ${u.input} tokens, <b>${share}% cached</b> · audio in ${u.audio_in}, audio out ${u.audio_out} · text in ${u.text_in}, text out ${u.text_out}<br><b>≈ $${m.cost_usd.toFixed(4)}</b> so far at gpt-realtime-2.x list prices`;
+      break;
+    }
+    case 'probes': renderProbes(m.probes); log('probes finished'); break;
+    case 'summary': $('summary').textContent = JSON.stringify(m.summary, null, 2); renderProbes(m.summary.probes || {}); break;
+    case 'error': log(`error: ${m.message}${m.event_id ? ` (${m.event_id})` : ''}`, 'err'); break;
+  }
+}
+
+async function connect() {
+  $('connect').disabled = true; status('connecting');
+  const synthetic = $('source').value === 'silent';
+  const settings = { model: $('model').value, reasoning: $('reasoning').value, vad: $('vad').value, note_mode: $('note').value, silence_ms: +$('silence').value, voice: $('voice').value };
+  try {
+    ctx = new AudioContext();
+    if (synthetic) {
+      const dst = ctx.createMediaStreamDestination(), osc = ctx.createOscillator(), gain = ctx.createGain();
+      gain.gain.value = 0; osc.connect(gain).connect(dst); osc.start(); stream = dst.stream;
+    } else {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+    }
+    pc = new RTCPeerConnection();
+    audioEl = new Audio(); audioEl.autoplay = true; audioEl.muted = synthetic;
+    pc.ontrack = (e) => { audioEl.srcObject = e.streams[0]; outAn = analyser(e.streams[0]); };
+    pc.addTrack(stream.getAudioTracks()[0], stream);
+    if ($('dc').value === 'on') { dc = pc.createDataChannel('oai-events'); $('control').disabled = false; }
+    pc.onconnectionstatechange = () => {
+      status(pc.connectionState);
+      if (pc.connectionState === 'connected' && !mediaUp) {
+        mediaUp = true;
+        send({ type: 'client_probe', name: 'call_without_data_channel',
+               result: dc ? { ok: null, detail: 'data channel was on' } : { ok: true, detail: 'connected with no data channel' } });
+        maybeStart();
+      }
+      if (pc.connectionState === 'failed') log('WebRTC connection failed', 'err');
+    };
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    const res = await fetch('/call', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sdp: offer.sdp, settings }) });
+    const body = await res.json();
+    renderProbes(body.probes || {});
+    if (!res.ok || !body.sdp) throw new Error(`${body.error || res.status}${body.detail ? `: ${body.detail}` : ''}`);
+    await pc.setRemoteDescription({ type: 'answer', sdp: body.sdp });
+    callId = body.call_id;
+    if (!callId) throw new Error(body.error || 'No call ID returned');
+    ws = new WebSocket(`ws://${location.host}/ui?call_id=${encodeURIComponent(callId)}`);
+    ws.onmessage = (e) => onMessage(JSON.parse(e.data));
+    ws.onclose = () => log('UI socket closed');
+    micAn = analyser(stream);
+    $('end').disabled = false;
+    log(`call ${callId} created; settings ${JSON.stringify(body.settings)}`);
+    requestAnimationFrame(loop);
+  } catch (err) {
+    const unreachable = err instanceof TypeError && /fetch/i.test(err.message);
+    log(unreachable
+      ? 'Could not reach the spike server. Is "uv run engine/spike/server.py" running, and is this page open at http://localhost:8770?'
+      : String(err.message || err), 'err');
+    status('error'); $('connect').disabled = false;
+  }
+}
+
+function end() {
+  send({ type: 'end' });
+  setTimeout(() => { try { pc?.close(); } catch {} stream?.getTracks().forEach((t) => t.stop()); pc = null; status('ended'); }, 800);
+  $('end').disabled = true; $('probes').disabled = true; $('control').disabled = true;
+}
+
+// The page talks to its own server (/call, /ui), so it only works when served by it.
+if (!/^https?:$/.test(location.protocol)) {
+  log('This page was opened as a file. Open http://localhost:8770 instead (start the server with "uv run engine/spike/server.py").', 'err');
+  $('connect').disabled = true;
+  status('open via localhost');
+}
+
+function sendTyped() {
+  const text = $('typed').value.trim();
+  if (!text) return;
+  send({ type: 'text_turn', text });
+  $('typed').value = '';
+}
+$('sendTyped').onclick = sendTyped;
+$('typed').onkeydown = (e) => { if (e.key === 'Enter') sendTyped(); };
+
+$('connect').onclick = connect;
+$('end').onclick = end;
+$('probes').onclick = () => { log('running probes, stay silent…'); send({ type: 'run_probes' }); };
+$('control').onclick = () => {
+  if (!dc || dc.readyState !== 'open') { log('data channel is not open', 'err'); return; }
+  send({ type: 'browser_control_check' });
+  setTimeout(() => dc.send(JSON.stringify({ type: 'session.update', session: { type: 'realtime', instructions: 'BROWSER_CONTROL_MARKER test' } })), 300);
+  log('browser control test sent');
+};
+</script>
+</body>
+</html>

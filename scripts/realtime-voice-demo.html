@@ -1,0 +1,606 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Realtime Voice Demo</title>
+<style>
+:root {
+  --bg:#0e1116; --panel:#161b22; --field:#0e1116; --line:#2a323d; --text:#e6edf3; --muted:#8b97a5;
+  --accent:#4f9dff; --user:#25405f; --bot:#1f2a36; --ok:#3fb950; --warn:#d29922; --bad:#f85149;
+}
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg:#f4f6f8; --panel:#ffffff; --field:#f6f8fa; --line:#d8dee4; --text:#1f2328; --muted:#636c76;
+    --accent:#0969da; --user:#dbeafe; --bot:#eef1f4; --ok:#1a7f37; --warn:#9a6700; --bad:#cf222e;
+  }
+}
+* { box-sizing: border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; }
+header { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; padding:14px 16px; border-bottom:1px solid var(--line); }
+h1 { margin:0; font-size:17px; font-weight:650; }
+h2 { margin:0 0 10px; font-size:13px; font-weight:650; letter-spacing:.04em; text-transform:uppercase; color:var(--muted); }
+main { display:grid; grid-template-columns:minmax(0,1.3fr) minmax(0,1fr); gap:16px; padding:16px; max-width:1200px; margin:0 auto; }
+@media (max-width:860px) { main { grid-template-columns:minmax(0,1fr); } }
+.col { display:flex; flex-direction:column; gap:16px; min-width:0; }
+.card { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:14px; }
+
+.pill { padding:3px 10px; border-radius:999px; border:1px solid var(--line); font-size:13px; color:var(--muted); }
+.call { display:flex; gap:14px; align-items:center; margin-bottom:12px; }
+.orb { flex:none; width:68px; height:68px; margin:14px; border-radius:50%; background:var(--orb,var(--muted));
+  box-shadow:0 0 0 calc(var(--lvl,0) * 26px) color-mix(in srgb, var(--orb,var(--muted)) 28%, transparent);
+  transition:box-shadow .06s linear, background .25s; }
+body[data-state="connecting"] { --orb:var(--warn); }
+body[data-state="listening"]  { --orb:var(--ok); }
+body[data-state="user"]       { --orb:var(--accent); }
+body[data-state="thinking"]   { --orb:var(--warn); }
+body[data-state="speaking"]   { --orb:#a371f7; }
+body[data-state="connecting"] .orb, body[data-state="thinking"] .orb { animation:pulse 1s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity:.45; } }
+#status { font-size:18px; font-weight:600; }
+.hint { color:var(--muted); font-size:13px; }
+
+label { display:block; font-size:13px; color:var(--muted); margin-bottom:3px; }
+input[type=text], input[type=password], select, textarea { width:100%; padding:8px 10px; background:var(--field); color:var(--text); border:1px solid var(--line); border-radius:8px; font:inherit; }
+textarea { resize:vertical; min-height:96px; }
+input[type=range] { width:100%; }
+button { padding:9px 16px; border-radius:8px; border:1px solid var(--line); background:var(--field); color:var(--text); font:inherit; cursor:pointer; }
+button.primary { background:var(--accent); border-color:var(--accent); color:#fff; font-weight:600; }
+button.danger { background:var(--bad); border-color:var(--bad); color:#fff; font-weight:600; }
+button:disabled { opacity:.45; cursor:not-allowed; }
+.row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+.row > .grow { flex:1; min-width:0; }
+.meters { display:grid; grid-template-columns:auto 1fr; gap:4px 10px; align-items:center; margin-top:12px; font-size:12px; color:var(--muted); }
+.bar { height:6px; border-radius:3px; background:var(--field); overflow:hidden; border:1px solid var(--line); }
+.bar > i { display:block; height:100%; width:0; background:var(--accent); }
+#err { margin-top:10px; padding:8px 10px; border-radius:8px; border:1px solid var(--bad); color:var(--bad); font-size:13px; }
+
+.chat { height:min(46vh,420px); overflow-y:auto; display:flex; flex-direction:column; gap:8px; padding:2px 2px 8px; }
+.chat:empty::before { content:"Conversation appears here — connect and start talking."; color:var(--muted); font-size:13px; margin:auto; }
+.msg { max-width:88%; padding:8px 12px; border-radius:12px; overflow-wrap:anywhere; }
+.msg p { margin:0; white-space:pre-wrap; }
+.msg .who { display:block; font-size:11px; font-weight:650; letter-spacing:.04em; text-transform:uppercase; color:var(--muted); }
+.msg.user { align-self:flex-end; background:var(--user); }
+.msg.assistant { align-self:flex-start; background:var(--bot); }
+.msg.pending p { opacity:.5; }
+.msg.cut::after { content:"— interrupted"; display:block; font-size:11px; color:var(--muted); }
+.composer { margin-top:10px; }
+
+table { width:100%; border-collapse:collapse; font-size:13px; }
+th, td { text-align:left; padding:4px 0; border-bottom:1px solid var(--line); }
+th { color:var(--muted); font-weight:500; }
+td:not(:first-child), th:not(:first-child) { text-align:right; font-variant-numeric:tabular-nums; }
+.stats { display:flex; gap:16px; margin-top:8px; font-size:13px; color:var(--muted); }
+
+details { margin:0; }
+summary { cursor:pointer; font-size:13px; font-weight:650; letter-spacing:.04em; text-transform:uppercase; color:var(--muted); }
+.grid2 { display:grid; grid-template-columns:1fr 1fr; gap:10px 12px; margin-top:12px; }
+.grid2 .wide { grid-column:1 / -1; }
+[hidden] { display:none !important; }
+output { float:right; color:var(--text); font-variant-numeric:tabular-nums; }
+.check { display:flex; gap:8px; align-items:center; font-size:14px; color:var(--text); margin:0; }
+#log { margin:10px 0 0; max-height:260px; overflow:auto; padding:8px; background:var(--field); border:1px solid var(--line); border-radius:8px; font:12px/1.5 ui-monospace,Menlo,Consolas,monospace; white-space:pre-wrap; overflow-wrap:anywhere; }
+</style>
+</head>
+<body data-state="idle">
+<header>
+  <h1>Realtime Voice Demo</h1>
+  <span class="pill" id="modelBadge">gpt-realtime-2</span>
+</header>
+
+<main>
+  <div class="col">
+    <section class="card">
+      <div class="call">
+        <div class="orb" id="orb"></div>
+        <div>
+          <div id="status">Disconnected</div>
+          <div class="hint">Use headphones — speaker echo reaches the mic and triggers false barge-ins.</div>
+        </div>
+      </div>
+
+      <label for="key">OpenAI API key</label>
+      <input id="key" type="password" autocomplete="off" spellcheck="false" placeholder="sk-…">
+      <div class="hint" style="margin:4px 0 12px">Kept only in this tab and sent only to api.openai.com. Local testing only — in production your server mints a short-lived key instead.</div>
+
+      <div class="row">
+        <button id="connect" class="primary">Connect</button>
+        <button id="mute" disabled>Mute mic</button>
+      </div>
+      <div class="meters">
+        <span>Mic</span><div class="bar"><i id="micBar"></i></div>
+        <span>Assistant</span><div class="bar"><i id="outBar"></i></div>
+      </div>
+      <div id="err" role="alert" hidden></div>
+    </section>
+
+    <section class="card">
+      <h2>Conversation</h2>
+      <div class="chat" id="chat"></div>
+      <div class="row composer">
+        <input class="grow" id="text" type="text" placeholder="Or type a message…" disabled>
+        <button id="send" disabled>Send</button>
+      </div>
+    </section>
+  </div>
+
+  <div class="col">
+    <section class="card">
+      <h2>Latency</h2>
+      <table>
+        <thead><tr><th>From end of your speech to…</th><th>Last</th><th>Median</th></tr></thead>
+        <tbody>
+          <tr><td>response.created</td><td id="m-created">—</td><td id="med-created">—</td></tr>
+          <tr><td>first text</td><td id="m-text">—</td><td id="med-text">—</td></tr>
+          <tr><td>audio starts</td><td id="m-audio">—</td><td id="med-audio">—</td></tr>
+          <tr><td>≈ what you feel (+ silence window)</td><td id="m-felt">—</td><td id="med-felt">—</td></tr>
+        </tbody>
+      </table>
+      <div class="stats"><span>Turns: <b id="turns">0</b></span><span>Barge-ins: <b id="barges">0</b></span></div>
+      <div class="hint" style="margin-top:8px">Measured in the browser from the moment the server reports end of speech, so it includes network time. Median covers the last 10 turns.</div>
+    </section>
+
+    <section class="card">
+      <details open>
+        <summary>Settings</summary>
+        <div class="grid2">
+          <div><label for="model">Model</label>
+            <input id="model" type="text" value="gpt-realtime-2" list="models" spellcheck="false">
+            <datalist id="models"><option value="gpt-realtime-2"><option value="gpt-realtime-2.1"><option value="gpt-realtime"></datalist></div>
+          <div><label for="voice">Voice (set at connect)</label>
+            <select id="voice"><option>marin</option><option>cedar</option><option>alloy</option><option>ash</option><option>ballad</option><option>coral</option><option>echo</option><option>sage</option><option>shimmer</option><option>verse</option></select></div>
+
+          <div><label for="reasoning">Reasoning effort</label>
+            <select id="reasoning"><option value="">model default</option><option>minimal</option><option>low</option><option>medium</option><option>high</option><option>xhigh</option></select></div>
+          <div><label for="vad">Turn detection</label>
+            <select id="vad"><option value="server_vad">server_vad (silence)</option><option value="semantic_vad">semantic_vad (meaning)</option></select></div>
+
+          <div class="wide row" id="presets">
+            <span class="hint">Presets:</span>
+            <button type="button" data-t="0.63" data-s="1330" data-p="400">Interview (patient)</button>
+            <button type="button" data-t="0.5" data-s="500" data-p="300">Snappy chat</button>
+          </div>
+
+          <div data-vad="server_vad"><label for="threshold">Sensitivity threshold <output for="threshold"></output></label>
+            <input id="threshold" type="range" min="0.1" max="0.95" step="0.01" value="0.63"></div>
+          <div data-vad="server_vad"><label for="silence">Silence before reply (ms) <output for="silence"></output></label>
+            <input id="silence" type="range" min="200" max="3000" step="10" value="1330"></div>
+          <div data-vad="server_vad"><label for="prefix">Prefix padding (ms) <output for="prefix"></output></label>
+            <input id="prefix" type="range" min="0" max="1500" step="50" value="400"></div>
+          <div data-vad="semantic_vad" hidden><label for="eagerness">Eagerness</label>
+            <select id="eagerness"><option>auto</option><option>low</option><option>medium</option><option>high</option></select></div>
+
+          <div><label for="noise">Noise reduction</label>
+            <select id="noise"><option value="near_field">near field (headset)</option><option value="far_field">far field (laptop mic)</option><option value="off">off</option></select></div>
+          <div><label for="stt">Your-speech transcription</label>
+            <select id="stt"><option>gpt-4o-transcribe</option><option>gpt-4o-mini-transcribe</option><option>whisper-1</option><option value="off">off</option></select></div>
+
+          <label class="check"><input type="checkbox" id="interrupt" checked> Allow barge-in</label>
+          <label class="check"><input type="checkbox" id="greet" checked> Assistant speaks first</label>
+
+          <div class="wide"><label for="persona">Instructions</label>
+            <select id="persona" style="margin-bottom:6px"><option value="assistant">Voice assistant</option><option value="interviewer">Case interviewer</option></select>
+            <textarea id="instructions"></textarea></div>
+
+          <div class="wide row">
+            <button id="apply" disabled>Apply to live session</button>
+            <span class="hint">Everything except model and voice can change mid-call.</span>
+          </div>
+        </div>
+      </details>
+    </section>
+
+    <section class="card">
+      <details>
+        <summary>Event log</summary>
+        <div class="row" style="margin-top:10px">
+          <label class="check"><input type="checkbox" id="showDeltas"> Show delta events</label>
+          <button id="copyLog" type="button">Copy log</button>
+          <button id="clearLog" type="button">Clear</button>
+        </div>
+        <pre id="log"></pre>
+      </details>
+    </section>
+  </div>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const store = {
+  get(k) { try { return sessionStorage.getItem(k); } catch { return null; } },
+  set(k, v) { try { sessionStorage.setItem(k, v); } catch { /* storage unavailable */ } },
+};
+
+const PERSONAS = {
+  assistant: "You are a friendly, sharp voice assistant in a live spoken conversation. Keep replies short — one to three sentences — and talk like a person, not like you are reading. No lists, no markdown, no emojis. Ask at most one question at a time. If the user interrupts, drop what you were saying and answer what they just said. If the audio is unclear, ask them to repeat it.",
+  interviewer: "You are a management-consulting case interviewer running a live spoken interview. Pose a short, realistic business case and let the candidate drive. Ask one question at a time, keep each turn under three sentences, and never lead the candidate or give away numbers they have not asked for. Probe their structure, assumptions and math. Speak naturally; no lists, no markdown.",
+};
+
+let pc = null, dc = null, micStream = null, remoteAudio = null;
+let audioCtx = null, micAn = null, outAn = null, rafId = 0;
+let state = 'idle', t0 = 0, muted = false;
+let pendingGreet = false, assistantSpeaking = false, sawAudioBufEvents = false;
+let activeSilenceMs = null, currentAssistantItem = null;
+let turn = newTurn(), barges = 0;
+const samples = [];                 // completed turns: { created, text, audio, felt }
+const bubbles = new Map();          // conversation item id -> bubble element
+
+function newTurn() { return { stop: 0, created: 0, text: 0, audio: 0, done: false }; }
+
+/* ---------- UI helpers ---------- */
+const STATUS = { idle:'Disconnected', connecting:'Connecting…', listening:'Listening', user:'You’re speaking', thinking:'Thinking…', speaking:'Assistant speaking' };
+function setState(s) {
+  state = s;
+  document.body.dataset.state = s;
+  $('status').textContent = STATUS[s];
+}
+function showError(msg) { const e = $('err'); e.textContent = msg; e.hidden = !msg; }
+function setConnectedUi(on) {
+  $('connect').textContent = on ? 'Disconnect' : 'Connect';
+  $('connect').className = on ? 'danger' : 'primary';
+  ['mute', 'text', 'send', 'apply'].forEach((id) => { $(id).disabled = !on; });
+  $('key').disabled = on;
+  if (!on) { muted = false; $('mute').textContent = 'Mute mic'; }
+}
+function addBubble(role, text, itemId, pending = false) {
+  const el = document.createElement('div');
+  el.className = `msg ${role}${pending ? ' pending' : ''}`;
+  const who = document.createElement('span'); who.className = 'who'; who.textContent = role === 'user' ? 'You' : 'Assistant';
+  const body = document.createElement('p'); body.textContent = text;
+  el.append(who, body);
+  $('chat').append(el);
+  $('chat').scrollTop = $('chat').scrollHeight;
+  if (itemId) bubbles.set(itemId, el);
+  return el;
+}
+function setBubbleText(el, text) {
+  el.querySelector('p').textContent = text;
+  el.classList.remove('pending');
+  $('chat').scrollTop = $('chat').scrollHeight;
+}
+
+/* ---------- settings → session config ---------- */
+function readSettings() {
+  return {
+    model: $('model').value.trim() || 'gpt-realtime-2',
+    voice: $('voice').value, reasoning: $('reasoning').value,
+    vad: $('vad').value, eagerness: $('eagerness').value,
+    threshold: +$('threshold').value, silence: +$('silence').value, prefix: +$('prefix').value,
+    interrupt: $('interrupt').checked, noise: $('noise').value, stt: $('stt').value,
+    instructions: $('instructions').value.trim(),
+  };
+}
+function buildSession({ connect }) {
+  const s = readSettings();
+  const turnDetection = s.vad === 'semantic_vad'
+    ? { type: 'semantic_vad', eagerness: s.eagerness, create_response: true, interrupt_response: s.interrupt }
+    : { type: 'server_vad', threshold: s.threshold, prefix_padding_ms: s.prefix, silence_duration_ms: s.silence, create_response: true, interrupt_response: s.interrupt };
+  const session = {
+    type: 'realtime',
+    instructions: s.instructions,
+    audio: { input: {
+      noise_reduction: s.noise === 'off' ? null : { type: s.noise },
+      transcription: s.stt === 'off' ? null : { model: s.stt },
+      turn_detection: turnDetection,
+    } },
+  };
+  if (s.reasoning) session.reasoning = { effort: s.reasoning };
+  if (connect) session.audio.output = { voice: s.voice };   // voice is locked once the model has spoken
+  activeSilenceMs = s.vad === 'server_vad' ? s.silence : null;
+  return session;
+}
+
+/* ---------- connection ---------- */
+function safetyId() {
+  let id = store.get('rt_safety_id');
+  if (!id) {
+    id = Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, '0')).join('');
+    store.set('rt_safety_id', id);
+  }
+  return id;
+}
+async function mintKey(apiKey, model, voice) {
+  const res = await fetch('https://api.openai.com/v1/realtime/client_secrets', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json', 'OpenAI-Safety-Identifier': safetyId() },
+    body: JSON.stringify({ session: { type: 'realtime', model, audio: { output: { voice } } } }),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body?.error?.message || `Could not create a session key (HTTP ${res.status}).`);
+  const key = body.value ?? body.client_secret?.value;
+  if (!key) throw new Error('OpenAI returned no client secret.');
+  return key;
+}
+
+// Browsers only expose the mic on https:// or localhost — not on file://, data: URLs,
+// the desktop app's preview pane, or a LAN IP address.
+function micBlocker() {
+  if (navigator.mediaDevices?.getUserMedia) return '';
+  return 'This page can’t use the microphone because it wasn’t opened from localhost. '
+    + 'Run: python3 -m http.server 8765 --directory scripts — then open '
+    + 'http://localhost:8765/realtime-voice-demo.html in Chrome or Safari (not the preview pane or a file:// path).';
+}
+
+async function connect() {
+  const blocked = micBlocker();
+  if (blocked) { showError(blocked); return; }
+  const apiKey = $('key').value.trim();
+  if (!apiKey) { showError('Paste your OpenAI API key first.'); return; }
+  store.set('rt_key', apiKey);
+  showError('');
+  setState('connecting');
+  $('connect').disabled = true;
+  const s = readSettings();
+  $('modelBadge').textContent = s.model;
+  try {
+    micStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+    const ephemeral = await mintKey(apiKey, s.model, s.voice);
+
+    pc = new RTCPeerConnection();
+    remoteAudio = new Audio(); remoteAudio.autoplay = true;
+    pc.ontrack = (e) => { remoteAudio.srcObject = e.streams[0]; attachOutputMeter(e.streams[0]); };
+    pc.onconnectionstatechange = () => {
+      logLine('·', `peer connection: ${pc?.connectionState}`);
+      if (pc && pc.connectionState === 'failed') { showError('Connection lost.'); disconnect(); }
+    };
+    pc.addTrack(micStream.getAudioTracks()[0], micStream);
+
+    dc = pc.createDataChannel('oai-events');
+    dc.onopen = () => {
+      t0 = performance.now();
+      send({ type: 'session.update', session: buildSession({ connect: true }) });
+      pendingGreet = $('greet').checked;
+      setTimeout(() => { if (pendingGreet) greet(); }, 2500);   // fallback if session.updated never arrives
+      setConnectedUi(true); $('connect').disabled = false;
+      setState('listening');
+    };
+    dc.onmessage = (e) => { try { handleEvent(JSON.parse(e.data)); } catch (err) { console.error(err); } };
+    dc.onclose = () => logLine('·', 'data channel closed');
+
+    startMeters();
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    const res = await fetch('https://api.openai.com/v1/realtime/calls', {
+      method: 'POST', body: offer.sdp,
+      headers: { Authorization: `Bearer ${ephemeral}`, 'Content-Type': 'application/sdp' },
+    });
+    if (!res.ok) throw new Error(`SDP exchange failed (HTTP ${res.status}): ${(await res.text()).slice(0, 200)}`);
+    await pc.setRemoteDescription({ type: 'answer', sdp: await res.text() });
+  } catch (err) {
+    showError(err.name === 'NotAllowedError' ? 'Microphone permission was denied.' : String(err.message || err));
+    disconnect();
+  }
+}
+
+function disconnect() {
+  try { dc?.close(); } catch { /* already closed */ }
+  try { pc?.close(); } catch { /* already closed */ }
+  micStream?.getTracks().forEach((t) => t.stop());
+  if (remoteAudio) remoteAudio.srcObject = null;
+  cancelAnimationFrame(rafId);
+  audioCtx?.close().catch(() => {});
+  pc = dc = micStream = remoteAudio = audioCtx = micAn = outAn = null;
+  pendingGreet = assistantSpeaking = sawAudioBufEvents = false;
+  $('micBar').style.width = $('outBar').style.width = '0';
+  $('orb').style.setProperty('--lvl', 0);
+  setConnectedUi(false); $('connect').disabled = false;
+  setState('idle');
+}
+
+function send(obj) {
+  if (dc?.readyState !== 'open') return;
+  dc.send(JSON.stringify(obj));
+  logEvent(obj, '→');
+}
+function greet() {
+  pendingGreet = false;
+  send({ type: 'response.create', response: { instructions: 'Greet the user in one short sentence and invite them to begin.' } });
+}
+
+/* ---------- server events ---------- */
+function resetTurn() { turn = newTurn(); }
+function handleEvent(ev) {
+  logEvent(ev, '←');
+  const now = performance.now();
+  switch (ev.type) {
+    case 'session.updated':
+      if (pendingGreet) greet();
+      break;
+
+    case 'input_audio_buffer.speech_started':
+      if (assistantSpeaking) { barges++; $('barges').textContent = barges; }
+      resetTurn();
+      setState('user');
+      break;
+    case 'input_audio_buffer.speech_stopped':
+      turn.stop = now;
+      setState('thinking');
+      break;
+    case 'input_audio_buffer.committed':
+      addBubble('user', '…', ev.item_id, true);       // placeholder keeps the order; filled in when transcription lands
+      break;
+    case 'conversation.item.input_audio_transcription.completed': {
+      const el = bubbles.get(ev.item_id);
+      const text = (ev.transcript || '').trim() || '(inaudible)';
+      if (el) setBubbleText(el, text); else addBubble('user', text, ev.item_id);
+      break;
+    }
+    case 'conversation.item.input_audio_transcription.failed': {
+      const el = bubbles.get(ev.item_id);
+      if (el) setBubbleText(el, '(couldn’t transcribe)');
+      break;
+    }
+
+    case 'response.created':
+      if (turn.stop && !turn.created) turn.created = now;
+      break;
+    case 'response.output_audio_transcript.delta':
+    case 'response.audio_transcript.delta': {
+      if (!turn.text) { turn.text = now; if (!sawAudioBufEvents) { assistantSpeaking = true; setState('speaking'); } }
+      currentAssistantItem = ev.item_id;
+      let el = bubbles.get(ev.item_id);
+      if (!el) el = addBubble('assistant', '', ev.item_id);
+      el.querySelector('p').textContent += ev.delta;
+      $('chat').scrollTop = $('chat').scrollHeight;
+      if (!sawAudioBufEvents) commitTurn();
+      break;
+    }
+    case 'response.output_audio_transcript.done':
+    case 'response.audio_transcript.done': {
+      const el = bubbles.get(ev.item_id);
+      if (el && ev.transcript) setBubbleText(el, ev.transcript);
+      break;
+    }
+    case 'output_audio_buffer.started':
+      sawAudioBufEvents = true; assistantSpeaking = true;
+      turn.audio = now;
+      setState('speaking');
+      commitTurn();
+      break;
+    case 'output_audio_buffer.stopped':
+      assistantSpeaking = false;
+      if (state === 'speaking') setState('listening');
+      break;
+    case 'output_audio_buffer.cleared':
+      assistantSpeaking = false;
+      bubbles.get(currentAssistantItem)?.classList.add('cut');
+      break;
+    case 'response.done': {
+      const status = ev.response?.status;
+      if (status === 'cancelled') bubbles.get(currentAssistantItem)?.classList.add('cut');
+      if (status === 'failed') showError(`Response failed: ${ev.response?.status_details?.error?.message || 'unknown error'}`);
+      if (!assistantSpeaking && state === 'thinking') setState('listening');
+      break;
+    }
+    case 'error':
+      showError(ev.error?.message || 'Unknown error from the Realtime API.');
+      break;
+  }
+}
+
+/* ---------- latency ---------- */
+function commitTurn() {
+  if (turn.done || !turn.stop) return;
+  turn.done = true;
+  const audioAt = turn.audio || turn.text;
+  const audio = audioAt - turn.stop;
+  samples.push({
+    created: turn.created ? turn.created - turn.stop : null,
+    text: turn.text ? turn.text - turn.stop : null,
+    audio,
+    felt: activeSilenceMs == null ? null : audio + activeSilenceMs,
+  });
+  if (samples.length > 10) samples.shift();
+  renderMetrics();
+}
+const ms = (v) => (v == null ? '—' : `${Math.round(v)} ms`);
+function median(key) {
+  const v = samples.map((s) => s[key]).filter((x) => x != null).sort((a, b) => a - b);
+  if (!v.length) return null;
+  const m = v.length >> 1;
+  return v.length % 2 ? v[m] : (v[m - 1] + v[m]) / 2;
+}
+function renderMetrics() {
+  const last = samples[samples.length - 1] || {};
+  [['created', 'created'], ['text', 'text'], ['audio', 'audio'], ['felt', 'felt']].forEach(([id, key]) => {
+    $(`m-${id}`).textContent = ms(last[key]);
+    $(`med-${id}`).textContent = ms(median(key));
+  });
+  $('turns').textContent = samples.length;
+}
+
+/* ---------- audio meters ---------- */
+function attachMeter(stream) {
+  const an = audioCtx.createAnalyser(); an.fftSize = 512;
+  audioCtx.createMediaStreamSource(stream).connect(an);
+  return an;
+}
+function attachOutputMeter(stream) { if (audioCtx) outAn = attachMeter(stream); }
+function startMeters() {
+  audioCtx = new AudioContext();
+  micAn = attachMeter(micStream);
+  const buf = new Uint8Array(512);
+  const level = (an) => {
+    if (!an) return 0;
+    an.getByteTimeDomainData(buf);
+    let sum = 0;
+    for (const b of buf) { const x = (b - 128) / 128; sum += x * x; }
+    return Math.min(1, Math.sqrt(sum / buf.length) * 4);
+  };
+  const tick = () => {
+    const mic = muted ? 0 : level(micAn), out = level(outAn);
+    $('micBar').style.width = `${mic * 100}%`;
+    $('outBar').style.width = `${out * 100}%`;
+    $('orb').style.setProperty('--lvl', state === 'speaking' ? out : mic);
+    rafId = requestAnimationFrame(tick);
+  };
+  tick();
+}
+
+/* ---------- event log ---------- */
+function summary(ev) {
+  if (ev.type === 'error') return ev.error?.message || '';
+  if (ev.transcript) return `"${String(ev.transcript).slice(0, 80)}"`;
+  if (ev.type === 'response.done') return ev.response?.status || '';
+  if (ev.type === 'session.update') return JSON.stringify(ev.session).slice(0, 160);
+  return '';
+}
+function logLine(dir, text) {
+  const log = $('log');
+  log.append(`${String(Math.round(performance.now() - t0)).padStart(6)}ms ${dir} ${text}\n`);
+  while (log.childNodes.length > 600) log.removeChild(log.firstChild);
+  log.scrollTop = log.scrollHeight;
+}
+function logEvent(ev, dir) {
+  if (!$('showDeltas').checked && /delta$/.test(ev.type)) return;
+  logLine(dir, `${ev.type} ${summary(ev)}`.trim());
+}
+
+/* ---------- wiring ---------- */
+$('connect').onclick = () => (pc ? disconnect() : connect());
+$('mute').onclick = () => {
+  muted = !muted;
+  micStream?.getAudioTracks().forEach((t) => { t.enabled = !muted; });
+  $('mute').textContent = muted ? 'Unmute mic' : 'Mute mic';
+};
+$('apply').onclick = () => send({ type: 'session.update', session: buildSession({ connect: false }) });
+function sendText() {
+  const text = $('text').value.trim();
+  if (!text || dc?.readyState !== 'open') return;
+  addBubble('user', text);
+  send({ type: 'conversation.item.create', item: { type: 'message', role: 'user', content: [{ type: 'input_text', text }] } });
+  send({ type: 'response.create' });
+  $('text').value = '';
+  resetTurn();
+  setState('thinking');
+}
+$('send').onclick = sendText;
+$('text').onkeydown = (e) => { if (e.key === 'Enter') sendText(); };
+
+$('vad').onchange = () => {
+  document.querySelectorAll('[data-vad]').forEach((el) => { el.hidden = el.dataset.vad !== $('vad').value; });
+};
+document.querySelectorAll('#presets button').forEach((b) => {
+  b.onclick = () => {
+    $('vad').value = 'server_vad'; $('vad').onchange();
+    ['threshold:t', 'silence:s', 'prefix:p'].forEach((pair) => {
+      const [id, k] = pair.split(':');
+      $(id).value = b.dataset[k]; $(id).dispatchEvent(new Event('input'));
+    });
+  };
+});
+document.querySelectorAll('input[type=range]').forEach((r) => {
+  const out = document.querySelector(`output[for=${r.id}]`);
+  const sync = () => { out.textContent = r.value; };
+  r.addEventListener('input', sync); sync();
+});
+$('persona').onchange = () => { $('instructions').value = PERSONAS[$('persona').value]; };
+$('instructions').value = PERSONAS.assistant;
+$('model').oninput = () => { $('modelBadge').textContent = $('model').value.trim() || 'gpt-realtime-2'; };
+$('copyLog').onclick = () => navigator.clipboard?.writeText($('log').textContent).catch(() => {});
+$('clearLog').onclick = () => { $('log').textContent = ''; };
+$('key').value = store.get('rt_key') || '';
+if (micBlocker()) { showError(micBlocker()); $('connect').disabled = true; }
+</script>
+</body>
+</html>

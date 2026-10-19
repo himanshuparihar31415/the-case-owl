@@ -1,0 +1,4 @@
+# Session logs hold candidate transcripts; keep them local.
+results/
+__pycache__/
+.venv/
