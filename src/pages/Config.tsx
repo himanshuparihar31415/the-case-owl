@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import { Compass, TrendingUp, Handshake, Settings, DollarSign, ArrowRight, Loader2, FileText, Upload } from 'lucide-react';
 import { cn } from '@/src/lib/utils';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { api } from '@/src/lib/api';
 
 const archetypes = [
@@ -46,7 +46,7 @@ export default function Config() {
   const location = useLocation();
   const [module, setModule] = useState<Module>(((location.state as { module?: Module } | null)?.module) ?? 'case');
   const [productFormat, setProductFormat] = useState('design');
-  const [selectedArchetype, setSelectedArchetype] = useState('market_entry');
+  const [selectedArchetype, setSelectedArchetype] = useState(((location.state as { archetype?: string } | null)?.archetype) ?? 'market_entry');
   const [selectedIndustry, setSelectedIndustry] = useState('Pharma');
   const [difficulty, setDifficulty] = useState(3);
   const [interviewerStyle, setInterviewerStyle] = useState('Neutral');
@@ -153,6 +153,9 @@ export default function Config() {
         <p className="text-secondary text-sm mt-1">
           Pick a case type and tune the difficulty — we&apos;ll generate a unique case, or you can import your own.
         </p>
+        <Link to="/library" className="inline-block mt-1.5 text-[13px] font-semibold text-on-tertiary-container hover:underline">
+          Want a specific case? Browse the library →
+        </Link>
       </header>
 
       {/* Module selector */}

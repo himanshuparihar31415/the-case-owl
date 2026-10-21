@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Play, Loader2, TrendingUp, TrendingDown, Minus, ArrowRight,
-  Target, X, Briefcase, Boxes, Calculator, ChevronDown, GraduationCap, BarChart3,
+  Target, X, Briefcase, Boxes, Calculator, ChevronDown, GraduationCap,
 } from 'lucide-react';
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine,
@@ -9,7 +9,15 @@ import {
 import { Link, useNavigate } from 'react-router-dom';
 import { cn } from '@/src/lib/utils';
 import { api } from '@/src/lib/api';
-import { MagneticDock } from '@/src/components/ui/magnetic-dock';
+import StreakHero from '@/src/components/dashboard/StreakHero';
+import PrepPlan from '@/src/components/dashboard/PrepPlan';
+import RecurringMistakes from '@/src/components/dashboard/RecurringMistakes';
+import FirmReadiness from '@/src/components/dashboard/FirmReadiness';
+import InterviewHistory from '@/src/components/dashboard/InterviewHistory';
+import CollegeArena from '@/src/components/dashboard/CollegeArena';
+import {
+  buildHistoryRows, buildPrepPlan, countByDay, moduleOf, thisWeekCount, type HistoryItem,
+} from '@/src/lib/practice';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 interface AuthUser { name: string; email: string }
@@ -28,21 +36,6 @@ interface Dashboard {
   evidence: any[];
   insight: any | null;
 }
-
-interface HistoryItem {
-  sessionId: string; caseTitle: string; caseType?: string; industry?: string;
-  status: string; score: number | null; grade: string | null; durationSeconds: number | null; date: string;
-}
-
-const GRADE_LABEL: Record<string, { t: string; c: string }> = {
-  STRONG_PASS: { t: 'Strong Hire', c: 'bg-green-100 text-green-700' },
-  PASS: { t: 'Hire', c: 'bg-tertiary-fixed text-on-tertiary-fixed-variant' },
-  BORDERLINE: { t: 'Borderline', c: 'bg-amber-100 text-amber-700' },
-  FAIL: { t: 'No Hire', c: 'bg-error-container/60 text-error' },
-};
-const prettyType = (t?: string) => (t ? t.replace(/_/g, ' ').replace(/\b\w/g, (m) => m.toUpperCase()) : 'Case');
-const fmtDate = (d: string) => { try { return new Date(d).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }); } catch { return ''; } };
-const fmtDur = (s: number | null) => (s == null ? '' : `${Math.floor(s / 60)}m`);
 
 const trendIcon = (t: string) =>
   t === 'up' ? <TrendingUp className="w-3.5 h-3.5" /> : t === 'down' ? <TrendingDown className="w-3.5 h-3.5" /> : <Minus className="w-3.5 h-3.5" />;
@@ -71,19 +64,23 @@ export default function Dashboard({ user }: { user: AuthUser | null }) {
   const [loading, setLoading] = useState(true);
   const [drawer, setDrawer] = useState<{ kind: string; arg?: string } | null>(null);
   const [mod, setMod] = useState<'all' | 'case' | 'product' | 'guesstimate'>('all');
-  const [view, setView] = useState<'focus' | 'stats'>('focus');
   const [history, setHistory] = useState<HistoryItem[]>([]);
-  const [histTotal, setHistTotal] = useState(0);
-  const [histPage, setHistPage] = useState(1);
-  const [histLoading, setHistLoading] = useState(false);
+  const [histLoaded, setHistLoaded] = useState(false);
 
-  const loadHistory = (page: number) => {
-    setHistLoading(true);
-    api.get<{ history: HistoryItem[]; total: number }>(`/analytics/history?page=${page}&limit=8`)
-      .then((d) => { setHistory((prev) => (page === 1 ? d.history : [...prev, ...d.history])); setHistTotal(d.total); setHistPage(page); })
-      .catch(() => { /* keep prior */ }).finally(() => setHistLoading(false));
-  };
-  useEffect(() => { loadHistory(1); }, []);
+  // Every completed interview, newest first — the streak heatmap and the history table both need the full set.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const all: HistoryItem[] = [];
+      for (let page = 1; page <= 50; page++) {
+        const d = await api.get<{ history: HistoryItem[]; total: number }>(`/analytics/history?page=${page}&limit=100`);
+        all.push(...d.history);
+        if (!cancelled) setHistory([...all]);
+        if (all.length >= d.total || d.history.length === 0) break;
+      }
+    })().catch(() => { /* keep what loaded */ }).finally(() => { if (!cancelled) setHistLoaded(true); });
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     // Don't toggle the full-page loader on tab switches — keep the prior view
@@ -106,7 +103,7 @@ export default function Dashboard({ user }: { user: AuthUser | null }) {
 
   // Empty state — only when there's NOTHING at all (the unscoped view is empty).
   // A scoped view with 0 sessions still renders so the track tabs stay visible.
-  if (!data || (mod === 'all' && data.totals.sessions === 0)) {
+  if (!data) {
     return (
       <div className="py-20 text-center space-y-6 max-w-xl mx-auto">
         <h1 className="power-gap-h1 text-primary">Welcome, {firstName}.</h1>
@@ -125,21 +122,16 @@ export default function Dashboard({ user }: { user: AuthUser | null }) {
   const lessonModule = mod === 'all' ? 'case' : mod; // scope lessons to the active category
   const lessonHref = (tag?: string) => (tag ? `/lesson/${tag}?m=${lessonModule}` : `/learn?m=${lessonModule}`);
 
+  // ── practice cockpit (all derived client-side from data we already fetched) ──
+  const hasReports = data.totals.sessions > 0;
+  const lastModule = history[0] ? moduleOf(history[0].caseType) : 'case';
+  const weekCount = thisWeekCount(countByDay(history));
+  const planItems = buildPrepPlan(data, lastModule);
+  const historyRows = buildHistoryRows(history, data.trajectory);
+
   return (
     <div className="space-y-5 py-1 pb-32">
-      {/* Focus / Stats switch — floating magnetic dock, bottom-center */}
-      <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-40">
-        <MagneticDock
-          iconSize={52}
-          maxScale={1.4}
-          items={[
-            { id: 'focus', label: 'Coach · your next move', icon: <Target className="w-full h-full text-primary" />, isActive: view === 'focus', onClick: () => setView('focus') },
-            { id: 'stats', label: 'Analytics · all your numbers', icon: <BarChart3 className="w-full h-full text-primary" />, isActive: view === 'stats', onClick: () => setView('stats') },
-          ]}
-        />
-      </div>
-
-      {/* ── HEADER: greeting + readiness chip + Focus/Stats toggle ── */}
+      {/* ── HEADER: greeting + readiness chip ── */}
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2 label-blueprint mb-0.5">
@@ -148,7 +140,7 @@ export default function Dashboard({ user }: { user: AuthUser | null }) {
           </div>
           <h1 className="font-headline font-bold text-xl text-primary leading-tight truncate">Welcome back, {firstName}.</h1>
         </div>
-        <div className="flex items-center gap-2.5 px-3 py-1.5 rounded-xl bg-surface-container-low shrink-0">
+        {hasReports && <div className="flex items-center gap-2.5 px-3 py-1.5 rounded-xl bg-surface-container-low shrink-0">
           <span className="font-headline font-extrabold text-lg text-primary leading-none">{data.readiness.overall.toFixed(1)}<span className="text-[11px] text-secondary font-medium">/10</span></span>
           <div className="flex flex-col leading-tight">
             <span className="text-[11px] font-semibold text-primary">{data.readiness.band}</span>
@@ -156,29 +148,30 @@ export default function Dashboard({ user }: { user: AuthUser | null }) {
               {data.readiness.delta3 >= 0 ? '+' : ''}{data.readiness.delta3.toFixed(1)} last 3
             </span>
           </div>
-        </div>
+        </div>}
       </div>
 
-      {/* View switch (prominent) + track filter — scope both views */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-baseline gap-2">
-          <span className="font-headline font-bold text-sm text-primary">{view === 'focus' ? 'Coach' : 'Analytics'}</span>
-          <span className="text-[12px] text-secondary">{view === 'focus' ? 'Your next move' : 'All your numbers'}</span>
-        </div>
-        {/* BETA: Focus/Stats toggle replaced by the floating MagneticDock below — restore by removing this comment wrapper.
-        <div className="inline-flex items-center bg-surface-container-low rounded-xl p-1 gap-1">
-          {([['focus', 'Focus', Target, 'what to do next'], ['stats', 'Stats', BarChart3, 'all your numbers']] as const).map(([id, label, Icon]) => (
-            <button key={id} onClick={() => setView(id)}
-              className={cn('flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-bold transition',
-                view === id ? 'bg-surface-container-lowest text-primary shadow-sm ring-1 ring-outline-variant/15' : 'text-secondary hover:text-primary')}>
-              <Icon className="w-4 h-4" /> {label}
-            </button>
-          ))}
-          <span className="hidden md:inline text-[12px] text-secondary pl-2 pr-3">
-            {view === 'focus' ? 'Your next move' : 'All your numbers'}
-          </span>
-        </div>
-        */}
+      {/* ═══════════════ PRACTICE COCKPIT ═══════════════ */}
+      <StreakHero history={history} loaded={histLoaded} module={lastModule} />
+
+      {histLoaded && <CollegeArena user={user} history={history} />}
+
+      <div className="grid lg:grid-cols-2 gap-5 items-stretch">
+        <PrepPlan items={planItems} weekCount={weekCount} />
+        <RecurringMistakes habits={data.habits} sessions={data.totals.sessions} module={lastModule} />
+      </div>
+
+      <FirmReadiness overall={hasReports ? data.readiness.overall : null} bar={data.readiness.target} />
+
+      <InterviewHistory rows={historyRows} loaded={histLoaded} />
+
+      {/* ═══════════════ DEEP DIVE (existing coach + analytics) ═══════════════ */}
+      {hasReports && (<>
+      <div className="flex items-center gap-3 pt-3">
+        <h2 className="font-headline font-extrabold text-lg text-primary">Deep dive</h2>
+        <div className="h-px flex-1 bg-outline-variant/30" />
+      </div>
+
         {/* BETA: track filter hidden for the beta launch — restore by removing this comment wrapper.
         <div className="flex items-center gap-1.5 overflow-x-auto scrolling-log -mx-1 px-1 shrink-0">
           <span className="text-[11px] font-medium text-secondary mr-0.5 shrink-0">Track</span>
@@ -191,14 +184,13 @@ export default function Dashboard({ user }: { user: AuthUser | null }) {
           ))}
         </div>
         */}
-      </div>
       {/* BETA: track filter hidden — this note only applies to a scoped track.
       {mod !== 'all' && data.totals.sessions === 0 && (
         <p className="text-xs text-secondary italic -mt-3">No sessions in this track yet.</p>
       )}
       */}
 
-      {view === 'focus' ? (
+      {(
         /* ═══════════════ FOCUS: the coaching loop ═══════════════ */
         <div className="space-y-5">
           {/* THE loop card — what to fix, why, and the two steps to fix it */}
@@ -375,7 +367,8 @@ export default function Dashboard({ user }: { user: AuthUser | null }) {
           </div>
           */}
         </div>
-      ) : (
+      )}
+      {(
         /* ═══════════════ STATS: the reference data ═══════════════ */
         <div className="space-y-5">
           {/* Where you stand */}
@@ -522,50 +515,9 @@ export default function Dashboard({ user }: { user: AuthUser | null }) {
               ) : <div />}
             </div>
           </div>
-
-          {/* History */}
-          <div>
-            <div className="flex items-baseline justify-between mb-3">
-              <h2 className="font-headline font-bold text-base text-primary">Your sessions &amp; reports</h2>
-              <span className="text-[12px] text-secondary">{histTotal} completed</span>
-            </div>
-            {history.length === 0 ? (
-              <div className="no-line-card p-4 text-sm text-secondary">No completed sessions yet. Finish a case to see its report here.</div>
-            ) : (
-              <div className="no-line-card overflow-hidden">
-                <div className="divide-y divide-outline-variant/10">
-                  {history.map((h) => {
-                    const g = h.grade ? GRADE_LABEL[h.grade] : null;
-                    return (
-                      <button key={String(h.sessionId)} onClick={() => navigate(`/report/${h.sessionId}`)}
-                        className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-surface-container-low transition text-left group">
-                        <div className="flex-1 min-w-0">
-                          <p className="font-semibold text-[13px] text-primary truncate">{h.caseTitle}</p>
-                          <p className="text-[11px] text-secondary truncate">
-                            {prettyType(h.caseType)}{h.industry ? ` · ${prettyType(h.industry)}` : ''} · {fmtDate(h.date)}{fmtDur(h.durationSeconds) ? ` · ${fmtDur(h.durationSeconds)}` : ''}
-                          </p>
-                        </div>
-                        {g && <span className={cn('shrink-0 text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded', g.c)}>{g.t}</span>}
-                        {h.score != null
-                          ? <span className="font-headline font-bold text-[14px] text-primary w-12 text-right shrink-0">{(h.score / 10).toFixed(1)}<span className="text-[10px] text-secondary">/10</span></span>
-                          : <span className="text-[10px] text-secondary italic w-12 text-right shrink-0">no score</span>}
-                        <ArrowRight className="w-4 h-4 text-secondary group-hover:text-on-tertiary-container group-hover:translate-x-0.5 transition shrink-0" />
-                      </button>
-                    );
-                  })}
-                </div>
-                {history.length < histTotal && (
-                  <button onClick={() => loadHistory(histPage + 1)} disabled={histLoading}
-                    className="w-full flex items-center justify-center gap-2 py-2.5 text-[13px] font-semibold text-on-tertiary-container border-t border-outline-variant/10 hover:bg-surface-container-low transition disabled:opacity-50">
-                    {histLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <ChevronDown className="w-4 h-4" />}
-                    {histLoading ? 'Loading…' : `Show more (${histTotal - history.length} more)`}
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
         </div>
       )}
+      </>)}
 
       {/* ── DRAWER ── */}
       <Drawer open={!!drawer} onClose={() => setDrawer(null)} content={drawer} data={data} navigate={navigate} evidenceFor={evidenceFor} />

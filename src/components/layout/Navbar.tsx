@@ -14,6 +14,9 @@ interface NavbarProps {
   isAuthenticated?: boolean;
   onLogout?: () => void;
   onLogin?: () => void;
+  /** Inside the authenticated AppShell: the left sidebar owns navigation + sign-out. */
+  inShell?: boolean;
+  onMenuClick?: () => void;
 }
 
 export default function Navbar({ 
@@ -21,7 +24,9 @@ export default function Navbar({
   time = "12:44", 
   isAuthenticated, 
   onLogout,
-  onLogin 
+  onLogin,
+  inShell,
+  onMenuClick,
 }: NavbarProps) {
   const location = useLocation();
   const navigate = useNavigate();
@@ -55,13 +60,13 @@ export default function Navbar({
 
   return (
     <header className="fixed top-0 z-50 w-full glass-nav border-b border-outline-variant/15">
-      <div className="flex justify-between items-center w-full px-4 lg:px-8 py-3 max-w-7xl mx-auto">
-        <Link to={isAuthenticated ? "/dashboard" : "/"} className="text-xl font-headline font-extrabold tracking-tighter text-primary">
+      <div className={cn("flex justify-between items-center w-full px-4 lg:px-8", inShell ? "h-16" : "py-3 max-w-7xl mx-auto")}>
+        <Link to={isAuthenticated ? "/home" : "/"} className="text-xl font-headline font-extrabold tracking-tighter text-primary">
           The Case Owl
         </Link>
 
         {/* Primary nav — magnetic dock with labels under the icons (desktop) */}
-        {isAuthenticated && (
+        {isAuthenticated && !inShell && (
           <nav className="hidden md:flex items-start h-12" aria-label="Primary">
             <MagneticDock
               position="top"
@@ -136,18 +141,18 @@ export default function Navbar({
               </button>
               <button
                 onClick={onLogout}
-                className="hidden md:inline-flex p-2 rounded-full hover:bg-error-container/20 text-error transition-all active:scale-95"
+                className={cn("hidden md:inline-flex p-2 rounded-full hover:bg-error-container/20 text-error transition-all active:scale-95", inShell && "!hidden")}
                 title="Sign Out"
               >
                 <LogOut className="w-5 h-5" />
               </button>
               {/* Mobile menu toggle */}
               <button
-                onClick={() => setMenuOpen((o) => !o)}
-                className="md:hidden p-2 rounded-full hover:bg-surface-container-low transition active:scale-95"
+                onClick={inShell ? onMenuClick : () => setMenuOpen((o) => !o)}
+                className={cn("p-2 rounded-full hover:bg-surface-container-low transition active:scale-95", inShell ? "lg:hidden" : "md:hidden")}
                 aria-label="Menu"
               >
-                {menuOpen ? <X className="w-6 h-6 text-primary" /> : <Menu className="w-6 h-6 text-primary" />}
+                {menuOpen && !inShell ? <X className="w-6 h-6 text-primary" /> : <Menu className="w-6 h-6 text-primary" />}
               </button>
             </div>
           ) : (
@@ -162,7 +167,7 @@ export default function Navbar({
       </div>
 
       {/* Mobile drawer */}
-      {isAuthenticated && menuOpen && (
+      {isAuthenticated && !inShell && menuOpen && (
         <div className="md:hidden border-t border-outline-variant/15 bg-surface-container-lowest shadow-lg">
           <nav className="flex flex-col px-4 py-2 max-w-7xl mx-auto">
             {navItems.map((item) => {

@@ -1,8 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, useLocation, Navigate } from 'react-router-dom';
-import { cn } from './lib/utils';
-import Navbar from './components/layout/Navbar';
-import Footer from './components/layout/Footer';
+import AppShell from './components/layout/AppShell';
 import Dashboard from './pages/Dashboard';
 import Library from './pages/Library';
 import Config from './pages/Config';
@@ -12,6 +10,12 @@ import Learn from './pages/Learn';
 import Lesson from './pages/Lesson';
 import Billing from './pages/Billing';
 import Landing from './pages/Landing';
+import Home from './pages/Home';
+import Companies from './pages/companies/Companies';
+import CompanyDetail from './pages/companies/CompanyDetail';
+import GroupDiscussion from './pages/interview/GroupDiscussion';
+import ResumeInterview from './pages/interview/ResumeInterview';
+import GeneralInterview from './pages/interview/GeneralInterview';
 import RequestAccess from './pages/RequestAccess';
 import AuthModal from './components/auth/AuthModal';
 import { api } from './lib/api';
@@ -52,7 +56,6 @@ function AppContent() {
   };
 
   const isAuthenticated = user !== null;
-  const isSession = location.pathname.startsWith('/session');
   // Marketing pages are self-contained (own nav, no app chrome).
   const isLanding = location.pathname === '/' || location.pathname === '/request-access';
 
@@ -61,7 +64,7 @@ function AppContent() {
   }
 
   if (isAuthenticated && isLanding) {
-    return <Navigate to="/dashboard" replace />;
+    return <Navigate to="/home" replace />;
   }
 
   return (
@@ -71,60 +74,39 @@ function AppContent() {
         onClose={() => setIsAuthModalOpen(false)}
         onLogin={handleLogin}
       />
-      {/* Landing is a self-contained marketing page with its own nav/footer. */}
-      {!isLanding && (
-        <Navbar
-          showTimer={isSession}
-          isAuthenticated={isAuthenticated}
-          onLogout={handleLogout}
-          onLogin={() => setIsAuthModalOpen(true)}
-        />
-      )}
-      <main className={cn(
-        "flex-grow w-full mx-auto",
-        isLanding ? "" : isSession ? "pt-20 px-4 lg:px-6" : "pt-20 pb-12 px-4 lg:px-6 max-w-7xl"
-      )}>
-        <Routes>
-          <Route path="/" element={<Landing onOpenAuth={() => setIsAuthModalOpen(true)} />} />
-          <Route path="/request-access" element={<RequestAccess onOpenAuth={() => setIsAuthModalOpen(true)} />} />
-          <Route
-            path="/dashboard"
-            element={isAuthenticated ? <Dashboard user={user} /> : <Navigate to="/" replace />}
-          />
-          <Route
-            path="/library"
-            element={isAuthenticated ? <Library /> : <Navigate to="/" replace />}
-          />
-          <Route
-            path="/config"
-            element={isAuthenticated ? <Config /> : <Navigate to="/" replace />}
-          />
-          <Route
-            path="/session/:sessionId"
-            element={isAuthenticated ? <Session /> : <Navigate to="/" replace />}
-          />
-          <Route
-            path="/report/:sessionId"
-            element={isAuthenticated ? <Report /> : <Navigate to="/" replace />}
-          />
-          <Route
-            path="/learn"
-            element={isAuthenticated ? <Learn /> : <Navigate to="/" replace />}
-          />
-          <Route
-            path="/lesson/:habitTag"
-            element={isAuthenticated ? <Lesson /> : <Navigate to="/" replace />}
-          />
-          <Route
-            path="/billing"
-            element={isAuthenticated ? <Billing user={user} /> : <Navigate to="/" replace />}
-          />
+      <Routes>
+        {/* Landing is a self-contained marketing page with its own nav/footer. */}
+        <Route path="/" element={<Landing onOpenAuth={() => setIsAuthModalOpen(true)} />} />
+        <Route path="/request-access" element={<RequestAccess onOpenAuth={() => setIsAuthModalOpen(true)} />} />
+
+        {/* Everything else is authenticated and shares the sidebar shell. */}
+        <Route element={isAuthenticated ? <AppShell user={user} onLogout={handleLogout} /> : <Navigate to="/" replace />}>
+          <Route path="/home" element={<Home user={user} />} />
+          <Route path="/dashboard" element={<Dashboard user={user} />} />
+          <Route path="/library" element={<Library />} />
+          {/* Keyed per navigation so Case -> Guesstimate re-reads the module passed via router state. */}
+          <Route path="/config" element={<ConfigRoute />} />
+          <Route path="/session/:sessionId" element={<Session />} />
+          <Route path="/report/:sessionId" element={<Report />} />
+          <Route path="/learn" element={<Learn />} />
+          <Route path="/lesson/:habitTag" element={<Lesson />} />
+          <Route path="/billing" element={<Billing user={user} />} />
+          <Route path="/interview/gd" element={<GroupDiscussion />} />
+          <Route path="/interview/resume" element={<ResumeInterview />} />
+          <Route path="/interview/general" element={<GeneralInterview />} />
+          <Route path="/companies" element={<Companies />} />
+          <Route path="/companies/:companyId" element={<CompanyDetail />} />
           <Route path="/settings" element={<div className="py-20 text-center text-secondary">Settings module coming soon.</div>} />
-        </Routes>
-      </main>
-      {!isSession && !isLanding && <Footer />}
+        </Route>
+
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
     </div>
   );
+}
+
+function ConfigRoute() {
+  return <Config key={useLocation().key} />;
 }
 
 export default function App() {
