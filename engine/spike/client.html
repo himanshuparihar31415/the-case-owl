@@ -53,11 +53,13 @@ pre { max-height:240px; overflow:auto; font-size:11px; background:var(--field); 
       <div class="row">
         <div><label for="source">Audio source</label><select id="source"><option value="mic">Microphone</option><option value="silent">Silent track (probes only)</option></select></div>
         <div><label for="dc">Browser data channel</label><select id="dc"><option value="off">Off (recommended)</option><option value="on">On (for the control test)</option></select></div>
-        <div><label for="model">Model</label><select id="model"><option>gpt-realtime-2.1</option><option>gpt-realtime-2</option></select></div>
+        <div><label for="model">Model</label><select id="model"><option>gpt-realtime-2.1</option><option>gpt-realtime-2</option><option>gpt-realtime-2.1-mini</option></select></div>
         <div><label for="reasoning">Reasoning effort</label><select id="reasoning"><option>low</option><option>minimal</option><option>medium</option><option>high</option><option value="">model default</option></select></div>
         <div><label for="vad">Turn end</label><select id="vad"><option value="server">Silence window</option><option value="semantic">Semantic (model judges)</option></select></div>
         <div><label for="note">Steering note</label><select id="note"><option value="item">Conversation item</option><option value="item_keep">Conversation item, keep old notes</option><option value="instructions">In instructions (cache test)</option><option value="off">Off</option></select></div>
         <div><label for="silence">Silence window (ms)</label><input id="silence" type="number" min="200" max="3000" step="50" value="1000" style="width:90px"></div>
+        <div><label for="caseSilence">In the case (ms, 0 = same)</label><input id="caseSilence" type="number" min="0" max="3000" step="50" value="1300" style="width:90px"></div>
+        <div><label for="transcriber">Transcription</label><select id="transcriber"><option>gpt-realtime-whisper</option><option>gpt-4o-transcribe</option><option>gpt-4o-mini-transcribe</option></select></div>
         <div><label for="voice">Voice</label><select id="voice"><option>marin</option><option>cedar</option><option>alloy</option><option>ash</option><option>coral</option><option>sage</option><option>verse</option></select></div>
       </div>
       <div class="row" style="margin-top:10px">
@@ -130,7 +132,7 @@ function level(an) {
 function loop() {
   const now = performance.now(), mic = level(micAn), out = level(outAn);
   $('micBar').style.width = `${mic * 100}%`; $('outBar').style.width = `${out * 100}%`;
-  if (mic > MIC_T) lastMicActive = now;
+  if (mic > MIC_T && !remoteActive && now - lastRemoteEnd > OUT_QUIET_MS) lastMicActive = now;  // her echo is not the candidate
   if (!remoteActive && out > OUT_T) {
     remoteActive = true; quietSince = 0;
     if (lastMicActive > lastRemoteEnd && now - lastMicActive < 15000) {
@@ -184,7 +186,7 @@ function onMessage(m) {
     }
     case 'usage': {
       const u = m.usage, share = u.input ? Math.round(100 * u.cached / u.input) : 0;
-      $('cost').innerHTML = `${u.responses} responses (${u.cancelled} cancelled) · input ${u.input} tokens, <b>${share}% cached</b> · audio in ${u.audio_in}, audio out ${u.audio_out} · text in ${u.text_in}, text out ${u.text_out}<br><b>≈ $${m.cost_usd.toFixed(4)}</b> so far at gpt-realtime-2.x list prices`;
+      $('cost').innerHTML = `${u.responses} responses (${u.cancelled} cancelled) · input ${u.input} tokens, <b>${share}% cached</b> · audio in ${u.audio_in}, audio out ${u.audio_out} · text in ${u.text_in}, text out ${u.text_out}<br><b>≈ $${m.cost_usd.toFixed(4)}</b> so far at list prices`;
       break;
     }
     case 'probes': renderProbes(m.probes); log('probes finished'); break;
@@ -196,7 +198,9 @@ function onMessage(m) {
 async function connect() {
   $('connect').disabled = true; status('connecting');
   const synthetic = $('source').value === 'silent';
-  const settings = { model: $('model').value, reasoning: $('reasoning').value, vad: $('vad').value, note_mode: $('note').value, silence_ms: +$('silence').value, voice: $('voice').value };
+  const settings = { model: $('model').value, reasoning: $('reasoning').value, vad: $('vad').value, note_mode: $('note').value,
+                     silence_ms: +$('silence').value, case_silence_ms: +$('caseSilence').value,
+                     transcription_model: $('transcriber').value, voice: $('voice').value };
   try {
     ctx = new AudioContext();
     if (synthetic) {

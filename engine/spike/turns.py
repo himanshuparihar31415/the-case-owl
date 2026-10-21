@@ -24,7 +24,7 @@ Events:  start · speech_started{audio_start_ms} · speech_stopped{audio_end_ms}
          response_done · audio_started · audio_stopped · timer{kind, gen}
 Effects: create_response{reason, prompt?} · cancel_response · clear_audio ·
          delete_item{item_id, reason} · analyze{item_id, text} · set_timer{kind, ms, gen} ·
-         mode{mode} · stage{stage} · metric{name, ...}
+         mode{mode} · stage{stage} · silence{ms} · metric{name, ...}
 """
 from __future__ import annotations
 
@@ -91,7 +91,8 @@ HANDBACK_RE = re.compile(
     r"i would (start|look|begin)|let'?s (start|begin|go)|here'?s my)\b",
     re.I,
 )
-SPEECH_RE = re.compile(r"[a-z0-9]", re.I)
+# Any letter or digit in any script: a Hindi transcript is speech, not silence (22 Oct voice test).
+SPEECH_RE = re.compile(r"[^\W_]")
 FILLER_RE = re.compile(r"^\W*((u+h+m*|u+m+|h+m+|m+|a+h+|e+r+m*)\W*)+$", re.I)  # "hmm", "um", "uh"
 
 
@@ -148,6 +149,7 @@ class TurnState:
     # VAD timestamps include the prefix padding and the silence window; subtract them for voiced time.
     prefix_padding_ms: int = 0
     silence_ms: int = 0
+    case_silence_ms: int = 0              # a longer window once the case starts (0: keep one window)
     candidate_speaking: bool = False
     assistant_audio: bool = False         # interviewer audio is playing
     reply_requested: bool = False         # response.create sent, response.created not seen yet
@@ -269,7 +271,11 @@ def _case_started(state: TurnState, ev: dict) -> list[dict]:
     if state.stage == "case":
         return []
     state.stage = "case"
-    return [{"do": "stage", "stage": "case"}]
+    out = [{"do": "stage", "stage": "case"}]
+    if state.case_silence_ms and state.case_silence_ms != state.silence_ms:
+        state.silence_ms = state.case_silence_ms  # VAD timestamps from now on include the new window
+        out.append({"do": "silence", "ms": state.case_silence_ms})
+    return out
 
 
 def _tool_wait(state: TurnState, ev: dict) -> list[dict]:
@@ -342,6 +348,8 @@ def _transcript(state: TurnState, ev: dict) -> list[dict]:
     item, text = ev["item_id"], (ev.get("text") or "").strip()
     why = state.awaiting.pop(item, None)
     if why == "listening":
+        if not SPEECH_RE.search(text):  # nothing to judge: no LLM call for an empty transcript
+            return [{"do": "metric", "name": "listening_hold"}]
         return [{"do": "analyze", "item_id": item, "text": text}]
 
     out: list[dict] = []

@@ -3,14 +3,17 @@
 Transcript deltas reach the engine ahead of playback, because the model generates faster
 than real time. A hit lets the engine cancel the reply and clear the queued audio, often
 before the offending words are heard. It is a net, not a wall: prevention comes first
-(facts behind a tool gate in phase 1, rules restated every turn).
+(she holds only the case statement; facts come one at a time through lookup_fact).
 
-`check(reply, candidate_said)` returns None or
-{"kind": "self_answer" | "fed_fact" | "fed_direction", "term": ...}.
+`check(reply, candidate_said, case, released)` returns None or
+{"kind": "self_answer" | "fed_fact" | "fed_direction", "term": ...}. What counts as a fact or a
+direction comes from the case data (facts' `terms`, the case's `leads`), not from code.
 """
 from __future__ import annotations
 
 import re
+
+from facts import Case, allowed_text, mentions
 
 # An open invitation ("you might start anywhere") hands the floor back; it is not a proposal.
 _OPEN = r"(?! (anywhere|wherever|whatever|however|where you|with (whatever|whichever|what(ever)? you)))"
@@ -27,25 +30,22 @@ SELF_ANSWER_RE = re.compile(
     re.I,
 )
 
-COST_TOPIC = re.compile(r"\b(costs?|expenses?|spend|cogs|margins?|supplier|beans?|inputs?|labou?r|wages?|rent)\b", re.I)
-DEMAND_TOPIC = re.compile(r"\b(revenue|sales|prices?|pricing|customers?|visits?|volume|demand|ticket|traffic|"
-                          r"footfall)\b", re.I)
-# What the interviewer may say only once the candidate has raised its topic: case facts they must ask
-# for, and branches of the case they must find themselves (naming "costs" first points them at the
-# answer). Spike-specific (the coffee case); phase 1 derives these from the case's own tree.
-GATES = [
-    ("fed_fact", re.compile(r"\b(beans?|supplier|35 ?(percent|%)|labou?r|rent)\b", re.I), COST_TOPIC),
-    ("fed_fact", re.compile(r"\b(visits?|ticket|footfall|traffic)\b", re.I), DEMAND_TOPIC),
-    ("fed_direction", re.compile(r"\b(costs?|cost side|expenses?|margins?)\b", re.I), COST_TOPIC),
-]
 
-
-def check(reply: str, candidate_said: str) -> dict | None:
+def check(reply: str, candidate_said: str, case: Case, released: set[str]) -> dict | None:
     match = SELF_ANSWER_RE.search(reply)
     if match:
         return {"kind": "self_answer", "term": match.group(0)}
-    for kind, said, topic in GATES:
-        hit = said.search(reply)
-        if hit and not topic.search(candidate_said):
-            return {"kind": kind, "term": hit.group(0)}
+    allowed = allowed_text(case, candidate_said, released)
+    for fact in case.facts.values():  # a fact's telltale words, before it was released
+        if fact.id in released:
+            continue
+        for term in fact.terms:
+            if mentions(reply, term) and not mentions(allowed, term):
+                return {"kind": "fed_fact", "term": term}
+    for lead in case.leads:  # a branch named before the candidate reached it
+        if any(mentions(candidate_said, t) for t in lead["until_candidate_says"]):
+            continue
+        for term in lead["says"]:
+            if mentions(reply, term) and not mentions(allowed, term):
+                return {"kind": "fed_direction", "term": term}
     return None

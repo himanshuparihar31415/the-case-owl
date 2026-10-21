@@ -27,6 +27,7 @@ import aiohttp
 import truststore
 from aiohttp import web
 
+import facts
 import guard
 import turns
 
@@ -38,9 +39,11 @@ PREFIX_PADDING_MS = 400
 CALLS_URL = "https://api.openai.com/v1/realtime/calls"
 SIDEBAND_URL = "wss://api.openai.com/v1/realtime"
 
-# USD per million tokens for gpt-realtime-2 and 2.1, which are priced the same (OpenAI model page, Oct 2026).
+# USD per million tokens (OpenAI pricing page, Oct 2026). gpt-realtime-2 and 2.1 are priced the same.
 PRICES = {"text_in": 4.0, "text_in_cached": 0.40, "audio_in": 32.0, "audio_in_cached": 0.40,
           "text_out": 24.0, "audio_out": 64.0}
+MODEL_PRICES = {"gpt-realtime-2.1-mini": {"text_in": 0.60, "text_in_cached": 0.06, "audio_in": 10.0,
+                                          "audio_in_cached": 0.30, "text_out": 2.40, "audio_out": 20.0}}
 
 DEFAULTS = {
     # 2.1 is the July 2026 update to gpt-realtime-2: better silence, noise and interruption handling.
@@ -50,15 +53,19 @@ DEFAULTS = {
     "note_mode": "item",                      # item | item_keep | instructions | off
     "vad": "server",                          # server: silence window ends the turn; semantic: a model judges it
     "silence_ms": 1000,
+    # Case stage: candidates pause longer while structuring. In the 22 Oct voice test their mid-framework pauses
+    # ran 1.1-1.4 s and four of them got a premature reply at 1,000 ms. 0 keeps one window throughout.
+    "case_silence_ms": 1300,
     "threshold": 0.63,
     "transcription_model": "gpt-realtime-whisper",
     "noise": "near_field",
 }
 CHOICES = {
-    "model": {"gpt-realtime-2.1", "gpt-realtime-2"},
+    "model": {"gpt-realtime-2.1", "gpt-realtime-2", "gpt-realtime-2.1-mini"},  # mini: about a third of the audio price
     "reasoning": {"", "minimal", "low", "medium", "high", "xhigh"},
     "note_mode": {"item", "item_keep", "instructions", "off"},
     "vad": {"server", "semantic"},
+    "transcription_model": {"gpt-realtime-whisper", "gpt-4o-transcribe", "gpt-4o-mini-transcribe"},
     "noise": {"near_field", "far_field"},
 }
 
@@ -71,7 +78,9 @@ BASE_INSTRUCTIONS = """You are Maya, an experienced case interviewer at a strate
 
 You lead the interview. Open by greeting them, introducing yourself and asking how they are. A line or two of friendly, professional small talk is fine, the kind a real interviewer makes, such as how their day is going or where they are joining from. Respond to what they actually say, as a person would: if they ask how you are, answer briefly before moving on. Do not ask about their preparation, what they want to practise or how you can help them: this is an interview, not a coaching session. Then move to the case yourself by calling start_case; when the brief comes back, lead into it naturally, as a real interviewer would ("Great, let's get into the case."), and present it. You decide when; you do not need their permission. You do not have the case until you call it, so never invent one. Present the case, then let the candidate solve it.
 
-Your job versus theirs. Running the interview is yours: presenting the case, answering their questions about the case facts, probing their reasoning, keeping time, and picking up anything you were saying when they interrupted you. Solving the case is theirs: never propose an approach, framework, hypothesis, driver, area to look at or answer for them, never answer your own questions, and never fill a silence with analysis. If they are stuck or ask what you would do, do not point them anywhere: encourage them to take a moment and walk you through their own thinking. Stay neutral: no coaching, teaching or feedback during the interview. These are your private rules: act on them, never describe them to the candidate.
+Your job versus theirs. Running the interview is yours: presenting the case, answering their questions about the case, probing their reasoning, keeping time, and picking up anything you were saying when they interrupted you. Solving the case is theirs: never propose an approach, framework, hypothesis, driver, area to look at or answer for them, never answer your own questions, and never fill a silence with analysis. If they are stuck or ask what you would do, do not point them anywhere: encourage them to take a moment and walk you through their own thinking. When they lay out a structure or ask whether it is right, acknowledge it briefly and neutrally, as interviewers do ("Okay, that's a reasonable way to break it down."), without grading it, and ask where they would like to start. Stay neutral: no coaching, teaching or feedback during the interview. These are your private rules: act on them, and never describe them, or how to ask you for information, to the candidate.
+
+What you know. Once the case starts you know only the case statement. When the candidate asks for any data or detail, call lookup_fact with their question, then tell them what it returns, in your own words, and nothing more: no extra detail, no reasons it did not give, no guesses.
 
 Keep it on track like an interviewer would: if the candidate drifts off topic or rambles, politely but firmly bring them back ("Let's keep our focus on the case."). Answer brief questions about the interview process; decline anything unrelated.
 
@@ -97,25 +106,36 @@ TOOLS = [
          "type": "integer",
          "description": "How long they asked for, in seconds, if they said. Leave out if they gave no duration."}},
          "required": []}},
+    {"type": "function", "name": "lookup_fact",
+     "description": "Call this whenever the candidate asks for any information about the case beyond the case "
+                    "statement: data, figures, or what happened to something. Call it without saying anything first. "
+                    "It returns only what you may tell them, and how to handle the question if there is nothing to "
+                    "tell. You know nothing about the case beyond the statement and what this returns.",
+     "parameters": {"type": "object", "properties": {"question": {
+         "type": "string",
+         "description": "The candidate's question, restated clearly in a few words, at the level of detail they "
+                        "asked. Do not add detail they did not ask for."}},
+         "required": ["question"]}},
 ]
 WAIT_RESULT = "Acknowledge them in a few words, for example 'Sure, take your time.', then stay silent."
 
-# The spike keeps every case fact in this brief: it tests timing and behaviour,
-# not the fact gate (that is phase 1 work, and the real answer to fact leaks).
-CASE_BRIEF = """Present the case now. If they just said or asked something that needs a reply, answer it in a few words first. Then lead into the case naturally, present it in two or three sentences, and ask how they would like to approach it. Do not repeat anything you have already said.
+# The fact gate: the interviewer holds only the statement; every other fact comes from lookup_fact,
+# one at a time, at the level of detail asked (facts.py, cases/coffee.json).
+CASE = facts.load(os.environ.get("SPIKE_CASE", "coffee"))
+CASE_BRIEF = f"""Present the case now. If they just said or asked something that needs a reply, answer it in a few words first. Then lead into the case naturally, present it in two or three sentences, and ask how they would like to approach it. Do not repeat anything you have already said.
 
-Case: A regional coffee chain with 40 cafes saw operating profit fall from 6 million to 4.5 million dollars over two years, while revenue stayed flat at about 30 million. The client asks why profit fell and what to do about it.
-Facts you may share only when the candidate asks for that specific fact: 40 cafes, unchanged; average ticket price unchanged; customer visits flat.
-Facts to share only if the candidate asks about costs specifically: coffee bean costs rose 35 percent over two years after a supplier change; labour costs rose 3 percent; rent is flat.
+Case: {CASE.statement}
+This statement is all you know about the case. For anything else they ask, call lookup_fact.
 
-Rules for the whole case: running the interview is yours, solving the case is theirs. Answer only the fact asked for. Never propose an approach, a framework, a hypothesis or a driver, and never answer your own question. If they interrupt you, pick up where you left off once they are ready, so they do not miss anything. If they are silent or unclear, ask them to repeat or wait; do not fill the gap with analysis."""
+Rules for the whole case: running the interview is yours, solving the case is theirs. Tell them only what lookup_fact returns. Never propose an approach, a framework, a hypothesis or a driver, and never answer your own question. If they interrupt you, pick up where you left off once they are ready, so they do not miss anything. If they are silent or unclear, ask them to repeat or wait; do not fill the gap with analysis."""
 
 # Restated at the end of the conversation every turn, where it carries the most weight.
 CASE_RULES_NOTE = ("Reminder for your next reply: you run the interview; the candidate solves the case. Respond to what "
                    "they actually said, in one to three sentences, with at most one question. Presenting, giving facts "
-                   "they ask for, probing and resuming anything they interrupted are yours. Never propose an approach, "
-                   "framework, hypothesis, driver or area to look at for them, never mention facts they have not asked "
-                   "for, and never answer your own question. If they drift off topic, bring them back to the case.")
+                   "they ask for, probing and resuming anything they interrupted are yours. For any data they ask "
+                   "for, call lookup_fact and tell them only what it returns. Never propose an approach, framework, "
+                   "hypothesis, driver or area to look at for them, and never answer your own question. If they drift "
+                   "off topic, bring them back to the case.")
 # The interviewer leads the opening and decides when to start the case. These notes, by elapsed
 # time, only remind her; the engine never forces the case.
 INTRO_NOTES = (
@@ -125,9 +145,11 @@ INTRO_NOTES = (
              "case' and call start_case."),
 )
 INTERRUPTED_NOTE = ("[ENGINE NOTE] The candidate cut you off. The last thing they heard was “…{heard_tail}”. "
-                    "They did not hear the rest: “{missed}”. Respond to what they say now. When they are ready "
-                    "to go on, pick up where you were cut off as a person would: a few words to bridge back (for "
-                    "example 'Sure. As I was saying, …'), then the rest in your own words, without starting over.")
+                    "They did not hear the rest: “{missed}”. Respond to what they say now. If what they missed "
+                    "matters, pick it up when they are ready, as a person would: a few words to bridge back (for "
+                    "example 'Sure. As I was saying, …'), then the rest in your own words, without starting over. "
+                    "If it was only an acknowledgement, let it go.")
+UNHEARD_MS = 1000  # a reply cut off sooner said nothing of substance: treat it as never said
 GUARD_PROMPT = ("You just started to give away part of the answer. In one short sentence, hand the floor back without "
                 "repeating any of it, for example 'Actually, I'll let you lead. How would you approach it?'")
 GUARD_EXEMPT = {"greeting", "case_brief", "guard"}  # replies the live guard does not check
@@ -135,7 +157,9 @@ GUARD_EXEMPT = {"greeting", "case_brief", "guard"}  # replies the live guard doe
 # called. On WebRTC every word the model generates is played, and speech before a tool call comes out as a
 # "commentary" preamble that the answer can then repeat. With a tool available on the greeting, the model
 # greeted as a preamble, called start_case or skipped the greeting in 5 of 7 runs; with none, 0 of 80 (evals).
-SPEECH_ONLY = {"greeting", "wait_ack", "think_checkin", "nudge", "repeat", "guard", "case_brief", "tool_ack"}
+SPEECH_ONLY = {"greeting", "wait_ack", "think_checkin", "nudge", "repeat", "guard", "case_brief", "tool_ack",
+               "fact_answer", "resume"}
+FOLLOW_UP_RANK = ("case_brief", "fact_answer", "tool_ack")  # one spoken follow-up per reply, the most important
 STEERED = {"end_of_speech", "short_answer", "hand_back", "watchdog", "typed"}  # replies to the candidate
 
 
@@ -216,26 +240,29 @@ def sanitize(raw: dict) -> dict:
             continue
         s[key] = value
     s["silence_ms"] = max(200, min(3000, s["silence_ms"]))
+    s["case_silence_ms"] = 0 if s["case_silence_ms"] <= 0 else max(200, min(3000, s["case_silence_ms"]))
     s["threshold"] = max(0.1, min(0.95, s["threshold"]))
     return s
+
+
+def turn_detection(s: dict, silence_ms: int) -> dict:
+    """The whole turn_detection object, every time: a partial update could switch auto replies back on."""
+    if s["vad"] == "semantic":  # a model judges whether they finished, so a mid-thought pause need not end the turn
+        detection = {"type": "semantic_vad", "eagerness": "auto"}
+    else:
+        detection = {"type": "server_vad", "threshold": s["threshold"], "prefix_padding_ms": PREFIX_PADDING_MS,
+                     "silence_duration_ms": silence_ms}
+    return {**detection, "create_response": False, "interrupt_response": False}
 
 
 def initial_session(s: dict) -> dict:
     """Sent with the SDP offer. Turn detection is set here so no auto-reply can happen
     before the sideband connects."""
-    if s["vad"] == "semantic":  # a model judges whether they finished, so a mid-thought pause need not end the turn
-        detection = {"type": "semantic_vad", "eagerness": "auto"}
-    else:
-        detection = {"type": "server_vad", "threshold": s["threshold"], "prefix_padding_ms": PREFIX_PADDING_MS,
-                     "silence_duration_ms": s["silence_ms"]}
     return {
         "type": "realtime",
         "model": s["model"],
         "instructions": BASE_INSTRUCTIONS,
-        "audio": {
-            "input": {"turn_detection": {**detection, "create_response": False, "interrupt_response": False}},
-            "output": {"voice": s["voice"]},
-        },
+        "audio": {"input": {"turn_detection": turn_detection(s, s["silence_ms"])}, "output": {"voice": s["voice"]}},
     }
 
 
@@ -246,7 +273,8 @@ class Call:
         self.id, self.settings, self.probes = call_id, settings, probes
         server_vad = settings["vad"] == "server"  # its timestamps include padding and the silence window
         self.state = turns.TurnState(prefix_padding_ms=PREFIX_PADDING_MS if server_vad else 0,
-                                     silence_ms=settings["silence_ms"] if server_vad else 0)
+                                     silence_ms=settings["silence_ms"] if server_vad else 0,
+                                     case_silence_ms=settings["case_silence_ms"] if server_vad else 0)
         self.queue: asyncio.Queue = asyncio.Queue()
         self.ws: aiohttp.ClientWebSocketResponse | None = None
         self.ui: set[web.WebSocketResponse] = set()
@@ -269,7 +297,9 @@ class Call:
         self.note_n = 0
         self.note_id: str | None = None
         self.last_interviewer = ""
-        self.candidate_said = ""                 # everything the candidate has said, for the fact gates
+        self.candidate_said = ""                 # everything the candidate has said, for the guard
+        self.released: set[str] = set()          # facts lookup_fact has given out
+        self.last_candidate = ""                 # their latest words, so the matcher keeps to their level of detail
         self.sent_reasons: list[str] = []        # reasons of response.create calls not yet created
         self.current_reason: str | None = None   # reason of the response being generated
         self.current_text = ""                   # its transcript so far
@@ -284,6 +314,7 @@ class Call:
         self.current_item: str | None = None     # interviewer item being generated
         self.guard_items: set[str] = set()       # items the guard cut on purpose
         self.analyzer_ms: list[float] = []
+        self.fact_ms: list[float] = []
         self.analyzer_source = {"llm": 0, "fallback": 0}
         self.started = time.strftime("%Y%m%d-%H%M%S")
         RESULTS.mkdir(exist_ok=True)
@@ -439,6 +470,10 @@ class Call:
                 e["ms"] / 1000, self.queue.put_nowait, {"type": "timer", "kind": e["kind"], "gen": e["gen"]})
         elif do == "mode":
             await self.ui_send({"type": "mode", "mode": e["mode"]})
+        elif do == "silence":
+            await self.send({"type": "session.update", "session": {"type": "realtime", "audio": {"input": {
+                "turn_detection": turn_detection(self.settings, e["ms"])}}}}, eid=self.next_id("silence"))
+            await self.ui_send({"type": "engine", "text": f"silence window → {e['ms']} ms for the case"})
         elif do == "metric":
             self.counts[e["name"]] = self.counts.get(e["name"], 0) + 1
             await self.ui_send({"type": "engine", "text": e["name"].replace("_", " ")})
@@ -482,11 +517,8 @@ class Call:
         A small LLM decides; keyword rules take over if it fails or is slow."""
         start, source = now_ms(), "llm"
         try:
-            body = {"model": ANALYZER_MODEL, "temperature": 0, "max_tokens": 40,
-                    "response_format": {"type": "json_object"},
-                    "messages": [{"role": "system", "content": ANALYZER_PROMPT},
-                                 {"role": "user", "content": f"Interviewer's last words: "
-                                                             f"{self.last_interviewer or '(none)'}\nCandidate: {text}"}]}
+            body = facts.chat_body(ANALYZER_MODEL, ANALYZER_PROMPT, f"Interviewer's last words: "
+                                   f"{self.last_interviewer or '(none)'}\nCandidate: {text}", 40)
             async with HTTP.post("https://api.openai.com/v1/chat/completions", json=body, headers=auth(),
                                  timeout=aiohttp.ClientTimeout(total=ANALYZER_TIMEOUT_S)) as r:
                 data = await r.json()
@@ -532,6 +564,7 @@ class Call:
             if started is not None:
                 self.transcript_ms.append(now - started)
             self.candidate_said += " " + ev.get("transcript", "")
+            self.last_candidate = ev.get("transcript", "")
             await self.ui_send({"type": "transcript", "role": "candidate", "text": ev.get("transcript", "")})
         elif t == "response.created":
             if self.turn is not None and "create_sent" in self.turn and "created" not in self.turn:
@@ -563,7 +596,7 @@ class Call:
             await self.ui_send({"type": "delta", "role": "interviewer", "item_id": ev.get("item_id"),
                                 "text": ev.get("delta", "")})
             if self.state.stage == "case" and not self.guarded and self.current_reason not in GUARD_EXEMPT:
-                hit = guard.check(self.current_text, self.candidate_said)
+                hit = guard.check(self.current_text, self.candidate_said, CASE, self.released)
                 if hit:
                     self.guarded = True
                     asyncio.create_task(self.stop_leak(hit))
@@ -593,6 +626,9 @@ class Call:
             await self.settle(ev.get("response") or {})
         elif t == "error":
             err = ev.get("error") or {}
+            if err.get("code") == "response_cancel_not_active":  # the reply finished as the cancel went out
+                self.counts["cancel_raced"] = self.counts.get("cancel_raced", 0) + 1
+                return
             await self.ui_send({"type": "error", "message": err.get("message"), "event_id": err.get("event_id")})
 
     async def settle(self, response: dict) -> None:
@@ -604,8 +640,8 @@ class Call:
         if rec is None:
             return
         if response.get("status") == "completed":
-            for call in rec["calls"]:
-                await self.on_tool_call(call, spoke=rec["spoke"])
+            if rec["calls"]:  # a task: lookup_fact waits on a matcher call and must not hold up the event loop
+                asyncio.create_task(self.run_tools(rec["calls"], spoke=rec["spoke"]))
             return
         if not self.seen_audio_buffer_events:
             return  # cannot tell what was played
@@ -623,10 +659,16 @@ class Call:
             await self.ui_send({"type": "engine", "text": "reply cancelled before it was heard: removed from the "
                                                           "conversation"})
 
-    async def on_tool_call(self, item: dict, spoke: bool) -> None:
+    async def run_tools(self, calls: list[dict], spoke: bool) -> None:
+        """Run a completed reply's tool calls in order, then ask for one spoken follow-up: tools are called
+        silently and she speaks after the results, once, however many tools ran."""
+        wanted = [r for r in [await self.on_tool_call(call, spoke) for call in calls] if r]
+        if wanted:
+            self.queue.put_nowait({"type": "say", "reason": min(wanted, key=FOLLOW_UP_RANK.index)})
+
+    async def on_tool_call(self, item: dict, spoke: bool) -> str | None:
         """The interviewer decided something should happen; the engine checks it is allowed and does it.
-        Tools are called silently and she speaks after the result, so every tool that needs words gets
-        exactly one spoken follow-up (none if she already spoke in the same reply)."""
+        Returns the follow-up she should speak, if any (none for a wait she already acknowledged)."""
         name, call_id = item.get("name"), item.get("call_id")
         try:
             args = json.loads(item.get("arguments") or "{}")
@@ -637,22 +679,39 @@ class Call:
         if name == "start_case":
             if self.state.stage == "case":
                 await self.tool_output(call_id, {"ok": False, "detail": "The case has already started."})
-                return
+                return None
             self.queue.put_nowait({"type": "case_started"})
             await self.tool_output(call_id, {"case_brief": CASE_BRIEF})
-            self.queue.put_nowait({"type": "say", "reason": "case_brief"})  # the turn rules pick the moment
             await self.ui_send({"type": "engine", "text": "interviewer called start_case: presenting the case"})
+            return "case_brief"
         elif name == "wait_for_candidate":
             wait_ms = turns.wait_ms_for(args.get("seconds"))
             self.queue.put_nowait({"type": "tool_wait", "wait_ms": wait_ms})
             await self.tool_output(call_id, {"ok": True, "waiting_seconds": round(wait_ms / 1000),
                                              **({} if spoke else {"next": WAIT_RESULT})})
-            if not spoke:
-                self.queue.put_nowait({"type": "say", "reason": "tool_ack"})
             await self.ui_send({"type": "engine",
                                 "text": f"interviewer called wait_for_candidate: check in after {round(wait_ms / 1000)} s"})
+            return None if spoke else "tool_ack"
+        elif name == "lookup_fact":
+            question = str(args.get("question") or "")[:300]
+            if self.state.stage != "case":
+                await self.tool_output(call_id, {"facts": [], "say": "The case has not started yet; there is "
+                                                                     "nothing to look up."})
+                return "fact_answer"
+            self.candidate_said += " " + question  # her restatement: cleaner than the transcript, for the guard
+            start = now_ms()
+            result = await facts.lookup(HTTP, auth(), CASE, question, self.released, said=self.last_candidate)
+            ms = round(now_ms() - start)
+            self.fact_ms.append(ms)
+            self.counts[f"fact_{result['status']}"] = self.counts.get(f"fact_{result['status']}", 0) + 1
+            self.log("fact", {"question": question, **result, "ms": ms})
+            await self.tool_output(call_id, {k: result[k] for k in ("facts", "say")})
+            told = "; ".join(result.get("ids", [])) or result["status"]
+            await self.ui_send({"type": "engine", "text": f"lookup_fact “{question[:60]}” → {told} ({ms} ms)"})
+            return "fact_answer"
         else:
             await self.tool_output(call_id, {"ok": False, "detail": f"Unknown tool {name}."})
+        return None
 
     async def tool_output(self, call_id: str, result: dict) -> None:
         await self.send({"type": "conversation.item.create", "item": {
@@ -680,6 +739,18 @@ class Call:
         pick up from there instead of losing her place."""
         if not item_id or item_id in self.guard_items or heard_ms is None:
             return  # cut by the guard on purpose
+        if heard_ms < UNHEARD_MS:
+            # A word at most ("Okay,"): nothing to pick up. Treat it as never said, so she does not resume an
+            # acknowledgement ("As I was saying, got it", 22 Oct voice test).
+            gone = [item_id] + (self.spoken_items[self.spoken_items.index(item_id) + 1:]
+                                if item_id in self.spoken_items else [])
+            for unheard in gone:
+                await self.send({"type": "conversation.item.delete", "item_id": unheard}, eid=self.next_id("unheard"))
+                if unheard in self.spoken_items:
+                    self.spoken_items.remove(unheard)
+            await self.ui_send({"type": "retract", "item_ids": gone})
+            self.counts["barely_heard_dropped"] = self.counts.get("barely_heard_dropped", 0) + 1
+            return
         heard, missed = turns.heard_portion(self.item_text.get(item_id, ""), heard_ms)
         # Messages queued behind the cut one were never played: drop them from her memory, since a fact
         # only counts as said if it was heard, and tell her what the candidate missed.
@@ -751,7 +822,7 @@ class Call:
         self.usage["responses"] += 1
         if response.get("status") == "cancelled":
             self.usage["cancelled"] += 1
-        p = PRICES
+        p = MODEL_PRICES.get(self.settings["model"], PRICES)
         self.cost_usd += (max(0, text_in - cached_text) * p["text_in"] + cached_text * p["text_in_cached"]
                           + max(0, audio_in - cached_audio) * p["audio_in"] + cached_audio * p["audio_in_cached"]
                           + text_out * p["text_out"] + audio_out * p["audio_out"]) / 1e6
@@ -776,6 +847,8 @@ class Call:
             "silence_window_ms": self.settings["silence_ms"],
             "analyzer": {"model": ANALYZER_MODEL, "latency_ms": stats(self.analyzer_ms),
                          "sources": self.analyzer_source},
+            "fact_gate": {"model": facts.MATCH_MODEL, "latency_ms": stats(self.fact_ms),
+                          "released": sorted(self.released)},
             "counts": self.counts,
             "usage": self.usage,
             "cached_share_of_input": round(cached_share, 3) if cached_share is not None else None,
@@ -837,6 +910,7 @@ class Call:
         try:
             return describe(await asyncio.wait_for(fut, timeout))
         except asyncio.TimeoutError:
+            
             return {"ok": None, "detail": f"no answer within {timeout:.0f} s"}
 
     async def browser_control_check(self) -> None:
@@ -882,6 +956,7 @@ class Call:
                 "type": "message", "role": "user", "content": [{"type": "input_text", "text": text}]}},
                 eid=self.next_id("typed"))
             self.candidate_said += " " + text
+            self.last_candidate = text
             await self.ui_send({"type": "transcript", "role": "candidate", "text": f"{text} (typed)"})
             self.queue.put_nowait({"type": "typed"})
         elif kind == "simulate_interrupt":

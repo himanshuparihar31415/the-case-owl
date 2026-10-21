@@ -10,7 +10,9 @@ browser ⇄ OpenAI over WebRTC; this server only steers, over the sideband.
 | `test_turns.py` | 43 scenario tests: opening with no turn limit, the interviewer's tool calls, pauses mid-turn, one reply at a time, unclear turns, cough vs barge-in by voiced time, short "yes", requests for time, listening mode, nudge ladder, watchdog |
 | `guard.py`, `test_guard.py` | The live guard (layer 3 of the leak defence) and its 8 tests: self-answering, unasked facts, and naming a branch of the case before the candidate does |
 | `server.py` | aiohttp server: SDP exchange with the server-side key, sideband per call, probes, latency and cost logging |
-| `evals.py` | Behaviour evals: 9 scenarios, each run N times against the same prompts, tools and engine rules as `server.py` (text in, audio out). A behaviour counts as fixed only when it passes every run |
+| `facts.py`, `cases/coffee.json` | The fact gate: the case's facts as a tree of data, matched one at a time at the level of detail asked |
+| `bench.py` | Picks the small text models (fact matcher, listening analyzer) by accuracy and latency on their real tasks |
+| `evals.py` | Behaviour evals: 16 scenarios, each run N times against the same prompts, tools and engine rules as `server.py` (text in, audio out). A behaviour counts as fixed only when it passes every run |
 | `client.html` | The test page: WebRTC call, live transcript, engine decisions, per-turn latency, cost, probe results |
 
 ## Run
@@ -267,6 +269,60 @@ What this does not solve: OpenAI still stops her on any sound, so a cough costs 
 while she resumes. Letting her talk through coughs needs the engine to own voice detection:
 `turn_detection` off, a VAD in the browser (or on our media path), manual commits. That is a
 phase 1 decision.
+
+### Seventh iteration — 22 Oct 2026: the fact gate (voice test at 00:22)
+
+"Has there been an increase in the costs, fixed or variable?" got every cost fact at once: beans
++35%, the supplier change (the root cause), labour +3% and rent flat. Root cause: she held all the
+facts as one flat list, unlocked as a bundle by the word "cost". The guard used the same coarse
+topic gate, so it let it through. Prompt rules ("answer only the fact asked for") cannot fix
+that, because the model holds the answer.
+
+Fix: the plan's accuracy rule, pulled into the spike. She holds only the case statement.
+- **Facts are a tree of case data** ([cases/coffee.json](cases/coffee.json)): cost total → fixed or
+  variable → which variable costs → beans +35% → why (supplier). Phase 2 generates this per case.
+- **`lookup_fact(question)`**: [facts.py](facts.py) matches her restatement of the question to one
+  fact at the level of detail asked. A broad question gets the broad fact and nothing below it.
+  The matcher (`gpt-5.4-nano`, no reasoning) sees what each fact covers, never the answers.
+  Code decides the rest:
+  - Prerequisites: the cause only after what it explains.
+  - At most two facts, and only side by side in one branch.
+  - A failure says "can't check that now" and never invents.
+- **The guard is case data, not code.** Each fact's telltale terms are blocked until it is
+  released. A case's "leads" (branch names such as costs or ingredients) are blocked until the
+  candidate raises them.
+- Also from this run:
+  - A reply cut off in its first second is treated as never said, so no more "As I was saying,
+    got it".
+  - "Is this correct?" now gets a neutral acknowledgement, not "I can't confirm a framework… ask
+    for a specific fact".
+  - A Hindi transcript counts as speech, not silence.
+  - A cancel that loses the race with a finished reply is no longer shown as an error.
+
+Measured: the matcher benchmark (16 questions from broad to specific, plus fishing, out of case
+and opinion) scored 48/48 on gpt-5.4-nano over 3 runs, p50 about 1 s from India. Evals: the 9
+earlier scenarios still passed 45/45. Then the OpenAI account ran out of credits mid-run. Before
+that, the new broad cost question failed 2 of 5: her restatement blended two asks and the
+matcher returned two facts from different branches (now blocked in code). The new granularity
+scenarios (`drill_down`, `specific_question`, `cause_question`, `fishing_for_the_cause`,
+`fact_not_in_the_case`, `framework_check`) still need a full run.
+
+Cost of the gate: a fact question now takes about 1 s more (tool call, then matcher, then
+answer). From a laptop in India each OpenAI round trip is about 300 ms; hosted next to OpenAI,
+as the plan says, most of that goes.
+
+### Review pass — 22 Oct 2026: every segment against the logs
+
+| Segment | Finding | Change |
+|---|---|---|
+| Fact gate | Her restatement can broaden the question. The matcher saw only her words | The matcher also gets the candidate's own words and keeps to their level of detail. No lookups before the case starts |
+| Guard data | Topic words ("visits", "ticket") were gated like facts, so "what about visits?" could be cut off | A fact's terms are now only words that reveal its content (a figure, a cause), never its topic |
+| Turn end in the case | Mid-framework pauses of 1.1–1.4 s got four premature replies at a 1,000 ms window | Case-stage window, 1,300 ms by default. Switched by a full `turn_detection` update when the case starts, since a partial update could turn auto replies back on |
+| Listening mode | Empty transcripts went to the analyzer (two LLM calls for "") | Held without a call |
+| Transcription | Many empty or wrong transcripts ("covalent", "copy", "I'm doing the hourly"). The engine's unclear-turn, analyzer and guard decisions run on them | A setting to A/B `gpt-realtime-whisper`, `gpt-4o-transcribe` and `gpt-4o-mini-transcribe` (voice test) |
+| Felt latency | p50 0 ms: on speakers her own voice counted as the candidate talking | Mic activity while she plays, or just after, is ignored |
+| Small models | The analyzer request worked only on older models | One request builder for 4o, 5.x and the Luna models. `bench.py` compares them on the matcher's and analyzer's real tasks |
+| Voice cost | About $0.25 per 3.4 minutes on 2.1, so about $2.20 per 30-minute interview | `gpt-realtime-2.1-mini` (about a third of the audio price) is selectable; cost is now priced per model. Quality: `evals.py --model gpt-realtime-2.1-mini` |
 
 ### Still to run
 

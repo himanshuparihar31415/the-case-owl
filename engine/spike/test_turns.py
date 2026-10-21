@@ -83,6 +83,20 @@ class Interruptions(unittest.TestCase):
         self.assertEqual(turns.heard_portion("Short reply.", 60_000), ("Short reply.", ""))
 
 
+class CaseStage(unittest.TestCase):
+    def test_the_case_gets_the_longer_silence_window(self):
+        s = TurnState(stage="intro", prefix_padding_ms=400, silence_ms=1000, case_silence_ms=1300)
+        out = handle(s, {"type": "case_started"})
+        self.assertIn({"do": "silence", "ms": 1300}, out)
+        handle(s, {"type": "speech_started", "audio_start_ms": 0})
+        handle(s, {"type": "speech_stopped", "audio_end_ms": 2700})
+        self.assertEqual(s.last_duration_ms, 1000)  # voiced time uses the new window
+
+    def test_one_window_when_none_is_set_for_the_case(self):
+        s = TurnState(stage="intro", silence_ms=1000)
+        self.assertEqual(handle(s, {"type": "case_started"}), [{"do": "stage", "stage": "case"}])
+
+
 class InterviewerTools(unittest.TestCase):
     def test_wait_for_candidate_enters_listening_for_that_long(self):
         s = in_case()
@@ -195,6 +209,12 @@ class ListeningMode(unittest.TestCase):
         self.assertEqual(utterance(s, "i2", 9000, 12000), [])
         out = handle(s, {"type": "transcript", "item_id": "i2", "text": "hmm revenue is price times volume"})
         self.assertEqual(out, [{"do": "analyze", "item_id": "i2", "text": "hmm revenue is price times volume"}])
+
+    def test_an_empty_transcript_is_not_sent_to_the_analyzer(self):  # 22 Oct voice test: two LLM calls for ""
+        s, _ = self.listening()
+        utterance(s, "i2", 9000, 12000)
+        self.assertEqual(handle(s, {"type": "transcript", "item_id": "i2", "text": ""}),
+                         [{"do": "metric", "name": "listening_hold"}])
 
     def test_still_thinking_stays_silent(self):
         s, _ = self.listening()
