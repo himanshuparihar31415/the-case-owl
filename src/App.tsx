@@ -15,6 +15,7 @@ import Companies from './pages/companies/Companies';
 import CompanyDetail from './pages/companies/CompanyDetail';
 import GroupDiscussion from './pages/interview/GroupDiscussion';
 import ResumeInterview from './pages/interview/ResumeInterview';
+import ResumeSession from './pages/interview/ResumeSession';
 import GeneralInterview from './pages/interview/GeneralInterview';
 import RequestAccess from './pages/RequestAccess';
 import AuthModal from './components/auth/AuthModal';
@@ -87,7 +88,9 @@ function AppContent() {
           {/* Keyed per navigation so Case -> Guesstimate re-reads the module passed via router state. */}
           <Route path="/config" element={<ConfigRoute />} />
           <Route path="/session/:sessionId" element={<Session />} />
+          <Route path="/session/resume/:sessionId" element={<ResumeSession />} />
           <Route path="/report/:sessionId" element={<Report />} />
+          <Route path="/report/resume/:sessionId" element={<Report />} />
           <Route path="/learn" element={<Learn />} />
           <Route path="/lesson/:habitTag" element={<Lesson />} />
           <Route path="/billing" element={<Billing user={user} />} />

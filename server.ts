@@ -24,6 +24,7 @@ import analyticsRoutes from './server/modules/analytics/analytics.routes.js';
 import coachingRoutes from './server/modules/coaching/coaching.routes.js';
 import billingRoutes from './server/modules/billing/billing.routes.js';
 import adminRoutes from './server/modules/admin/admin.routes.js';
+import resumeRoutes from './server/modules/resume/resume.routes.js';
 import { webhook as razorpayWebhook } from './server/modules/billing/billing.controller.js';
 import { seedPlans } from './server/modules/billing/plans.service.js';
 import { setupVoiceWebSocket } from './server/modules/voice/voice.ws.js';
@@ -61,6 +62,7 @@ app.use('/api/analytics', analyticsRoutes);
 app.use('/api/coaching', coachingRoutes);
 app.use('/api/billing', billingRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/resume-interviews', resumeRoutes);
 
 app.use(errorHandler);
 
@@ -79,7 +81,7 @@ setupVoiceWebSocket(wss);
 httpServer.on('upgrade', (req, socket, head) => {
   const pathname = new URL(req.url ?? '', `http://${req.headers.host}`).pathname;
   console.log('WS upgrade request:', pathname);
-  if (pathname === '/api/voice') {
+  if (pathname === '/api/voice' || pathname === '/api/resume-interviews/voice') {
     wss.handleUpgrade(req, socket, head, (ws) => {
       wss.emit('connection', ws, req);
     });

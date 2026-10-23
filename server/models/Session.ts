@@ -36,6 +36,9 @@ export interface ISession extends Document {
   thinkingPauses?: unknown[];     // §7.3 (positive signal)
   reprompts?: unknown[];          // §7.3
   integrityFlags?: unknown[];     // §13
+  // Everything that defines this interview (instructions, setup, resume brief, turns,
+  // connection events). Read/written only via modules/interviewContext/context.store.ts.
+  interviewContext?: unknown;
   // Credits (minutes) held for this session at start; settled (consumed +
   // released) exactly once when the session ends or is abandoned.
   reservedMinutes?: number;
@@ -80,6 +83,7 @@ const SessionSchema = new Schema<ISession>(
     thinkingPauses: { type: [Schema.Types.Mixed], default: undefined },
     reprompts: { type: [Schema.Types.Mixed], default: undefined },
     integrityFlags: { type: [Schema.Types.Mixed], default: undefined },
+    interviewContext: { type: Schema.Types.Mixed },
     reservedMinutes: { type: Number, default: 0 },
     settled: { type: Boolean, default: false },
     startedAt: { type: Date, default: Date.now },

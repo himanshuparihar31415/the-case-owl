@@ -3,7 +3,7 @@ import mongoose, { Document, Schema } from 'mongoose';
 export type CaseType = 'profitability' | 'market_entry' | 'ma' | 'growth' | 'pricing' | 'operations';
 export type Industry = 'tech' | 'cpg' | 'pharma' | 'finance' | 'energy' | 'automotive' | 'retail';
 
-export type InterviewModule = 'case' | 'product' | 'guesstimate';
+export type InterviewModule = 'case' | 'product' | 'guesstimate' | 'resume';
 
 export interface ICase extends Document {
   title: string;
@@ -39,6 +39,11 @@ export interface ICase extends Document {
   answerKey?: string;
   commonWrongTurns?: string[];
   forbiddenTerms?: string[]; // mechanism jargon + key figures the candidate must self-discover (supervisor)
+  // Resume-based interview: structured brief extracted from the candidate's resume
+  // (the raw resume text is never stored), plus the setup they chose.
+  resumeBrief?: unknown;
+  resumeRole?: string;
+  resumeTopics?: string[];
   isSeeded: boolean;
   generatedAt: Date;
   isCustom: boolean;
@@ -48,7 +53,7 @@ export interface ICase extends Document {
 const CaseSchema = new Schema<ICase>(
   {
     title: { type: String, required: true },
-    module: { type: String, enum: ['case', 'product', 'guesstimate'], default: 'case', index: true },
+    module: { type: String, enum: ['case', 'product', 'guesstimate', 'resume'], default: 'case', index: true },
     subType: { type: String },
     prompt: { type: String },
     // Optional: consulting cases set these; product/guesstimate modules don't.
@@ -76,6 +81,9 @@ const CaseSchema = new Schema<ICase>(
     answerKey: { type: String },
     commonWrongTurns: { type: [String] },
     forbiddenTerms: { type: [String] },
+    resumeBrief: { type: Schema.Types.Mixed },
+    resumeRole: { type: String },
+    resumeTopics: { type: [String], default: undefined },
     isSeeded: { type: Boolean, default: false },
     generatedAt: { type: Date, default: Date.now },
     isCustom: { type: Boolean, default: false },

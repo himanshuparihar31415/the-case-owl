@@ -130,7 +130,34 @@ export const HABIT_META: Record<string, HabitMeta> = {
     skillMatch: /segment|split|group|cohort|breakdown/i,
     stageMatch: /segment|structur/i,
   },
+
+  // ── Resume-based interview (own list, see RESUME_HABITS) ──
+  vague_ownership: {
+    label: 'Vague on personal contribution',
+    skill: 'Ownership',
+    intro: 'Interviewers want to know what YOU did, not what the team did. Strong answers say "I" for the decisions you owned and "we" only for what was shared.',
+    skillMatch: /owner|contribut|role|decision|I/i,
+    stageMatch: /./,
+  },
+  no_impact: {
+    label: 'Impact not quantified',
+    skill: 'Quantified impact',
+    intro: 'A result without a number is easy to forget. Strong answers close the story with a measurable outcome and what changed because of it.',
+    skillMatch: /impact|result|outcome|metric|number|quantif/i,
+    stageMatch: /./,
+  },
+  weak_story_structure: {
+    label: 'Rambling story structure',
+    skill: 'Story structure',
+    intro: 'Good resume answers follow a tight arc: situation, your action, the result, the lesson. These model answers keep the headline up front and the detail on demand.',
+    skillMatch: /story|structure|situation|star|narrat|concise/i,
+    stageMatch: /./,
+  },
 };
+
+// Habit tags the evaluator uses for resume-based interviews. Kept out of
+// HABITS_BY_MODULE so the coaching layer (which keys frameworks by module) is untouched.
+export const RESUME_HABITS = ['vague_ownership', 'no_impact', 'weak_story_structure', 'invent_number', 'weak_synthesis', 'clarity'];
 
 // Which habits each broader category surfaces (ordered by how commonly they matter).
 export const HABITS_BY_MODULE: Record<HabitModule, string[]> = {

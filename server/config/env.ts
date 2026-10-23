@@ -8,6 +8,11 @@ const envSchema = z.object({
   JWT_EXPIRES_IN: z.string().default('7d'),
   OPENAI_API_KEY: z.string().optional(),
   // PM pipeline TTS = ElevenLabs (STT + LLM still reuse OPENAI_API_KEY).
+  // Resume interview runs on the OpenAI Realtime API (speech-to-speech).
+  OPENAI_REALTIME_MODEL: z.string().default('gpt-realtime-2'),
+  OPENAI_REALTIME_VOICE: z.string().default('cedar'),
+  // minimal | low | medium | high | xhigh. Lower = snappier voice replies.
+  OPENAI_REALTIME_REASONING: z.enum(['minimal', 'low', 'medium', 'high', 'xhigh']).default('low'),
   ELEVENLABS_API_KEY: z.string().optional(),
   ELEVENLABS_VOICE_ID: z.string().default('oO7sLA3dWfQXsKeSAjpA'),
   ELEVENLABS_MODEL_ID: z.string().default('eleven_turbo_v2_5'),

@@ -34,7 +34,7 @@ const INTERVIEW_CHILDREN: Leaf[] = [
   { label: 'Case Interview', to: '/config', state: { module: 'case' }, Icon: Briefcase, active: (p, m) => (p === '/config' && (m ?? 'case') === 'case') || p === '/library' },
   { label: 'Guesstimate', to: '/config', state: { module: 'guesstimate' }, Icon: Calculator, active: (p, m) => p === '/config' && m === 'guesstimate' },
   { label: 'Group Discussion (GD)', to: '/interview/gd', Icon: Users, soon: true, active: (p) => p === '/interview/gd' },
-  { label: 'Resume-Based Interview', to: '/interview/resume', Icon: FileText, soon: true, active: (p) => p === '/interview/resume' },
+  { label: 'Resume-Based Interview', to: '/interview/resume', Icon: FileText, active: (p) => p === '/interview/resume' || p.startsWith('/session/resume/') },
   { label: 'General Interview', to: '/interview/general', Icon: MessageSquare, soon: true, active: (p) => p === '/interview/general' },
 ];
 
@@ -64,11 +64,10 @@ function SidebarBody({
     collapsed ? 'justify-center p-2' : 'px-2.5 py-2',
     active ? 'bg-primary text-on-primary' : 'text-primary hover:bg-surface-container-low',
   );
-  const tile = (active: boolean, hero = false) => cn(
+  const tile = (active: boolean) => cn(
     'w-9 h-9 rounded-lg flex items-center justify-center shrink-0',
-    hero && !active ? 'text-white' : active ? 'bg-white/15 text-white' : 'bg-on-tertiary-container/10 text-on-tertiary-container',
+    active ? 'bg-white/15 text-white' : 'bg-on-tertiary-container/10 text-on-tertiary-container',
   );
-  const heroBg = { background: 'linear-gradient(150deg,#08aae4,#002046)' };
 
   return (
     <div className="flex flex-col h-full">
@@ -139,9 +138,9 @@ function SidebarBody({
           </AnimatePresence>
         </div>
 
-        {/* 3. Company-Specific Interview — the one we lead with */}
+        {/* 3. Company-Specific Interview */}
         <Link to="/companies" onClick={onNavigate} title="Company-Specific Interview" className={primaryRow(companiesActive)}>
-          <span className={tile(companiesActive, true)} style={companiesActive ? undefined : heroBg}>
+          <span className={tile(companiesActive)}>
             <Building2 className="w-[18px] h-[18px]" />
           </span>
           {!collapsed && <span className="font-headline font-bold text-sm leading-tight">Company-Specific Interview</span>}

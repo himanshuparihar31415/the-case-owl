@@ -412,7 +412,7 @@ export async function generateReport(sessionId: string, userId: string): Promise
   );
 
   const kindLabel = caseDoc.type ?? caseDoc.module ?? 'case';
-  const difficultyLabel = `${DIFFICULTY_LABELS[session.config.difficulty] ?? 'Intermediate'} ${kindLabel} ${caseDoc.module === 'guesstimate' ? '' : 'case'}`.trim();
+  const difficultyLabel = `${DIFFICULTY_LABELS[session.config.difficulty] ?? 'Intermediate'} ${kindLabel} ${caseDoc.module === 'guesstimate' || caseDoc.module === 'resume' ? '' : 'case'}`.trim();
   const durationLabel = `${Math.floor(durationSeconds / 60)}m ${durationSeconds % 60}s`;
 
   // Kick the case-tree build off NOW, concurrently with the evaluation — it only

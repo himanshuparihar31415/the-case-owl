@@ -43,7 +43,7 @@ export default function AppShell({ user, onLogout }: AppShellProps) {
     <div className="min-h-screen flex flex-col">
       <Navbar
         inShell
-        showTimer={isSession}
+        showTimer={isSession && !pathname.startsWith('/session/resume/')}
         isAuthenticated
         onLogout={onLogout}
         onMenuClick={() => setMobileOpen(true)}

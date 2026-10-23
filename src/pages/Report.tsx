@@ -1,10 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   CheckCircle, AlertCircle, AlertTriangle, Loader2, ArrowRight, Download,
-  RefreshCw, ChevronDown, FileText, X, GraduationCap,
+  RefreshCw, RotateCcw, ChevronDown, FileText, X, GraduationCap,
 } from 'lucide-react';
 import { cn } from '@/src/lib/utils';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { api } from '@/src/lib/api';
 
 import { ExhibitCard } from '@/src/components/ExhibitCard';
@@ -94,11 +94,15 @@ const norm = (s: any): string => String(s ?? '').toLowerCase().replace(/[^a-z0-9
 
 export default function Report() {
   const { sessionId } = useParams<{ sessionId: string }>();
+  // Resume-interview reports are served under the resume prefix (separate backend route).
+  const isResume = useLocation().pathname.startsWith('/report/resume/');
+  const navigate = useNavigate();
+  const [confirmRestart, setConfirmRestart] = useState(false);
+  const reportPath = isResume ? `/resume-interviews/${sessionId}/report` : `/reports/${sessionId}`;
   const [report, setReport] = useState<ReportData | null>(null);
   const [solution, setSolution] = useState<{ plausibleSolution?: string; solutionTree?: any; idealScript?: any[]; exhibits?: any[]; quant?: any; commonWrongTurns?: string[] } | null>(null);
   const [caseBrief, setCaseBrief] = useState<{ title?: string; type?: string; industry?: string; prompt?: string; scenario?: string; keyDataPoints?: Array<{ label?: string; value?: string }> } | null>(null);
   const [fullTranscript, setFullTranscript] = useState<Array<{ role: string; text: string; timestamp?: string }>>([]);
-  const [supervisor, setSupervisor] = useState<Array<{ verdict: string; term?: string; at?: string }> | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [expandedComp, setExpandedComp] = useState<Set<number>>(new Set());
@@ -115,8 +119,8 @@ export default function Report() {
   const regenerate = () => {
     if (regenLoading) return;
     setRegenLoading(true);
-    api.post(`/reports/${sessionId}/regenerate`)
-      .then(() => api.get<{ report: ReportData; solution: typeof solution; caseBrief: typeof caseBrief; transcript: typeof fullTranscript; supervisor?: typeof supervisor }>(`/reports/${sessionId}`))
+    api.post(`${reportPath}/regenerate`)
+      .then(() => api.get<{ report: ReportData; solution: typeof solution; caseBrief: typeof caseBrief; transcript: typeof fullTranscript}>(reportPath))
       .then((data) => { setReport(data.report); setSolution(data.solution ?? null); setCaseBrief(data.caseBrief ?? null); setIdealTranscript(null); })
       .catch((e) => setError(e instanceof Error ? e.message : 'Failed to regenerate the report.'))
       .finally(() => setRegenLoading(false));
@@ -134,10 +138,10 @@ export default function Report() {
 
   useEffect(() => {
     if (!sessionId) return;
-    api.get<{ report: ReportData; solution: typeof solution; caseBrief: typeof caseBrief; transcript: typeof fullTranscript; supervisor?: typeof supervisor }>(`/reports/${sessionId}`)
-      .then((data) => { setReport(data.report); setSolution(data.solution ?? null); setCaseBrief(data.caseBrief ?? null); setFullTranscript(data.transcript ?? []); setSupervisor(data.supervisor ?? null); setLoading(false); })
+    api.get<{ report: ReportData; solution: typeof solution; caseBrief: typeof caseBrief; transcript: typeof fullTranscript}>(reportPath)
+      .then((data) => { setReport(data.report); setSolution(data.solution ?? null); setCaseBrief(data.caseBrief ?? null); setFullTranscript(data.transcript ?? []); setLoading(false); })
       .catch((err) => { setError(err instanceof Error ? err.message : 'Failed to load report.'); setLoading(false); });
-  }, [sessionId]);
+  }, [sessionId, reportPath]);
 
   // Coaching-loop callback: did the user review a focus lesson before this case?
   useEffect(() => {
@@ -229,19 +233,14 @@ export default function Report() {
   const verdictLine = String(a.overall?.summary ?? report.executiveSummary ?? '');
   const plan: any[] = (a.improvementPlan ?? a.priorityPlan ?? []);
   const badTime = (a.timeManagement ?? []).filter((t: any) => /short|brief|limited|insufficient|long|shallow/i.test(t?.assessment ?? ''));
-  const comm = a.communication ?? {};
-  const hasComm = !!(comm.effectiveness || comm.fluency || comm.vocabulary || (comm.clarityIssues ?? []).length || comm.grammar);
-  const hasAnswerKey = !!(a.candidateSolution || (solution && (solution.plausibleSolution || solution.solutionTree || (Array.isArray(solution.exhibits) && solution.exhibits.length) || (Array.isArray(solution.commonWrongTurns) && solution.commonWrongTurns.length) || (Array.isArray(solution.idealScript) && solution.idealScript.length))));
+  const hasAnswerKey = !isResume && !!(a.candidateSolution || (solution && (solution.plausibleSolution || solution.solutionTree || (Array.isArray(solution.exhibits) && solution.exhibits.length) || (Array.isArray(solution.commonWrongTurns) && solution.commonWrongTurns.length) || (Array.isArray(solution.idealScript) && solution.idealScript.length))));
 
   const ps = a.pillarScore;
   const navTabs = ([
     ['overview', 'Overview'],
-    ps ? ['scorecard', 'Scorecard'] : null,
     a.evaluationTree ? ['casemap', 'Case Map'] : null,
     competencies.length ? ['competencies', 'Structure & Skills'] : null,
-    hasComm ? ['communication', 'Communication'] : null,
     transcriptTurns.length ? ['tape', 'The Tape'] : null,
-    plan.length ? ['onething', 'Your One Thing'] : null,
     hasAnswerKey ? ['answerkey', 'Answer Key'] : null,
   ].filter(Boolean)) as [string, string][];
   const effectiveTab = navTabs.some(([id]) => id === activeTab) ? activeTab : (navTabs[0]?.[0] ?? 'overview');
@@ -309,31 +308,6 @@ export default function Report() {
                 </div>
               )}
 
-              {/* Three-pillar composite verdict */}
-              {ps && !suppressed && (
-                <div className="no-line-card p-5">
-                  <div className="flex items-center justify-between gap-4 mb-4">
-                    <div>
-                      <div className="label-blueprint">Weighted verdict · Nav 40 / Structure 30 / Comms 30</div>
-                      <div className={cn('font-headline text-2xl font-extrabold', DECISION_COLOR[ps.verdict] ?? 'text-primary')}>{ps.verdict}</div>
-                      <div className="text-xs text-secondary">{ps.band} · ~{ps.percentile}th percentile · composite {ps.composite}/10</div>
-                    </div>
-                    <button onClick={() => setActiveTab('scorecard')} className="shrink-0 text-xs font-semibold text-on-tertiary-container hover:underline">Full scorecard →</button>
-                  </div>
-                  <div className="space-y-2.5">
-                    {ps.pillars.map((p: any) => (
-                      <div key={p.key} className="text-sm">
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="text-primary font-medium">{p.label} <span className="text-secondary/60 text-xs">· {p.weightPct}%</span></span>
-                          <span className="font-mono font-bold text-primary shrink-0">{p.raw}/10</span>
-                        </div>
-                        <div className="h-2 bg-surface-container-highest rounded-full overflow-hidden mt-1"><div className={cn('h-full', scoreColor(p.raw))} style={{ width: `${(p.raw / 10) * 100}%` }} /></div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
               {/* Summary + competency pills */}
               <div className="no-line-card p-6 space-y-4">
                 {verdictLine && <p className="text-on-surface-variant leading-relaxed">{verdictLine}</p>}
@@ -365,68 +339,8 @@ export default function Report() {
                   </div>
                 </div>
               </div>
-
-              {/* One-thing teaser */}
-              {plan[0] && (
-                <div className="no-line-card p-5 border-l-4 border-on-tertiary-container">
-                  <div className="flex items-center justify-between gap-3 mb-1">
-                    <p className="label-blueprint text-on-tertiary-container font-bold">Fix this first</p>
-                    <button onClick={() => setActiveTab('onething')} className="text-xs font-semibold text-on-tertiary-container hover:underline">See the drill →</button>
-                  </div>
-                  <p className="text-sm font-bold text-primary">{plan[0].action}</p>
-                </div>
-              )}
             </div>
           </Block>
-
-          {/* ── SCORECARD (three-pillar breakdown) ── */}
-          {ps && (
-            <Block id="scorecard" title="Scorecard" tab="scorecard" activeTab={effectiveTab} action={<span className="label-blueprint">how the verdict is built</span>}>
-              <div className="space-y-4">
-                <div className="no-line-card p-5 flex items-center gap-5">
-                  <div className="text-center shrink-0">
-                    <div className={cn('font-headline text-2xl font-extrabold leading-none', DECISION_COLOR[ps.verdict] ?? 'text-primary')}>{ps.composite}</div>
-                    <div className="label-blueprint mt-1">/ 10</div>
-                  </div>
-                  <div>
-                    <div className={cn('font-bold', DECISION_COLOR[ps.verdict] ?? 'text-primary')}>{ps.verdict} · {ps.band}</div>
-                    <p className="text-xs text-secondary mt-0.5">~{ps.percentile}th percentile. Composite = Navigation×0.40 + Structure×0.30 + Communication×0.30, scored against the rubric bands. Navigation is measured from the case map; Structure &amp; Communication from the transcript.</p>
-                  </div>
-                </div>
-                {ps.pillars.map((p: any) => (
-                  <div key={p.key} className="no-line-card p-5">
-                    <div className="flex items-center justify-between gap-3 mb-3">
-                      <h4 className="font-bold text-primary">{p.label} <span className="text-secondary/60 text-xs font-normal">· {p.weightPct}% of total</span></h4>
-                      <span className="font-headline font-bold text-primary">{p.raw}<span className="text-sm text-secondary">/10</span></span>
-                    </div>
-                    {p.navDetail ? (
-                      <div className="text-sm space-y-2">
-                        <p className="text-on-surface-variant leading-relaxed">
-                          The case map is scored by its own engine — its <b className="text-primary">{p.navDetail.grade}</b> grade sets the band
-                          (<span className="font-mono">{p.navDetail.floor}–{p.navDetail.ceil}</span>), and your <b className="text-primary">{p.navDetail.globalPct}% Global</b> positions you within it.
-                        </p>
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                          {([
-                            ['Grade', p.navDetail.grade],
-                            ['Global', `${p.navDetail.globalPct}%`],
-                            ['Terminals', p.navDetail.terminalsReached != null ? `${p.navDetail.terminalsReached}/${p.navDetail.terminalsTotal}` : '—'],
-                            ['Strong branches', p.navDetail.strongBranches ?? '—'],
-                          ] as [string, any][]).map(([l, v]) => (
-                            <div key={l} className="bg-surface-container-low rounded-lg p-2.5"><div className="font-headline font-bold text-primary">{v}</div><div className="label-blueprint">{l}</div></div>
-                          ))}
-                        </div>
-                        <button onClick={() => setActiveTab('casemap')} className="text-xs font-semibold text-on-tertiary-container hover:underline">Open the case map →</button>
-                      </div>
-                    ) : (
-                      <div className="grid sm:grid-cols-2 gap-x-6 gap-y-3">
-                        {p.subs.map((s: any) => <div key={s.key}><SubBar s={s} /></div>)}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </Block>
-          )}
 
           {/* ── CASE MAP (unchanged) ── */}
           {a.evaluationTree && (
@@ -531,99 +445,6 @@ export default function Report() {
             </Block>
           )}
 
-          {/* ── COMMUNICATION ── */}
-          {hasComm && (
-            <Block id="communication" title="Communication" tab="communication" activeTab={effectiveTab}>
-              <div className="space-y-6">
-                {comm.effectiveness ? (
-                  <div className="no-line-card p-6">
-                    <h4 className="font-bold text-primary mb-1">Communication effectiveness</h4>
-                    <p className="text-[11px] text-secondary mb-4">What real interviewers track — leading with your answer, signposting the plan, and how cleanly you recover under pressure.</p>
-                    <div className="grid grid-cols-2 gap-4 mb-4">
-                      <div className="bg-surface-container-low rounded-lg p-3"><div className="font-headline font-bold text-lg text-primary">{comm.effectiveness.answerStructureRate ?? '—'}%</div><div className="label-blueprint">Led with the answer</div></div>
-                      <div className="bg-surface-container-low rounded-lg p-3"><div className="font-headline font-bold text-lg text-primary">{comm.effectiveness.signpostingRate ?? '—'}%</div><div className="label-blueprint">Signposted the plan</div></div>
-                    </div>
-                    {comm.effectiveness.summary && <p className="text-sm text-on-surface-variant mb-4">{comm.effectiveness.summary}</p>}
-                    {(comm.effectiveness.recoveryInstances ?? []).length > 0 && (
-                      <div className="space-y-2">
-                        <div className="label-blueprint">Recovery under pressure</div>
-                        {comm.effectiveness.recoveryInstances.map((r: any, i: number) => (
-                          <div key={i} className="text-xs flex gap-2">
-                            <span className="font-mono text-on-tertiary-container shrink-0">{r.timestamp}</span>
-                            <span className={cn('font-bold shrink-0 uppercase', r.type === 'clean' ? 'text-green-700' : r.type === 'freeze' ? 'text-error' : 'text-amber-600')}>{r.type}</span>
-                            <span className="text-secondary">{r.situation}{r.note ? ` — ${r.note}` : ''}</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                ) : comm.grammar ? (
-                  <div className="no-line-card p-6">
-                    <div className="flex items-center justify-between mb-3"><h4 className="font-bold text-primary">Grammar &amp; correctness</h4><span className="font-headline font-bold text-primary">{comm.grammar.score}/10</span></div>
-                    <p className="text-sm text-on-surface-variant mb-4">{comm.grammar.summary}</p>
-                  </div>
-                ) : null}
-
-                {(comm.clarityIssues ?? []).length > 0 && (
-                  <div className="no-line-card p-6">
-                    <div className="label-blueprint text-error mb-3">Clarity issues (would confuse an interviewer)</div>
-                    <div className="space-y-2">
-                      {comm.clarityIssues.map((g: any, i: number) => (
-                        <div key={i} className="text-xs border-l-2 border-error/40 pl-3">
-                          <div className="text-secondary">“{g.statement}” <span className="font-mono text-on-tertiary-container">{g.timestamp}</span></div>
-                          <div className="text-error mt-0.5">{g.issue}</div>
-                          <div className="text-on-surface-variant mt-0.5">→ “{g.better}”</div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                <div className="no-line-card p-6">
-                  <h4 className="font-bold text-primary mb-1">Fluency</h4>
-                  <p className="text-[11px] text-secondary mb-4">Did your responses actually advance the case? Measured from the transcript &amp; timing.</p>
-                  {(comm.fluency?.coherenceRate != null || comm.fluency?.firstResponseRate != null) && (
-                    <div className="grid grid-cols-2 gap-4 mb-4">
-                      <div className="bg-surface-container-low rounded-lg p-3"><div className="font-headline font-bold text-lg text-primary">{comm.fluency.coherenceRate ?? '—'}%</div><div className="label-blueprint">Advanced the case</div></div>
-                      <div className="bg-surface-container-low rounded-lg p-3"><div className="font-headline font-bold text-lg text-primary">{comm.fluency.firstResponseRate ?? '—'}%</div><div className="label-blueprint">Answered on first try</div></div>
-                    </div>
-                  )}
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4">
-                    {[
-                      ['Words/min', metrics.wordsPerMinute],
-                      ['Filler words', metrics.fillerWordTotal],
-                      ['Concise rate', (metrics.substantiveConciseRate ?? metrics.conciseAnswerRate) != null ? `${metrics.substantiveConciseRate ?? metrics.conciseAnswerRate}%` : '—'],
-                      ['Long pauses', metrics.longPauses],
-                    ].map(([label, val]) => (
-                      <div key={label as string} className="bg-surface-container-low rounded-lg p-3"><div className="font-headline font-bold text-lg text-primary">{val ?? '—'}</div><div className="label-blueprint">{label}</div></div>
-                    ))}
-                  </div>
-                  {(metrics.fillerWords ?? []).length > 0 && (
-                    <div className="flex flex-wrap gap-2 mb-4">
-                      {metrics.fillerWords.map((f: any, i: number) => <span key={i} className="text-xs bg-surface-container px-2 py-1 rounded-md text-on-surface-variant">“{f.word}” × {f.count}</span>)}
-                    </div>
-                  )}
-                  <div className="space-y-1.5">
-                    {(comm.fluency?.observations ?? []).map((o: any, i: number) => <div key={i} className="flex gap-2 text-xs"><span className="font-mono text-on-tertiary-container shrink-0">{o.timestamp}</span><span className="text-secondary">{o.note}</span></div>)}
-                  </div>
-                </div>
-
-                {comm.vocabulary && (
-                  <div className="no-line-card p-6">
-                    <h4 className="font-bold text-primary mb-2">Vocabulary &amp; executive communication</h4>
-                    <p className="text-sm text-on-surface-variant mb-3">{comm.vocabulary.assessment}</p>
-                    {comm.vocabulary.weakExample && (
-                      <div className="text-xs space-y-1">
-                        <div className="text-error">Weak: “{comm.vocabulary.weakExample}”</div>
-                        <div className="text-green-700">Better: “{comm.vocabulary.betterExample}”</div>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            </Block>
-          )}
-
           {/* ── THE TAPE ── */}
           {transcriptTurns.length > 0 && (
             <Block id="tape" title="The tape" tab="tape" activeTab={effectiveTab} action={<span className="label-blueprint">your interview, moment by moment</span>}>
@@ -688,49 +509,6 @@ export default function Report() {
             </Block>
           )}
 
-          {/* ── YOUR ONE THING ── */}
-          {plan.length > 0 && (
-            <Block id="onething" title="Your one thing" tab="onething" activeTab={effectiveTab} action={<span className="label-blueprint">the highest-leverage fix</span>}>
-              {loop && (
-                <div className="no-line-card p-4 mb-3 border-l-4 border-green-600 bg-green-50/40">
-                  <div className="flex items-center gap-2 label-blueprint text-green-700 mb-1">
-                    <GraduationCap className="w-3.5 h-3.5" /> Coaching loop
-                  </div>
-                  <p className="text-sm text-on-surface-variant leading-relaxed">
-                    You reviewed the <b className="text-primary">{loop.skill}</b> lesson before this case.
-                    {loop.stage && loop.thisLabel && (
-                      <> This time you spent <b className="text-primary">{loop.thisLabel}</b> on {loop.stage}{loop.priorLabel ? <> (your prior average was {loop.priorLabel})</> : null}.</>
-                    )}
-                    {loop.assessment ? ` ${loop.assessment}` : ''}
-                  </p>
-                  <Link to={`/lesson/${loop.habitTag}`} className="inline-flex items-center gap-1.5 mt-2 text-[12.5px] font-semibold text-on-tertiary-container hover:underline">
-                    Revisit the lesson <ArrowRight className="w-3.5 h-3.5" />
-                  </Link>
-                </div>
-              )}
-              <div className="no-line-card p-5 border-l-4 border-on-tertiary-container space-y-2">
-                <p className="text-base font-bold text-primary">{plan[0].action}</p>
-                {(plan[0].evidenceExcerpt || plan[0].detail) && <p className="text-sm text-on-surface-variant leading-relaxed"><span className="font-bold text-on-tertiary-container">Why: </span>{plan[0].evidenceExcerpt || plan[0].detail}</p>}
-                {(plan[0].practiceDrill || plan[0].practiceMethod) && <p className="text-sm text-on-surface-variant leading-relaxed"><span className="font-bold text-on-tertiary-container">Drill: </span>{plan[0].practiceDrill || plan[0].practiceMethod}</p>}
-                {plan[0].completionCriteria && <p className="text-sm text-on-surface-variant leading-relaxed"><span className="font-bold text-green-700">Done when: </span>{plan[0].completionCriteria}</p>}
-              </div>
-              {plan[1] && (
-                <div className="mt-3">
-                  <button onClick={() => setShowAlso((s) => !s)} className="flex items-center gap-1.5 text-sm font-semibold text-secondary hover:text-primary">
-                    <ChevronDown className={cn('w-4 h-4 transition-transform', showAlso && 'rotate-180')} /> Also consider
-                  </button>
-                  {showAlso && (
-                    <div className="no-line-card p-5 mt-2 space-y-2">
-                      <p className="text-sm font-bold text-primary">{plan[1].action}</p>
-                      {(plan[1].practiceDrill || plan[1].practiceMethod) && <p className="text-sm text-on-surface-variant"><span className="font-bold text-on-tertiary-container">Drill: </span>{plan[1].practiceDrill || plan[1].practiceMethod}</p>}
-                      {plan[1].completionCriteria && <p className="text-sm text-on-surface-variant"><span className="font-bold text-green-700">Done when: </span>{plan[1].completionCriteria}</p>}
-                    </div>
-                  )}
-                </div>
-              )}
-            </Block>
-          )}
-
           {/* ── ANSWER KEY ── */}
           {hasAnswerKey && (
             <Block id="answerkey" title="The answer key" tab="answerkey" activeTab={effectiveTab} action={<span className="label-blueprint">study the case itself</span>}>
@@ -774,19 +552,6 @@ export default function Report() {
             </Block>
           )}
 
-          {/* Admin-only compliance */}
-          {supervisor && (
-            <div className="rounded-xl border border-dashed border-outline-variant/40 p-5 bg-surface-container-lowest print:hidden">
-              <p className="label-blueprint text-secondary font-bold mb-2">Interviewer compliance (admin · debug)</p>
-              {supervisor.length === 0 ? <p className="text-sm text-green-700">No leading or fed-data flags this session. ✓</p> : (
-                <div className="space-y-1.5">
-                  <p className="text-sm font-bold text-amber-700">{supervisor.length} flag{supervisor.length > 1 ? 's' : ''}:</p>
-                  {supervisor.map((f, i) => <div key={i} className="text-xs text-on-surface-variant flex gap-2"><span className={cn('font-mono font-bold', f.verdict === 'FED_DATA' ? 'text-error' : 'text-amber-600')}>{f.verdict}</span><span>named “{f.term}” before the candidate did</span></div>)}
-                </div>
-              )}
-            </div>
-          )}
-
           {/* Footer actions */}
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-6 bg-surface-container rounded-xl print:hidden">
             <div className="flex gap-3 w-full sm:w-auto">
@@ -794,14 +559,36 @@ export default function Report() {
               <button onClick={downloadTranscript} disabled={!fullTranscript.length} className="flex-1 sm:flex-none flex items-center gap-2 px-5 py-3 bg-white text-primary border border-outline-variant/20 font-bold rounded-lg hover:bg-surface-container-low transition justify-center disabled:opacity-40 disabled:cursor-not-allowed"><Download className="w-4 h-4" /> Transcript</button>
             </div>
             <div className="flex gap-3 w-full sm:w-auto">
-              <button onClick={regenerate} disabled={regenLoading} className="flex-1 sm:flex-none flex items-center gap-2 px-5 py-3 border border-outline-variant/20 text-primary font-bold rounded-lg hover:bg-surface-container-low transition justify-center disabled:opacity-50 disabled:cursor-not-allowed">
-                {regenLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} {regenLoading ? 'Regenerating…' : 'Regenerate'}
-              </button>
-              <Link to="/config" className="flex-1 sm:flex-none flex items-center gap-2 px-6 py-3 bg-primary text-on-primary font-bold rounded-lg hover:bg-primary-container transition justify-center">Practise Similar Case <ArrowRight className="w-4 h-4" /></Link>
+              {isResume ? (
+                <button onClick={() => setConfirmRestart(true)} className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-6 py-3 bg-primary text-on-primary font-bold rounded-lg hover:bg-primary-container transition">
+                  <RotateCcw className="w-4 h-4" /> Restart interview
+                </button>
+              ) : (
+                <button onClick={regenerate} disabled={regenLoading} className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-6 py-3 bg-primary text-on-primary font-bold rounded-lg hover:bg-primary-container disabled:opacity-60 transition">
+                  {regenLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} {regenLoading ? 'Regenerating…' : 'Regenerate'}
+                </button>
+              )}
             </div>
           </div>
         </div>
       </div>
+
+      {/* Restart prompt (resume interviews) */}
+      {confirmRestart && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 print:hidden" onClick={() => setConfirmRestart(false)}>
+          <div role="dialog" aria-modal="true" aria-labelledby="restart-title" className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
+            <span className="w-11 h-11 rounded-xl bg-on-tertiary-container/10 text-on-tertiary-container flex items-center justify-center"><RotateCcw className="w-5 h-5" /></span>
+            <h2 id="restart-title" className="mt-4 font-headline font-extrabold text-primary text-lg">Start the interview again?</h2>
+            <p className="mt-2 text-sm text-secondary leading-relaxed">
+              You will go back to setup to choose your resume, role and options, then begin a fresh interview. This report stays saved in your history.
+            </p>
+            <div className="mt-6 flex justify-end gap-3">
+              <button onClick={() => setConfirmRestart(false)} className="px-4 py-2.5 text-sm font-semibold text-secondary hover:text-primary">Cancel</button>
+              <button onClick={() => navigate('/interview/resume')} autoFocus className="px-5 py-2.5 bg-primary text-on-primary font-bold rounded-lg text-sm hover:bg-primary-container transition">Start new interview</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Full-case modal */}
       {showCase && caseBrief && (
