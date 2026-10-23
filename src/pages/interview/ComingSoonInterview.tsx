@@ -1,5 +1,4 @@
-import { Link } from 'react-router-dom';
-import { ArrowRight, Clock, type LucideIcon } from 'lucide-react';
+import { Clock, type LucideIcon } from 'lucide-react';
 
 interface Props {
   Icon: LucideIcon;
@@ -50,19 +49,6 @@ export default function ComingSoonInterview({ Icon, title, tagline, description,
           <span className="text-[12px] text-secondary">Not live yet. We&apos;d rather ship it right than ship it Tuesday.</span>
         </div>
       </div>
-
-      {/* Don't leave the user at a dead end. */}
-      <Link
-        to="/config"
-        state={{ module: 'case' }}
-        className="no-line-card p-4 flex items-center gap-3 hover:shadow-md hover:border-on-tertiary-container/40 transition group"
-      >
-        <div className="flex-1">
-          <div className="font-headline font-bold text-sm text-primary">Meanwhile, run a Case Interview</div>
-          <div className="text-[12.5px] text-secondary">It&apos;s live, it&apos;s voice-based, and it&apos;s the best practice you can do today.</div>
-        </div>
-        <ArrowRight className="w-4 h-4 text-secondary group-hover:text-on-tertiary-container group-hover:translate-x-0.5 transition shrink-0" />
-      </Link>
     </div>
   );
 }
