@@ -1,0 +1,29 @@
+{
+  "properties": {
+    "type": {
+      "const": "error",
+      "default": "error",
+      "title": "Type",
+      "type": "string"
+    },
+    "code": {
+      "title": "Code",
+      "type": "string"
+    },
+    "message": {
+      "title": "Message",
+      "type": "string"
+    },
+    "fatal": {
+      "default": false,
+      "title": "Fatal",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "code",
+    "message"
+  ],
+  "title": "UiError",
+  "type": "object"
+}

@@ -1,0 +1,28 @@
+{
+  "properties": {
+    "type": {
+      "const": "think_timer",
+      "default": "think_timer",
+      "title": "Type",
+      "type": "string"
+    },
+    "state": {
+      "enum": [
+        "started",
+        "ended"
+      ],
+      "title": "State",
+      "type": "string"
+    },
+    "seconds": {
+      "default": 0,
+      "title": "Seconds",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "state"
+  ],
+  "title": "ThinkTimer",
+  "type": "object"
+}

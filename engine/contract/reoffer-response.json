@@ -1,0 +1,13 @@
+{
+  "properties": {
+    "sdpAnswer": {
+      "title": "Sdpanswer",
+      "type": "string"
+    }
+  },
+  "required": [
+    "sdpAnswer"
+  ],
+  "title": "ReofferResponse",
+  "type": "object"
+}

@@ -1,0 +1,14 @@
+{
+  "properties": {
+    "type": {
+      "const": "end_session",
+      "title": "Type",
+      "type": "string"
+    }
+  },
+  "required": [
+    "type"
+  ],
+  "title": "EndSession",
+  "type": "object"
+}

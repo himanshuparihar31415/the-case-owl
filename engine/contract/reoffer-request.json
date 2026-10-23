@@ -1,0 +1,15 @@
+{
+  "properties": {
+    "sdpOffer": {
+      "maxLength": 20000,
+      "minLength": 10,
+      "title": "Sdpoffer",
+      "type": "string"
+    }
+  },
+  "required": [
+    "sdpOffer"
+  ],
+  "title": "ReofferRequest",
+  "type": "object"
+}

@@ -41,7 +41,7 @@ Ten decisions define the design. The biggest change after validation is the audi
 | Separate service? | Yes — a Python interview engine. Node keeps auth, sessions, billing and reports. |
 | Audio path | WebRTC straight between the browser and OpenAI. The engine never carries audio; it controls the session over OpenAI's sideband connection. |
 | Frontend changes? | A contained change: the audio layer of `Session.tsx` moves to WebRTC, plus reconnect and a few UI fixes. The rest of the app is untouched. |
-| Who talks? | One voice agent: `gpt-realtime-2` with its built-in voices. No ElevenLabs, which would add a text-to-speech hop to every reply. |
+| Who talks? | One voice agent: `gpt-realtime-2.1` at low reasoning, with its built-in voices (2.1 is the July 2026 update of `gpt-realtime-2`, at the same price). No ElevenLabs, which would add a text-to-speech hop to every reply. |
 | Who decides? | A deterministic engine (state machine, timers, hint ladder, fact gate), not an LLM agent. |
 | Turn-taking | The engine is the only turn authority. OpenAI's voice activity detection only reports speech; the engine fires, holds or cancels each reply from event timing, with no LLM wait. |
 | Multi-agent? | No, not at runtime. Two narrow, stateless LLM functions sit off the critical path. Offline case generation is a generate → validate → repair workflow. |
@@ -119,27 +119,33 @@ Node stays in charge of accounts, billing and reports and only forwards control 
 
 ## Frontend contract
 
-The page keeps the app's message protocol for everything except audio. Audio moves to WebRTC, which is the one real frontend change.
+The engine is built and tested on its own first, then plugged into the platform behind a switch; the boundary is [engine-contract.md](engine-contract.md) (23 Oct), summarised here. The page keeps the app's message names for everything except audio, which moves to WebRTC. It talks to the engine's own UI socket with a token the engine issues, not through Node: a Node proxy would add a hop and drop live interviews on every Node deploy.
 
 ### Connection flow
 
-1. The interview page opens the existing UI socket (`/api/voice?token&sessionId`) and creates a WebRTC offer from the mic.
-2. It sends the offer to `POST /api/voice/call` (new). Node checks the pilot flags and forwards it to the engine.
-3. The engine posts the offer and the session config to OpenAI's `/v1/realtime/calls` with the server-side key, reads the call ID from the `Location` header, and opens the sideband socket with it. No key ever reaches the browser, and the engine refuses any offer that asks for a data channel.
+1. The page creates a WebRTC offer from the mic, with no data channel, and sends it with the session id to `POST /api/voice/call` (new).
+2. Node checks the session is the user's and active, and that the case and the user are on the engine. It calls the engine's `POST /v1/calls` with the session, case, time limit (`reservedMinutes`) and offer.
+3. The engine refuses an offer that asks for a data channel, loads the case's published fact tree, posts the offer to OpenAI's `/v1/realtime/calls` with the server-side key, reads the call ID from the `Location` header and opens the sideband. It returns the SDP answer plus a UI-socket URL and token. No key reaches the browser.
 4. The page applies the answer, and audio flows directly between the browser and OpenAI.
-5. The UI socket carries everything else: transcripts, exhibits, stage, notices and hint events.
+5. The page opens the engine's UI socket with that token: transcripts, stage, hints, timers and notices.
+6. At the end the engine sends Node one settle call with the transcript in today's `Session.transcript` shape. Node settles credits as today, and only then does the page get `session_ended` and move to the report.
 
 ### UI socket messages
 
-Kept as they are: `session_ready`, `transcript_delta`, `transcript`, `exhibit`, `session_ended` and `error` (engine to page), and `audio_live` and `end_session` (page to engine). `audio_chunk` and `speech_started` leave this path, because audio no longer travels over the socket.
+Kept as they are: `session_ready`, `transcript_delta`, `transcript`, `exhibit`, `session_ended` and `error` (engine to page), and `audio_live` and `end_session` (page to engine). Transcripts gain an `itemId`, `session_ended` a `reason`, and `error` a `code` and `fatal` flag. `audio_chunk` and `speech_started` leave this path, because audio no longer travels over the socket.
 
 | New message | Direction | Purpose |
 |---|---|---|
-| `notice` | Engine to page | A non-fatal on-screen message (for example "use headphones") that doesn't put the page into its error state |
-| `stage` | Engine to page | `{stage, label}` for an optional progress UI |
+| `snapshot` | Engine to page | `{transcript, stage, remainingSeconds}`: full state after a reconnect |
+| `retract` | Engine to page | `{itemIds}`: remove bubbles for replies cancelled before anyone heard them |
+| `stage` | Engine to page | `{stage}`: `intro`, `case` or `wrap_up`, for an optional progress UI |
 | `think_timer` | Engine to page | `{state, seconds}` for a "taking a minute" indicator |
-| `hint_used` | Engine to page | `{level, count, max}` |
-| `activity` | Page to engine | `{type: 'scratchpad'}`: typing suppresses nudges |
+| `hint` | Engine to page | `{text, level, used, max}`, shown on screen |
+| `time` | Engine to page | `{remainingSeconds}` at 5 and 2 minutes left |
+| `notice` | Engine to page | A non-fatal on-screen message (for example "use headphones") that doesn't put the page into its error state |
+| `reoffer_required` | Engine to page | Audio dropped: the page makes a new offer and calls re-offer |
+| `activity` | Page to engine | `{source: 'scratchpad'}`: typing holds off nudges |
+| `ping` | Page to engine | Keep-alive every 20 s |
 
 ### Frontend work
 
@@ -154,10 +160,11 @@ Kept as they are: `session_ready`, `transcript_delta`, `transcript`, `exhibit`, 
 
 ### REST and routing
 
-- For engine sessions, Node forwards `POST /api/voice/call` (new) and the Hint button's existing `GET /sessions/:id/hint` to the engine, so hints go through the engine's gate.
-- The engine calls a new Node endpoint, `POST /internal/sessions/:id/settle` (shared secret), at session end. Settlement is already idempotent.
-- Pilot gating: a session goes to the engine only when the case is flagged `engine: 'v2'` and the user is on a pilot list kept in the existing global `Setting` document, editable through `PATCH /api/admin/settings` without a redeploy.
-- End state: once v2 is stable, point `VITE_API_URL` at the engine for the UI socket and drop the Node hop.
+- **Node to engine** (service token): `POST /v1/calls` to start, `/reoffer` after a WebRTC drop, `/end`, `/hint` (phase 3), `GET /v1/calls/{id}`, `/healthz` and `/readyz`. Errors carry codes such as `data_channel_not_allowed`, `case_not_ready`, `at_capacity` and `draining`.
+- **Engine to Node** (its own token): `POST /internal/sessions/:id/settle` with the transcript (only what was heard, `[HINT]` lines kept), the audio-live duration and a summary (stage reached, facts released, hints, guard hits, cost). Node writes them and calls the existing idempotent `settleSession`, so reports need no change. The engine retries for 24 h and keeps the transcript meanwhile.
+- **Page to Node**, new: `POST /api/voice/call` and `POST /api/voice/call/:sessionId/reoffer`. For engine sessions, the Hint button's `GET /sessions/:id/hint` is forwarded to the engine, and `PATCH /sessions/:id/end` saves the scratchpad even when the session is already completed.
+- **Routing switch:** a session goes to the engine only when the case is flagged `engine: 'v2'` and the user is in `Setting.enginePilotUserIds`, editable through `PATCH /api/admin/settings` without a redeploy. Removing either sends new sessions back to today's pipeline.
+- **Versioning:** within `/v1`, changes are additive only, checked on both sides against shared JSON Schemas in `engine/contract/`.
 
 ---
 
@@ -222,17 +229,24 @@ Conversation mode replies at once; listening mode waits for the candidate to han
 - One authority only. This repo has hit double replies three times when the server and another component both drove turns (commits `585d547`, `6e45e08`, `97840a0`).
 - `idle_timeout_ms` stays unset; silence timers live in the engine.
 - Input transcription: `gpt-realtime-whisper`, which this repo's previous Realtime pipeline adopted for better candidate transcripts.
+- Silence window: 1,000 ms until the case starts, then 1,300 ms, switched with a full `turn_detection` update (a partial one could switch auto replies back on). In the 22 Oct voice test, pauses of 1.1–1.4 s while the candidate laid out a framework got four early replies at 1,000 ms.
+- Reasoning: `low`, OpenAI's production default. First audio came in about 0.8–1.1 s in the evals, against 1.4–2.4 s at `high`.
+- Lines the engine asks for (greeting, check-ins, nudges, tool follow-ups) are sent with `tool_choice: none`. Tools are called silently and she speaks once after the result: speech before a tool call comes out as a preamble, and on WebRTC every generated word is played.
 - Events are deduplicated by item id, because the API emits both current and legacy names for the same event (commit `6e45e08`).
 
 ### Rules
 
 | Moment | Engine rule | Cost |
 |---|---|---|
-| End of speech, conversation mode | Fire `response.create` at once | One engine-to-OpenAI round trip |
-| End of a very short utterance (under about 300 ms) | Wait for the transcript: words → reply; empty or noise → delete the item and stay silent | A few hundred ms, only on those turns |
-| Speech while the interviewer is talking | Under 450 ms (a cough, a keystroke): keep talking and delete the blip item. Sustained: cancel the response, clear the output audio, and let OpenAI truncate at what was played | Up to 450 ms before stopping, the gate today's pipelines already use |
-| End of speech, listening mode | Wait for the transcript and the analyzer. Hand-back (a question, "I'm ready", a finished framework) → reply; still thinking → stay silent | About 1–1.5 s, only in listening mode |
-| A committed turn with no reply 1.5 s later, conversation mode | A watchdog fires one and logs it | A safety net against dead air |
+| End of speech, conversation mode | Fire `response.create` at once, unless the candidate is speaking or a reply is already in flight | One engine-to-OpenAI round trip |
+| The candidate goes on before hearing any of the reply (a mid-thought pause) | Cancel the reply, even before OpenAI has created it. Delete it from the conversation and the screen, and reply once to the whole turn | One wasted reply that nobody hears |
+| Short utterance (under about 300 ms of voiced time) | Wait for the transcript: words → reply; empty or noise → delete the item and stay silent | A few hundred ms, only on those turns |
+| Speech while the interviewer is talking | OpenAI clears her audio the moment it hears any sound, whatever `interrupt_response` says (a known API issue). The engine stops the rest of the reply and decides when the sound ends. Under 450 ms of voiced time (a cough, "mm-hmm"): delete it, and she carries on ("As I was saying…"). Longer: reply to it, with a note of what the candidate missed. A reply cut off in its first second counts as never said | About 2 s of silence after a cough. Talking through one would need the engine to run its own voice detection |
+| A reply is wanted while another is in progress | One reply at a time: the new one waits for the slot, and an unheard reply in the slot gives way to it. OpenAI rejects a second `response.create` while one is active | — |
+| End of speech, listening mode | Wait for the transcript and the analyzer. Hand-back (a question, "I'm ready", a finished framework) → reply; still thinking → stay silent. An empty transcript is held with no analyzer call | About 1–1.5 s, only in listening mode |
+| A committed turn with no reply 1.5 s later, conversation mode | A watchdog asks again and logs it | A safety net against dead air |
+
+Voiced time comes from OpenAI's timestamps minus what they include: `audio_start_ms` includes the 400 ms prefix padding and `audio_end_ms` the silence window. A 312 ms noise looked 1.7 s long, so a gate timed from speech start could never tell a cough from a sentence. The engine also counts itself busy from the moment it asks for a reply, not when OpenAI confirms it about 300 ms later: that gap let the case start over a candidate's "how about you?" (19 Oct).
 
 Listening mode starts when a fast keyword check on the transcript (minute, moment, let me think, structure), confirmed by the analyzer, catches a request for time, or when the `STRUCTURING` stage begins. It ends on a hand-back or at the think timer's check-in.
 
@@ -292,7 +306,7 @@ A 30-minute interview fits easily in the 128,000-token context of `gpt-realtime-
 | Audio output price | $64 per million tokens | Model page |
 | Revenue per interview | About ₹300 on Starter (₹1,499 for 150 minutes, before GST) | `plans.service.ts` |
 
-- Every reply re-reads the conversation so far, about 60–70 times in a session. With the cache working, most of that input is billed at the cached rate. The independent review estimated about $1–2 per session cached against about $20 uncached; neither figure is measured yet.
+- Every reply re-reads the conversation so far, about 60–70 times in a session. With the cache working, most of that input is billed at the cached rate. Measured in four short spike sessions: about $0.06–0.10 a minute with 41–55% of input cached, so roughly $2–3 for 30 minutes on gpt-realtime-2.x, against about ₹300 (approximately $3.60) of revenue. A 10-minute session will confirm the cache rate. gpt-realtime-2.1-mini costs about a third for audio ($10 and $20 per million tokens in and out); whether it interviews well enough is an eval to run.
 - So the instructions never change mid-session, the note is a conversation item, and truncation stays at its default unless measurements say otherwise.
 - High reasoning effort adds output tokens; include it in the measurement.
 - Phase 0 logs `response.done` usage (cached input, uncached input and output tokens) per session and sets a cost budget before the pilot.
@@ -400,6 +414,7 @@ A workflow, not a set of agents:
 
 - The interviewer never does arithmetic. Expected quant answers are precomputed; `check_quant(value)` compares the candidate's number within a tolerance.
 - A fact counts as disclosed only if the candidate heard it: words cut off by an interruption don't count.
+- Facts are told one at a time, at the level of detail asked. A broad question ("fixed or variable?") gets the broad fact, never the detail under it; a cause comes only after what it explains; at most two facts, side by side in one branch. The interviewer holds only the case statement and gets each fact from `lookup_fact`: a small model matches the question to the case's fact tree without seeing the answers, and code applies the rules (built in the spike, 22 Oct).
 - Hints, spoken or from the Hint button, all go through the engine's gate and are written as `[HINT]` transcript entries, the format the report already counts.
 - Priors are authored judgment, not calibrated statistics. They order exploration and aim hints; they are not probabilities of truth.
 - As facts are disclosed, the engine re-weights unexplored branches to choose the next probe and hint target.
@@ -442,10 +457,18 @@ There is also no LLM supervisor in the voice path. The existing supervisor is de
 
 ## Data model
 
-Five changes in Mongo; Node's reports keep reading what they read today.
+Three collections in the engine's own database `engine` (same Atlas cluster, credentials limited to it) and three optional fields on the platform's models, so no migration. The engine never reads or writes the platform's collections, and Node's reports keep reading what they read today.
 
 | Store | Change |
 |---|---|
+| `engine_cases` (engine, secret) | `caseId` (the platform `Case._id`), `version`, `status` (`draft` or `published`), `statement`, `facts[]` (`id`, `parent`, `covers`, `answer`, `terms`, `requires`), `leads[]`, the tree and hints (phase 3), validator report. Only published versions run. Never returned to the page. |
+| `engine_sessions` (engine) | `sessionId`, `callId`, `state`, `stage`, released facts, hints used, transcript, settle status and attempts: enough to rebuild a live interview after a restart and to retry the settle call. |
+| `session_events` (engine) | `sessionId`, `t`, `type`, `payload`: the decision log (turns, tool calls, facts, guard, timers, latency, tokens). TTL 90 days. |
+| `Case` | Add `engine?: 'v2'`. The canonical tree goes into `referenceTree`, written with the fact tree by case generation. Answer-key fields are projected out of every API response while a session is active; the Report page reads them after completion. |
+| `Session` | `transcript` keeps its current shape; Node writes it from the settle call, ordered by conversation item. Add an optional `engine: {callId, endedReason, summary}`. |
+| `Setting` (global) | Add `enginePilotUserIds`, editable through `PATCH /api/admin/settings` without a redeploy. |
+
+---|---|
 | `engine_cases` (new, secret) | `caseId`, `framework`, `version`, engine-only tree fields (priors, hints, triggers), `facts[]`, `quant`, `scope`, validator report. Never returned by Node. |
 | `Case` | Add `engine?: 'v2'`. The canonical tree goes into `referenceTree`. Answer-key fields are projected out of every API response while a session is active; the Report page reads them after completion. |
 | `Session` | Keep `transcript` in its current shape, ordered by conversation item rather than arrival time. Add a small `engineSnapshot`, `engineSummary` and `callId`. |
@@ -469,7 +492,7 @@ The rule: the brain failing never blocks the voice, and an error never ends a se
 | Database slow or down | Audio unaffected; writes retry; the transcript is flushed before `end_session` is acknowledged. |
 | Tool handler error | Return a safe `declined` result, so the model turns the question back instead of improvising a fact. |
 | Time or credit cap | Wrap-up line at T-2 min, then close, not a silent cut. |
-| Engine deploy | Drain: stop new sessions and let live ones finish, up to a limit. |
+| Engine deploy or restart | Hand-off: the engine releases its live interviews without hanging up, and the next instance reattaches to the same OpenAI calls. The candidate hears a pause the length of the restart. Verified live on 23 Oct. |
 
 ---
 
@@ -480,7 +503,7 @@ A per-session actor with a pure reducer keeps the logic testable. The engine nev
 - **Stack.** FastAPI and uvicorn (`uvloop`), `websockets` for the sideband, `httpx` for the SDP exchange, `motor`, `pydantic` v2, `orjson`, the `openai` SDK for analyzer calls, `structlog`. Verify TLS against the OS trust store (`truststore`); the spike hit certificate errors without it.
 - **Call setup.** Refuse any offer that contains a data channel (`m=application`). Post the offer and the session config to `/v1/realtime/calls` as multipart fields with explicit content types, using the server-side key; read the call ID from the `Location` header; open `wss://api.openai.com/v1/realtime?call_id=…` as the sideband. The spike in `engine/spike/` does exactly this.
 - **Per-session actor.** One asyncio task consuming a bounded inbox of commands: `SpeechStarted`, `SpeechStopped`, `InputCommitted`, `Transcript`, `OutputAudioStarted/Stopped`, `ResponseDone`, `ToolCall`, `TimerFired(id, gen)`, `AnalyzerResult`, `UiMessage`. A pure `reduce(state, cmd) → (state, effects)`; an effect executor does the I/O. The reply trigger and the barge-in gate are pure functions of event timestamps, so they run in microseconds and are unit-tested (`engine/spike/turns.py`).
-- **Layout.** `engine/app/{gateway, call_setup, sideband, case_master, analyzer, tools, generation, store}` and `engine/tests/`. Same repo, separate Railway service, hosted next to OpenAI's Realtime endpoint.
+- **Layout.** `engine/app/{gateway, call_setup, sideband, case_master, analyzer, tools, generation, store}` and `engine/tests/`. Same repo, its own service on a Hostinger VPS (Mumbai), deployed with Openship.
 - **Config.** `OPENAI_API_KEY`, `MONGO_URI`, `JWT_SECRET` (shared), `INTERNAL_SECRET`, `REALTIME_MODEL`, `ANALYZER_MODEL`.
 - **Session length.** Realtime sessions cap at 60 minutes; interviews cap at 30.
 - **Fallback transport.** If a network blocks WebRTC, relay audio over the existing WebSocket path with the same engine logic. Echo cancellation then needs headphones, and truncation is estimated from playback time instead of reported by OpenAI.
@@ -508,7 +531,7 @@ The frontend gaps, session caps, answer-key leak and echo history are verified i
 - Out-of-band `response.create` (`conversation: 'none'`); per-response `instructions`; the tool-call flow (`function_call_output`, then `response.create`); `response.cancel`; `conversation.item.truncate`, automatic on WebRTC; sessions up to 60 minutes.
 - `conversation.item.create` with `previous_item_id`, and `conversation.item.delete`, in the API reference.
 
-### Verified by the phase 0 spike (19 Oct)
+### Verified by the phase 0 spike (19–22 Oct)
 
 - The server-side SDP exchange works: a multipart POST of `sdp` and `session` to `/v1/realtime/calls` returned 201 with the call ID in the `Location` header, and the sideband attached with it on the first attempt.
 - Over the sideband, system-role items, `conversation.item.delete`, `response.create`, `response.cancel` and `output_audio_buffer.clear` all work, and OpenAI truncates the cancelled item on its own.
@@ -522,15 +545,24 @@ The frontend gaps, session caps, answer-key leak and echo history are verified i
 
 **Third iteration, judgment over rules:** the turn counter and cap were replaced by two interviewer tools. In a live check she kept chatting naturally, said "Alright, let me pull up the case so we can dive in" when the candidate was ready, called `start_case` and presented the case; on "Can you give me twenty seconds?" she called `wait_for_candidate` and checked in after exactly 23 s.
 
-**Fourth iteration, a real interviewer:** she now runs the agenda like an interviewer, not a coach (no preparation questions, she moves to the case herself, she steers off-topic talk back). When cut off, the engine tells her what the candidate missed and removes unheard queued messages from her memory; in a re-test she resumed exactly where she was cut off. The rules now separate running the interview (hers) from solving the case (the candidate's), which fixed "I can't continue on my own here". A greeting spoken twice turned out to be a `gpt-realtime-2` preamble repeated as the answer; simple engine-issued lines now run at minimal reasoning per reply, which OpenAI accepts and which removes the repeat.
+**Fourth iteration, a real interviewer:** she now runs the agenda like an interviewer, not a coach (no preparation questions, she moves to the case herself, she steers off-topic talk back). When cut off, the engine tells her what the candidate missed and removes unheard queued messages from her memory; in a re-test she resumed exactly where she was cut off. The rules now separate running the interview (hers) from solving the case (the candidate's), which fixed "I can't continue on my own here". A greeting spoken twice turned out to be a `gpt-realtime-2` preamble repeated as the answer; running simple lines at minimal reasoning reduced it but did not remove it (the fifth iteration found the cause).
+
+**Fifth iteration, root causes (19 Oct):** the fourth iteration's fixes failed the next voice test, because each had been checked once and the model is not deterministic. The duplicate greeting came from `start_case` being callable during the greeting. Speech before a tool call is a "commentary" preamble, and on WebRTC every generated word plays: 5 of 7 greetings went wrong with the tool available, 0 of 80 without. A reply cancelled before any audio stayed in her memory, so the engine now keeps the conversation equal to what the candidate heard. Two concepts were added to her instructions: "I missed what you said" versus "you missed what I said", and answering the candidate's question before presenting. An eval harness runs each scenario several times, and a fix counts only when every run passes: 45 of 45 on `gpt-realtime-2.1`, 27 of 27 on `gpt-realtime-2`.
+
+**Sixth iteration, pauses and overlap (19 Oct):** a 1.2 s pause mid-turn ("I'm good… how about you?") got a reply that called `start_case`. The case played over the candidate, and OpenAI rejected the reply to "how about you?" because a response was already active. The turn rules now hold three invariants: one reply at a time, busy from the moment a reply is requested, and nothing over the candidate. A noise also showed that OpenAI clears her audio on any sound; she now resumes after a blip. 51 unit tests replay the logged timings.
+
+**Seventh iteration, the fact gate (22 Oct):** a broad question ("is there an increase in costs, fixed or variable?") got every cost fact, including the root cause. She held all the facts as one bundle, unlocked by the word "cost". She now holds only the case statement and calls `lookup_fact`. The facts are a tree of case data ([engine/spike/cases/coffee.json](../engine/spike/cases/coffee.json)), matched one at a time at the level of detail asked. The matcher, `gpt-5.4-nano`, scored 48 of 48 on a 16-question benchmark at about 1 s from India. The live guard reads its terms from the same data. The cost: a fact question takes about 1 s longer.
+
+**Review pass (22 Oct):** the matcher also sees the candidate's own words, so her restatement cannot widen a question. Topic words are no longer treated as leaked facts. The case stage gets a 1.3 s silence window, and empty transcripts no longer cost an analyzer call. A setting compares transcription models by voice, and `gpt-realtime-2.1-mini` is selectable, with cost priced per model.
 
 Details and raw results: [engine/spike/README.md](../engine/spike/README.md).
 
 ### Not verified: the spike's remaining voice tests
 
-- Felt latency at reasoning medium and a 700 ms silence window, the cache rate over a 10-minute session, and cost per session.
-- Whether a cough stops her: on WebRTC, OpenAI cleared her audio the instant speech started, before the engine's 450 ms gate, even with `interrupt_response` off.
-- Echo cancellation without headphones, and the opening, interruption and off-topic behaviour by voice.
+- The full eval run, including the new fact-granularity scenarios: it stopped on 22 Oct when the API account ran out of credits.
+- By voice: felt latency at the new defaults, the case-stage silence window and semantic turn detection, a cough mid-case, echo without headphones, and transcript quality per transcription model.
+- The cache rate over a 10-minute session, the cost of 30 minutes, and whether `gpt-realtime-2.1-mini` interviews well enough (evals).
+- Talking through a cough needs the engine to own voice detection: OpenAI's turn detection off, detection in the browser, manual commits. A phase 1 decision.
 - Cutting into a rambling answer mid-speech needs a streaming transcript; for now she redirects at the end of the turn.
 
 ### Decided on 19 Oct
@@ -539,7 +571,17 @@ Details and raw results: [engine/spike/README.md](../engine/spike/README.md).
 2. Tree: per-branch plausibility priors plus a hidden truth path.
 3. Casebook: cleared as the framework source.
 4. Pilot: a per-case flag plus a per-user pilot list.
-5. To confirm: audio over WebRTC with the engine on the sideband, this revision's main change.
+5. Transport: audio over WebRTC with the engine on the sideband (confirmed 19 Oct; phase 0 spike started).
+
+### Decided on 22–23 Oct
+
+1. Service: one interview engine beside Node, not a set of microservices. Python, in the same repo (`engine/`), deployed as its own service (a Hostinger VPS in Mumbai, through Openship; decided 23 Oct, replacing a Railway service in US East), with its own database on the platform's Atlas cluster. Node stays the system of record for users, credits, sessions and reports.
+2. Build order: the engine is built and tested on its own first, then integrated behind the routing switch with additive changes only, so sessions not on the engine are untouched.
+3. Contract: [engine-contract.md](engine-contract.md). The page uses the engine's UI socket directly with an engine-issued token, instead of going through Node.
+4. Repo: no long-lived branch for the engine. Stage 1 touches only `engine/`, so it cannot conflict with platform work; stage 2 uses short-lived branches. Openship's auto-deploy paths keep the engine deploying only on engine changes; Node's Railway watch paths still need to skip `engine/**` (stage 2).
+5. Model: stay on the gpt-realtime family. GPT-Live 1 (full duplex, $0.05 a minute) was reviewed and deferred: it lacks `response.cancel` and a documented way for the engine to start speech, which the timers, hints and guard rely on.
+6. Small models, from the evals and `tools/bench.py`: the fact matcher is `gpt-5.6-luna` (45/45 on the matcher benchmark; with `gpt-5.4-nano` the evals passed 11/16, all five misses the matcher's), the analyzer `gpt-5.4-nano` (30/30). `gpt-realtime-2.1-mini`, at a third of the audio price, passed 8/16 scenarios (preambles and hints came back), so it is not used yet.
+7. Deploys hand off instead of draining. The audio never passes through the engine, so on a restart it releases its interviews without hanging up, and the next instance reattaches to the same OpenAI calls. Draining would hold a deploy for up to 30 minutes, and on one server the new instance could take no calls meanwhile.
 
 ---
 
@@ -547,8 +589,19 @@ Details and raw results: [engine/spike/README.md](../engine/spike/README.md).
 
 About 6–7 weeks to a pilot for one engineer with AI assistance, plus the security fix now. Treat the estimate as a planning guess until phase 0 measures latency and cost.
 
-| Phase | What | Rough effort |
-|---|---|---|
+| Stage | Phase | What | Rough effort |
+|---|---|---|---|
+| Platform | Now | Project answer-key fields out of `GET /sessions/:id` and the `/cases` endpoints while a session is active; independent of the engine | 1–2 days |
+| Spike | 0 | Sideband engine, measured from India. Done 19–22 Oct: API probes, six voice iterations, the fact gate and an eval suite. Remaining: a full eval run and the last voice tests | Nearly done |
+| 1: engine on its own | 1 | Engine service from the spike, per the contract: service API, UI socket, persistence in its own database, restart recovery, hand-off on deploy. Its own test page and a stub of Node, so the whole flow is tested without the platform | About 1.5 weeks |
+| 1: engine on its own | 2 | Generation pipeline for profitability: validators, facts, canonical tree | 1–1.5 weeks |
+| 1: engine on its own | 3 | Analyzer, policy, hints (including the hint route), timers, listening mode, the scenario playbook | About 1.5 weeks |
+| 1: engine on its own | 4 | Evals in CI, latency and cost telemetry, hardening | About 1 week |
+| 2: integration | 5 | Node: `/api/voice/call`, re-offer, the settle endpoint, the hint forward, the routing switch and the optional model fields. Frontend: the WebRTC path in `Session.tsx`, reconnect, per-role transcript buffers, notices, echo check. Additive only, off by default | 1–1.5 weeks |
+| 2: integration | 6 | Pilot on flagged profitability cases for listed users | Ongoing |
+| Later | — | More case types, back-channels, speculative analysis | — |
+
+---|---|---|
 | Now | Project answer-key fields out of `GET /sessions/:id` and the `/cases` endpoints while a session is active; independent of the engine | 1–2 days |
 | 0 | Spike: extend the demo with a sideband engine (reply trigger, barge-in gate, listening mode, note as a conversation item). Measure felt latency from India, cost per session from `response.done` usage, echo without headphones, and reasoning effort at low, medium and high. Automated API probes: done 19 Oct, all passing. Manual voice tests: pending | 3–4 days |
 | 1 | Engine skeleton (gateway, call setup, sideband, actor, persistence) plus the frontend changes: WebRTC audio layer, reconnect, per-role transcript buffers, notices, echo check | 1.5–2 weeks |

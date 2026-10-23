@@ -1,0 +1,24 @@
+{
+  "properties": {
+    "type": {
+      "const": "notice",
+      "default": "notice",
+      "title": "Type",
+      "type": "string"
+    },
+    "code": {
+      "title": "Code",
+      "type": "string"
+    },
+    "message": {
+      "title": "Message",
+      "type": "string"
+    }
+  },
+  "required": [
+    "code",
+    "message"
+  ],
+  "title": "Notice",
+  "type": "object"
+}

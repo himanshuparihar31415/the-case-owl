@@ -1,0 +1,28 @@
+{
+  "properties": {
+    "type": {
+      "const": "session_ended",
+      "default": "session_ended",
+      "title": "Type",
+      "type": "string"
+    },
+    "reason": {
+      "enum": [
+        "candidate_ended",
+        "time_cap",
+        "candidate_disconnected",
+        "abandoned",
+        "admin",
+        "engine_error",
+        "upstream_error"
+      ],
+      "title": "Reason",
+      "type": "string"
+    }
+  },
+  "required": [
+    "reason"
+  ],
+  "title": "SessionEnded",
+  "type": "object"
+}

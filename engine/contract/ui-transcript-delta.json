@@ -1,0 +1,33 @@
+{
+  "properties": {
+    "type": {
+      "const": "transcript_delta",
+      "default": "transcript_delta",
+      "title": "Type",
+      "type": "string"
+    },
+    "role": {
+      "enum": [
+        "interviewer",
+        "candidate"
+      ],
+      "title": "Role",
+      "type": "string"
+    },
+    "text": {
+      "title": "Text",
+      "type": "string"
+    },
+    "itemId": {
+      "title": "Itemid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "role",
+    "text",
+    "itemId"
+  ],
+  "title": "TranscriptDelta",
+  "type": "object"
+}

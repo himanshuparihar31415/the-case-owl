@@ -1,0 +1,16 @@
+{
+  "properties": {
+    "reason": {
+      "default": "candidate_ended",
+      "enum": [
+        "candidate_ended",
+        "abandoned",
+        "admin"
+      ],
+      "title": "Reason",
+      "type": "string"
+    }
+  },
+  "title": "EndRequest",
+  "type": "object"
+}

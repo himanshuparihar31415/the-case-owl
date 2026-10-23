@@ -1,0 +1,19 @@
+{
+  "properties": {
+    "type": {
+      "const": "time",
+      "default": "time",
+      "title": "Type",
+      "type": "string"
+    },
+    "remainingSeconds": {
+      "title": "Remainingseconds",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "remainingSeconds"
+  ],
+  "title": "TimeMsg",
+  "type": "object"
+}

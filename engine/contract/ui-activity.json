@@ -1,0 +1,20 @@
+{
+  "properties": {
+    "type": {
+      "const": "activity",
+      "title": "Type",
+      "type": "string"
+    },
+    "source": {
+      "const": "scratchpad",
+      "default": "scratchpad",
+      "title": "Source",
+      "type": "string"
+    }
+  },
+  "required": [
+    "type"
+  ],
+  "title": "Activity",
+  "type": "object"
+}

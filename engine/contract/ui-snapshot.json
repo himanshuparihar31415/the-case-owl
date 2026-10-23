@@ -1,0 +1,80 @@
+{
+  "$defs": {
+    "SnapshotEntry": {
+      "properties": {
+        "role": {
+          "enum": [
+            "interviewer",
+            "candidate"
+          ],
+          "title": "Role",
+          "type": "string"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        },
+        "itemId": {
+          "title": "Itemid",
+          "type": "string"
+        }
+      },
+      "required": [
+        "role",
+        "text",
+        "itemId"
+      ],
+      "title": "SnapshotEntry",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "type": {
+      "const": "snapshot",
+      "default": "snapshot",
+      "title": "Type",
+      "type": "string"
+    },
+    "transcript": {
+      "items": {
+        "$ref": "#/$defs/SnapshotEntry"
+      },
+      "title": "Transcript",
+      "type": "array"
+    },
+    "stage": {
+      "anyOf": [
+        {
+          "enum": [
+            "intro",
+            "case",
+            "wrap_up"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Stage"
+    },
+    "remainingSeconds": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Remainingseconds"
+    }
+  },
+  "required": [
+    "transcript"
+  ],
+  "title": "Snapshot",
+  "type": "object"
+}

@@ -1,0 +1,34 @@
+{
+  "properties": {
+    "type": {
+      "const": "hint",
+      "default": "hint",
+      "title": "Type",
+      "type": "string"
+    },
+    "text": {
+      "title": "Text",
+      "type": "string"
+    },
+    "level": {
+      "title": "Level",
+      "type": "integer"
+    },
+    "used": {
+      "title": "Used",
+      "type": "integer"
+    },
+    "max": {
+      "title": "Max",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "text",
+    "level",
+    "used",
+    "max"
+  ],
+  "title": "Hint",
+  "type": "object"
+}

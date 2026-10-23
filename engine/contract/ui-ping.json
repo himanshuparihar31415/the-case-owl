@@ -1,0 +1,14 @@
+{
+  "properties": {
+    "type": {
+      "const": "ping",
+      "title": "Type",
+      "type": "string"
+    }
+  },
+  "required": [
+    "type"
+  ],
+  "title": "Ping",
+  "type": "object"
+}

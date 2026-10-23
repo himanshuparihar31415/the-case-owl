@@ -1,0 +1,24 @@
+{
+  "properties": {
+    "type": {
+      "const": "stage",
+      "default": "stage",
+      "title": "Type",
+      "type": "string"
+    },
+    "stage": {
+      "enum": [
+        "intro",
+        "case",
+        "wrap_up"
+      ],
+      "title": "Stage",
+      "type": "string"
+    }
+  },
+  "required": [
+    "stage"
+  ],
+  "title": "StageMsg",
+  "type": "object"
+}

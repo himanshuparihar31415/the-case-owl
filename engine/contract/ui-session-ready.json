@@ -1,0 +1,12 @@
+{
+  "properties": {
+    "type": {
+      "const": "session_ready",
+      "default": "session_ready",
+      "title": "Type",
+      "type": "string"
+    }
+  },
+  "title": "SessionReady",
+  "type": "object"
+}

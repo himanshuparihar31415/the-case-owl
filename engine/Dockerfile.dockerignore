@@ -1,0 +1,8 @@
+# The context is the repo root (see Dockerfile): send only what the image needs.
+*
+!engine/pyproject.toml
+!engine/uv.lock
+!engine/app
+!engine/cases
+**/__pycache__
+**/.pytest_cache

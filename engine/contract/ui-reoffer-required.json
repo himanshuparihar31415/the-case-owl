@@ -1,0 +1,12 @@
+{
+  "properties": {
+    "type": {
+      "const": "reoffer_required",
+      "default": "reoffer_required",
+      "title": "Type",
+      "type": "string"
+    }
+  },
+  "title": "ReofferRequired",
+  "type": "object"
+}

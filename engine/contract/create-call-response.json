@@ -1,0 +1,48 @@
+{
+  "$defs": {
+    "UiInfo": {
+      "properties": {
+        "url": {
+          "title": "Url",
+          "type": "string"
+        },
+        "token": {
+          "title": "Token",
+          "type": "string"
+        },
+        "expiresAt": {
+          "format": "date-time",
+          "title": "Expiresat",
+          "type": "string"
+        }
+      },
+      "required": [
+        "url",
+        "token",
+        "expiresAt"
+      ],
+      "title": "UiInfo",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "callId": {
+      "title": "Callid",
+      "type": "string"
+    },
+    "sdpAnswer": {
+      "title": "Sdpanswer",
+      "type": "string"
+    },
+    "ui": {
+      "$ref": "#/$defs/UiInfo"
+    }
+  },
+  "required": [
+    "callId",
+    "sdpAnswer",
+    "ui"
+  ],
+  "title": "CreateCallResponse",
+  "type": "object"
+}

@@ -1,0 +1,133 @@
+{
+  "$defs": {
+    "SettleSummary": {
+      "properties": {
+        "stageReached": {
+          "anyOf": [
+            {
+              "enum": [
+                "intro",
+                "case",
+                "wrap_up"
+              ],
+              "type": "string"
+            },
+            {
+              "const": "none",
+              "type": "string"
+            }
+          ],
+          "default": "none",
+          "title": "Stagereached"
+        },
+        "factsReleased": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Factsreleased",
+          "type": "array"
+        },
+        "hintsUsed": {
+          "default": 0,
+          "title": "Hintsused",
+          "type": "integer"
+        },
+        "guardHits": {
+          "default": 0,
+          "title": "Guardhits",
+          "type": "integer"
+        },
+        "costUsd": {
+          "default": 0.0,
+          "title": "Costusd",
+          "type": "number"
+        }
+      },
+      "title": "SettleSummary",
+      "type": "object"
+    },
+    "TranscriptEntry": {
+      "properties": {
+        "role": {
+          "enum": [
+            "interviewer",
+            "candidate"
+          ],
+          "title": "Role",
+          "type": "string"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        },
+        "timestamp": {
+          "format": "date-time",
+          "title": "Timestamp",
+          "type": "string"
+        }
+      },
+      "required": [
+        "role",
+        "text",
+        "timestamp"
+      ],
+      "title": "TranscriptEntry",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "callId": {
+      "title": "Callid",
+      "type": "string"
+    },
+    "endedReason": {
+      "enum": [
+        "candidate_ended",
+        "time_cap",
+        "candidate_disconnected",
+        "abandoned",
+        "admin",
+        "engine_error",
+        "upstream_error"
+      ],
+      "title": "Endedreason",
+      "type": "string"
+    },
+    "startedAt": {
+      "format": "date-time",
+      "title": "Startedat",
+      "type": "string"
+    },
+    "endedAt": {
+      "format": "date-time",
+      "title": "Endedat",
+      "type": "string"
+    },
+    "durationSeconds": {
+      "title": "Durationseconds",
+      "type": "integer"
+    },
+    "transcript": {
+      "items": {
+        "$ref": "#/$defs/TranscriptEntry"
+      },
+      "title": "Transcript",
+      "type": "array"
+    },
+    "summary": {
+      "$ref": "#/$defs/SettleSummary"
+    }
+  },
+  "required": [
+    "callId",
+    "endedReason",
+    "startedAt",
+    "endedAt",
+    "durationSeconds",
+    "transcript",
+    "summary"
+  ],
+  "title": "SettlePayload",
+  "type": "object"
+}

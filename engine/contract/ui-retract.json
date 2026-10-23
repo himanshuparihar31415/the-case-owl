@@ -1,0 +1,22 @@
+{
+  "properties": {
+    "type": {
+      "const": "retract",
+      "default": "retract",
+      "title": "Type",
+      "type": "string"
+    },
+    "itemIds": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Itemids",
+      "type": "array"
+    }
+  },
+  "required": [
+    "itemIds"
+  ],
+  "title": "Retract",
+  "type": "object"
+}

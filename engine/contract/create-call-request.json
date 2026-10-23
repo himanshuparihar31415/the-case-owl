@@ -1,0 +1,106 @@
+{
+  "$defs": {
+    "CallConfig": {
+      "properties": {
+        "interviewerStyle": {
+          "default": "neutral",
+          "enum": [
+            "supportive",
+            "neutral",
+            "stress"
+          ],
+          "title": "Interviewerstyle",
+          "type": "string"
+        },
+        "difficulty": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Difficulty"
+        },
+        "candidateFirstName": {
+          "anyOf": [
+            {
+              "maxLength": 60,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Candidatefirstname"
+        }
+      },
+      "title": "CallConfig",
+      "type": "object"
+    },
+    "Limits": {
+      "properties": {
+        "maxMinutes": {
+          "maximum": 120,
+          "minimum": 1,
+          "title": "Maxminutes",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "maxMinutes"
+      ],
+      "title": "Limits",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "sessionId": {
+      "maxLength": 64,
+      "minLength": 1,
+      "title": "Sessionid",
+      "type": "string"
+    },
+    "userId": {
+      "maxLength": 64,
+      "minLength": 1,
+      "title": "Userid",
+      "type": "string"
+    },
+    "caseId": {
+      "maxLength": 64,
+      "minLength": 1,
+      "title": "Caseid",
+      "type": "string"
+    },
+    "sdpOffer": {
+      "maxLength": 20000,
+      "minLength": 10,
+      "title": "Sdpoffer",
+      "type": "string"
+    },
+    "limits": {
+      "$ref": "#/$defs/Limits"
+    },
+    "config": {
+      "$ref": "#/$defs/CallConfig",
+      "default": {
+        "interviewerStyle": "neutral",
+        "difficulty": null,
+        "candidateFirstName": null
+      }
+    }
+  },
+  "required": [
+    "sessionId",
+    "userId",
+    "caseId",
+    "sdpOffer",
+    "limits"
+  ],
+  "title": "CreateCallRequest",
+  "type": "object"
+}

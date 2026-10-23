@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Engine Test Page</title>
+<style>
+:root { --bg:#0e1116; --panel:#161b22; --field:#0e1116; --line:#2a323d; --text:#e6edf3; --muted:#8b97a5;
+  --accent:#4f9dff; --user:#25405f; --bot:#1f2a36; --ok:#3fb950; --warn:#d29922; --bad:#f85149; }
+@media (prefers-color-scheme: light) { :root { --bg:#f4f6f8; --panel:#fff; --field:#f6f8fa; --line:#d8dee4;
+  --text:#1f2328; --muted:#636c76; --accent:#0969da; --user:#dbeafe; --bot:#eef1f4; --ok:#1a7f37; --warn:#9a6700; --bad:#cf222e; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:14px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; }
+header { display:flex; gap:10px; align-items:center; flex-wrap:wrap; padding:12px 16px; border-bottom:1px solid var(--line); }
+h1 { margin:0; font-size:16px; } h2 { margin:0 0 8px; font-size:12px; letter-spacing:.04em; text-transform:uppercase; color:var(--muted); }
+main { display:grid; grid-template-columns:minmax(0,3fr) minmax(0,2fr); gap:14px; padding:14px 16px; max-width:1200px; margin:0 auto; }
+@media (max-width:860px) { main { grid-template-columns:minmax(0,1fr); } }
+.col { display:flex; flex-direction:column; gap:14px; min-width:0; }
+.card { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:12px; }
+.row { display:flex; gap:8px; flex-wrap:wrap; align-items:end; }
+label { display:block; font-size:12px; color:var(--muted); margin-bottom:2px; }
+input, textarea { padding:6px 8px; background:var(--field); color:var(--text); border:1px solid var(--line); border-radius:6px; font:inherit; }
+textarea { width:100%; min-height:110px; resize:vertical; }
+button { padding:7px 12px; border-radius:6px; border:1px solid var(--line); background:var(--field); color:var(--text); font:inherit; cursor:pointer; }
+button.primary { background:var(--accent); border-color:var(--accent); color:#fff; font-weight:600; }
+button:disabled { opacity:.45; cursor:not-allowed; }
+.pill { padding:2px 10px; border-radius:999px; border:1px solid var(--line); font-size:12px; color:var(--muted); }
+.pill.on { color:var(--warn); border-color:var(--warn); }
+.hint { color:var(--muted); font-size:12px; }
+.bars { display:grid; grid-template-columns:auto 1fr; gap:4px 10px; align-items:center; font-size:12px; color:var(--muted); margin-top:10px; }
+.bar { height:6px; border-radius:3px; background:var(--field); border:1px solid var(--line); overflow:hidden; } .bar i { display:block; height:100%; width:0; background:var(--accent); }
+.chat { height:360px; overflow-y:auto; display:flex; flex-direction:column; gap:6px; }
+.msg { max-width:88%; padding:6px 10px; border-radius:10px; white-space:pre-wrap; overflow-wrap:anywhere; }
+.msg.candidate { align-self:flex-end; background:var(--user); } .msg.interviewer { align-self:flex-start; background:var(--bot); }
+.log { height:150px; overflow:auto; font:12px/1.5 ui-monospace,Menlo,Consolas,monospace; white-space:pre-wrap; background:var(--field); border:1px solid var(--line); border-radius:6px; padding:6px; }
+.err { color:var(--bad); }
+pre { max-height:260px; overflow:auto; font-size:11px; background:var(--field); border:1px solid var(--line); border-radius:6px; padding:6px; white-space:pre-wrap; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Interview engine · test page</h1>
+  <span class="pill" id="status">idle</span>
+  <span class="pill" id="stage">—</span>
+  <span class="pill" id="think">listening off</span>
+  <span class="pill" id="time">—</span>
+  <span class="hint">Speaks the engine contract (docs/engine-contract.md) through the Node stub. Use headphones.</span>
+</header>
+<main>
+  <div class="col">
+    <section class="card">
+      <div class="row">
+        <div><label for="name">First name</label><input id="name" value="" placeholder="optional" style="width:130px"></div>
+        <div><label for="minutes">Time cap (min)</label><input id="minutes" type="number" min="1" max="120" value="30" style="width:80px"></div>
+        <div><label for="case">Case</label><input id="case" value="coffee" style="width:110px"></div>
+        <button class="primary" id="connect">Start interview</button>
+        <button id="end" disabled>End</button>
+      </div>
+      <div class="bars"><span>Mic</span><div class="bar"><i id="micBar"></i></div><span>Interviewer</span><div class="bar"><i id="outBar"></i></div></div>
+    </section>
+    <section class="card"><h2>Conversation</h2><div class="chat" id="chat"></div></section>
+    <section class="card"><h2>Scratchpad</h2><textarea id="pad" placeholder="Typing here holds off the interviewer's check-ins"></textarea></section>
+  </div>
+  <div class="col">
+    <section class="card"><h2>Messages</h2><div class="log" id="log"></div></section>
+    <section class="card"><h2>What Node received (settle)</h2><pre id="settled">After the interview ends.</pre></section>
+  </div>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+let pc, stream, ws, ui, sessionId, ctx, micAn, outAn, audioEl, ended = false, reconnects = 0, lastActivity = 0;
+const bubbles = new Map();  // itemId -> element
+const SILENT = new URLSearchParams(location.search).has('silent');
+
+function log(text, cls) {
+  const line = document.createElement('div'); line.textContent = `${new Date().toLocaleTimeString()}  ${text}`;
+  if (cls) line.className = cls; $('log').append(line); $('log').scrollTop = $('log').scrollHeight;
+}
+function status(text) { $('status').textContent = text; }
+function bubble(role, itemId, text) {
+  let el = bubbles.get(itemId);
+  if (!el) { el = document.createElement('div'); el.className = `msg ${role}`; $('chat').append(el); bubbles.set(itemId, el); }
+  if (text !== undefined) el.textContent = text;
+  $('chat').scrollTop = $('chat').scrollHeight; return el;
+}
+function analyser(s) { const an = ctx.createAnalyser(); an.fftSize = 512; ctx.createMediaStreamSource(s).connect(an); return an; }
+const buf = new Uint8Array(512);
+function level(an) { if (!an) return 0; an.getByteTimeDomainData(buf); let sum = 0; for (const b of buf) { const x = (b - 128) / 128; sum += x * x; } return Math.min(1, Math.sqrt(sum / buf.length) * 4); }
+function loop() { $('micBar').style.width = `${level(micAn) * 100}%`; $('outBar').style.width = `${level(outAn) * 100}%`; if (!ended) requestAnimationFrame(loop); }
+function send(msg) { if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg)); }
+
+async function newPeer() {
+  // No data channel: the engine refuses offers with one, because a page could rewrite the session through it.
+  const peer = new RTCPeerConnection();
+  peer.ontrack = (e) => { audioEl.srcObject = e.streams[0]; outAn = analyser(e.streams[0]); };
+  peer.addTrack(stream.getAudioTracks()[0], stream);
+  peer.onconnectionstatechange = () => {
+    status(peer.connectionState);
+    if (peer.connectionState === 'connected') send({ type: 'audio_live' });
+    if (peer.connectionState === 'failed') log('WebRTC failed', 'err');
+  };
+  const offer = await peer.createOffer();
+  await peer.setLocalDescription(offer);
+  return { peer, sdp: offer.sdp };
+}
+
+async function api(path, body) {
+  const res = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const data = await res.json();
+  if (!res.ok) throw new Error(`${data.error?.code || res.status}: ${data.error?.message || ''}`);
+  return data;
+}
+
+async function start() {
+  $('connect').disabled = true; status('connecting');
+  try {
+    ctx = new AudioContext();
+    if (SILENT) {  // ?silent=1: a silent track instead of the mic, for smoke tests without a person
+      const dst = ctx.createMediaStreamDestination(), osc = ctx.createOscillator(), gain = ctx.createGain();
+      gain.gain.value = 0; osc.connect(gain).connect(dst); osc.start(); stream = dst.stream;
+    } else {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+    }
+    micAn = analyser(stream);
+    audioEl = new Audio(); audioEl.autoplay = true; audioEl.muted = SILENT;
+    const { peer, sdp } = await newPeer(); pc = peer;
+    const call = await api('/api/voice/call', { sdpOffer: sdp, firstName: $('name').value.trim(), maxMinutes: +$('minutes').value, caseId: $('case').value.trim() });
+    sessionId = call.sessionId; ui = call.ui;
+    await pc.setRemoteDescription({ type: 'answer', sdp: call.sdpAnswer });
+    log(`call ${call.callId} · session ${sessionId}`);
+    openUi();
+    $('end').disabled = false; requestAnimationFrame(loop);
+  } catch (err) {
+    log(err instanceof TypeError && /fetch/i.test(err.message) ? 'Cannot reach the Node stub. Is it running on :5051, with the engine on :8780?' : String(err.message || err), 'err');
+    status('error'); $('connect').disabled = false;
+  }
+}
+
+function openUi() {
+  ws = new WebSocket(`${ui.url}?token=${encodeURIComponent(ui.token)}`);
+  ws.onopen = () => { reconnects = 0; if (pc?.connectionState === 'connected') send({ type: 'audio_live' }); };
+  ws.onmessage = (e) => onMessage(JSON.parse(e.data));
+  ws.onclose = (e) => {
+    if (ended || e.code === 1000 || e.code === 4004 || e.code === 4001) { if (e.code >= 4000) log(`socket closed: ${e.reason}`, 'err'); return; }
+    if (reconnects++ < 5) { const wait = 500 * 2 ** reconnects; log(`socket dropped; reconnecting in ${wait} ms`); setTimeout(openUi, wait); }
+  };
+}
+
+async function reoffer() {
+  log('audio dropped: re-offering');
+  try { pc?.close(); } catch {}
+  const { peer, sdp } = await newPeer(); pc = peer;
+  const r = await api(`/api/voice/call/${sessionId}/reoffer`, { sdpOffer: sdp });
+  await pc.setRemoteDescription({ type: 'answer', sdp: r.sdpAnswer });
+}
+
+function onMessage(m) {
+  switch (m.type) {
+    case 'session_ready': log('session ready'); break;
+    case 'snapshot':
+      $('chat').innerHTML = ''; bubbles.clear();
+      for (const t of m.transcript) bubble(t.role, t.itemId, t.text);
+      if (m.stage) $('stage').textContent = m.stage;
+      log(`snapshot: ${m.transcript.length} turns`); break;
+    case 'transcript_delta': bubble(m.role, m.itemId).textContent += m.text; break;
+    case 'transcript': bubble(m.role, m.itemId, m.text); break;
+    case 'retract': for (const id of m.itemIds) { bubbles.get(id)?.remove(); bubbles.delete(id); } log('retracted a reply nobody heard'); break;
+    case 'stage': $('stage').textContent = m.stage; log(`stage → ${m.stage}`); break;
+    case 'think_timer': $('think').textContent = m.state === 'started' ? `listening · ${m.seconds} s` : 'listening off';
+      $('think').className = `pill ${m.state === 'started' ? 'on' : ''}`; break;
+    case 'time': $('time').textContent = `${Math.round(m.remainingSeconds / 60)} min left`; log(`${m.remainingSeconds} s left`); break;
+    case 'notice': log(`notice: ${m.message}`); break;
+    case 'hint': log(`hint ${m.level}: ${m.text}`); break;
+    case 'reoffer_required': reoffer().catch((err) => log(String(err.message || err), 'err')); break;
+    case 'session_ended': ended = true; status(`ended: ${m.reason}`); $('end').disabled = true; showSettled(); break;
+    case 'error': log(`error ${m.code}: ${m.message}`, 'err'); break;
+  }
+}
+
+async function showSettled() {
+  try { pc?.close(); } catch {} stream?.getTracks().forEach((t) => t.stop());
+  const res = await fetch(`/api/sessions/${sessionId}`);
+  $('settled').textContent = res.ok ? JSON.stringify(await res.json(), null, 2) : 'Not settled yet (Node stub unreachable or still retrying).';
+}
+
+$('connect').onclick = start;
+$('end').onclick = () => { send({ type: 'end_session' }); $('end').disabled = true; log('ending…'); };
+$('pad').oninput = () => { const now = Date.now(); if (now - lastActivity > 5000) { lastActivity = now; send({ type: 'activity', source: 'scratchpad' }); } };
+if (!/^https?:$/.test(location.protocol)) { log('Open this page through the Node stub: http://localhost:5051', 'err'); $('connect').disabled = true; }
+</script>
+</body>
+</html>

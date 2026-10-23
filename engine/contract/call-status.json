@@ -1,0 +1,55 @@
+{
+  "properties": {
+    "state": {
+      "enum": [
+        "connecting",
+        "live",
+        "awaiting_reoffer",
+        "ending",
+        "ended"
+      ],
+      "title": "State",
+      "type": "string"
+    },
+    "stage": {
+      "anyOf": [
+        {
+          "enum": [
+            "intro",
+            "case",
+            "wrap_up"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Stage"
+    },
+    "startedAt": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Startedat"
+    },
+    "elapsedSeconds": {
+      "default": 0,
+      "title": "Elapsedseconds",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "state"
+  ],
+  "title": "CallStatus",
+  "type": "object"
+}

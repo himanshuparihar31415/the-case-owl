@@ -1,0 +1,14 @@
+{
+  "properties": {
+    "type": {
+      "const": "audio_live",
+      "title": "Type",
+      "type": "string"
+    }
+  },
+  "required": [
+    "type"
+  ],
+  "title": "AudioLive",
+  "type": "object"
+}
