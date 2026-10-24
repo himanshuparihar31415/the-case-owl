@@ -9,9 +9,12 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Protocol
+
+import certifi
 
 CASES_DIR = Path(__file__).resolve().parents[1] / "cases"
 LIVE_STATES = ("connecting", "live", "awaiting_reoffer", "ending")
@@ -116,7 +119,11 @@ class MongoStore:
     def __init__(self, uri: str, db_name: str):
         from pymongo import AsyncMongoClient  # imported here so tests and development need no Mongo
 
-        self.client = AsyncMongoClient(uri, tz_aware=True)
+        # Atlas (TLS): verify against certifi's CA bundle. Python's own list fails on python.org builds
+        # ("unable to get local issuer certificate", seen 24 Oct); the bundle comes with httpx.
+        tls = uri.startswith("mongodb+srv://") or re.search(r"[?&](tls|ssl)=true", uri, re.I) is not None
+        extra = {"tlsCAFile": certifi.where()} if tls else {}
+        self.client = AsyncMongoClient(uri, tz_aware=True, **extra)
         db = self.client[db_name]
         self.cases, self.sessions, self.events = db["engine_cases"], db["engine_sessions"], db["session_events"]
 

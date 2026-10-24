@@ -35,7 +35,7 @@ id is the file name, so the stub's default `coffee` works).
 uv run pytest
 ```
 
-102 tests (plus 6 Mongo tests, skipped without a database), about 7 s, no network: a real server on a
+105 tests (plus 6 Mongo tests, skipped without a database), about 7 s, no network: a real server on a
 free port with fake OpenAI and fake Node behind it (`tests/fakes.py`), the interview clock run 1,000
 times fast. A test can start a second instance on the same store (`run_engine` in `conftest.py`) to
 check a hand-off.
@@ -47,6 +47,7 @@ check a hand-off.
 | `test_flow.py` | Whole interviews end to end: greeting, start_case, a fact through the gate, the settle call; unheard replies retracted; the time cap; a dropped call re-offered with its history; settle retries |
 | `test_api.py` | Every error code in the contract, and the UI socket's token gate |
 | `test_recovery.py` | Deploys and crashes: a shutdown hands a live interview to the next instance, which reattaches to the same call and carries on; a page or Node arriving mid-hand-off retries rather than hears "ended"; interviews that were ending, or still owed a settle, are finished by the next instance; a crashed owner's interviews are taken over, never one still owned; checked-in cases are published once |
+| `test_config.py` | Production refuses development secrets; `NODE_URL` left out means no settling |
 | `test_contract.py` | The camelCase wire format, the ledger, the checked-in JSON Schemas, tokens kept out of logs |
 | `test_mongo.py` | `MongoStore` on a real Mongo: latest published case, case publishing, sessions with dates, what is claimable, one winner per claim. Skipped unless `ENGINE_TEST_MONGO_URI` is set, on a throwaway database |
 
@@ -126,7 +127,7 @@ as everything measured so far from India; a US server would save about 0.2 s per
    | `ENGINE_UI_SECRET` | secret, generated, 32+ bytes (signs the page's tokens) |
    | `MONGO_URI` | secret: the Atlas connection string |
    | `MONGO_DB` | `engine` |
-   | `NODE_URL` | empty until stage 2: interviews are kept in `engine_sessions`, not settled |
+   | `NODE_URL` | leave out until stage 2: interviews are kept in `engine_sessions`, not settled |
    | `NODE_INTERNAL_TOKEN` | stage 2, with `NODE_URL` |
    | `PUBLIC_WS_URL` | `wss://` + the domain below |
    | `ALLOWED_ORIGINS` | `http://localhost:5051` for the test page; the app's domains in stage 2 |
@@ -140,6 +141,13 @@ as everything measured so far from India; a US server would save about 0.2 s per
    the certificate; ports 80 and 443 must be open.
 8. Optional: project → Routing → proxy read timeout `1h`. Not needed: uvicorn pings the page's
    socket every 20 s, inside nginx's 60 s default.
+
+### Which case runs
+
+For the first pilot, every engine interview runs one prepared case, `cases/coffee.json`, whatever
+the user picks (decided 24 Oct). Generating cases in the engine's format comes later (phase 2). In
+stage 2, Node starts pilot sessions on a platform `Case` that mirrors this one, so the report grades
+the case that was actually run.
 
 ### Each deploy
 
@@ -205,7 +213,7 @@ real secrets, a Mongo URI and allowed origins.
 | `OPENAI_API_KEY` | — | Engine only; never reaches a response |
 | `ENGINE_SERVICE_TOKEN`, `NODE_INTERNAL_TOKEN`, `ENGINE_UI_SECRET` | development values | Node → engine, engine → Node, UI-token signing (32+ bytes) |
 | `MONGO_URI`, `MONGO_DB` | in memory, `engine` | The engine's own database |
-| `NODE_URL` | `http://localhost:5051` | Where the settle callback goes; empty: no settling (stage 1 deploy) |
+| `NODE_URL` | the stub (`http://localhost:5051`) in development, none in production | Where the settle callback goes; none or empty: no settling (stage 1 deploy) |
 | `PUBLIC_WS_URL` | `ws://localhost:8780` | Base of the UI-socket URL given to the page |
 | `ALLOWED_ORIGINS` | any (development) | The app's domains |
 | `REALTIME_MODEL`, `REASONING`, `VOICE` | `gpt-realtime-2.1`, `low`, `marin` | From the spike's measurements |

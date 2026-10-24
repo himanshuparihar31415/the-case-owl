@@ -9,7 +9,7 @@ import uuid
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 DEV_SECRET = "dev-only-not-a-secret-change-me-in-prod"  # 32+ bytes: HS256 needs a long key
@@ -31,7 +31,9 @@ class Settings(BaseSettings):
     engine_version: str = "dev"                      # the git commit, set by the image build
 
     # Where things are
-    node_url: str = "http://localhost:5051"          # settle callback base; empty: no settling (stage 1)
+    # Settle callback base. Unset: the Node stub in development, nothing in production (stage 1, before
+    # the platform has its settle endpoint). Empty: no settling.
+    node_url: str | None = None
     public_ws_url: str = "ws://localhost:8780"       # base of the UI-socket URL handed to the page
     allowed_origins: str = ""                        # comma-separated; empty: any (development only)
 
@@ -62,6 +64,12 @@ class Settings(BaseSettings):
     lease_s: float = 30.0                   # a crashed owner's interviews are taken over after this
     lease_renew_s: float = 10.0             # how often an owner renews its leases
     recovery_scan_s: float = 3.0            # how often an instance looks for interviews handed off to it
+
+    @model_validator(mode="after")
+    def _defaults_by_environment(self) -> "Settings":
+        if self.node_url is None:
+            self.node_url = "http://localhost:5051" if self.environment == "dev" else ""
+        return self
 
     @property
     def origins(self) -> set[str]:
