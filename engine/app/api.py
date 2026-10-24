@@ -12,7 +12,7 @@ from .contract import (CallStatus, CreateCallRequest, CreateCallResponse, EndReq
 from .errors import AppError, UpstreamError
 from .registry import Registry
 from .runtime import facts
-from .runtime.interview import Interview, utcnow
+from .runtime.interview import Interview, settlement_from_doc, utcnow
 
 router = APIRouter()
 service = APIRouter(prefix="/v1", dependencies=[Depends(require_service)])
@@ -66,10 +66,15 @@ async def create_call(body: CreateCallRequest, request: Request) -> JSONResponse
         iv.queue.put_nowait(None)
         raise AppError(502, "upstream_unavailable", str(err)) from err
     reg.add(iv)
-    expires = utcnow() + timedelta(minutes=body.limits.max_minutes) + UI_GRACE
-    ui = UiInfo(url=f"{settings.public_ws_url.rstrip('/')}/v1/calls/{iv.id}/ui",
-                token=mint_ui_token(settings, iv.id, body.session_id, body.user_id, expires), expires_at=expires)
-    return JSONResponse(CreateCallResponse(call_id=iv.id, sdp_answer=answer, ui=ui).wire(), status_code=201)
+    return JSONResponse(CreateCallResponse(call_id=iv.id, sdp_answer=answer, ui=ui_info(settings, iv)).wire(),
+                        status_code=201)
+
+
+def ui_info(settings, iv: Interview) -> UiInfo:
+    """The page's UI socket and its token, good until the time cap plus a grace period."""
+    expires = iv.created_at + timedelta(minutes=iv.max_minutes) + UI_GRACE
+    return UiInfo(url=f"{settings.public_ws_url.rstrip('/')}/v1/calls/{iv.id}/ui",
+                  token=mint_ui_token(settings, iv.id, iv.session_id, iv.user_id, expires), expires_at=expires)
 
 
 @service.post("/calls/{call_id}/reoffer", response_model=None)
@@ -82,7 +87,7 @@ async def reoffer(call_id: str, body: ReofferRequest, request: Request) -> JSONR
         answer = await iv.reoffer(body.sdp_offer)
     except UpstreamError as err:
         raise AppError(502, "upstream_unavailable", str(err)) from err
-    return JSONResponse(ReofferResponse(sdp_answer=answer).wire())
+    return JSONResponse(ReofferResponse(sdp_answer=answer, ui=ui_info(request.app.state.settings, iv)).wire())
 
 
 @service.post("/calls/{call_id}/end", status_code=202, response_model=None)
@@ -112,6 +117,22 @@ async def call_status(call_id: str, request: Request) -> JSONResponse:
     elapsed = round((ended - started).total_seconds()) if started and ended else 0
     return JSONResponse(CallStatus(state=doc["state"], stage=doc.get("stage"), started_at=started,
                                    elapsed_seconds=elapsed).wire())
+
+
+@service.get("/calls/{call_id}/settlement", response_model=None)
+async def settlement(call_id: str, request: Request) -> JSONResponse:
+    """The settle payload, for Node to fetch once the interview has ended: the pull twin of the settle
+    callback, for when the engine cannot reach Node (a laptop in development) or the callback is late."""
+    reg = registry(request)
+    iv = reg.get(call_id)
+    if iv is not None and iv.state == "ended":
+        return JSONResponse(iv.settle_payload().wire())
+    doc = await reg.services.store.get_session(call_id)
+    if doc is None:
+        raise AppError(404, "call_not_found", "No interview with that call ID.")
+    if doc.get("state") != "ended":
+        raise AppError(409, "call_not_ended", f"The interview is still {doc.get('state')}; retry after it ends.")
+    return JSONResponse(settlement_from_doc(doc).wire())
 
 
 @router.get("/healthz")

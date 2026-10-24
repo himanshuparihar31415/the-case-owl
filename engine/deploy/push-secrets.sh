@@ -40,4 +40,11 @@ touch "$local_env" && chmod 600 "$local_env"
 grep -v '^ENGINE_SERVICE_TOKEN=' "$local_env" > "$local_env.tmp" || true
 printf 'ENGINE_SERVICE_TOKEN=%s\n' "$service" >> "$local_env.tmp" && mv "$local_env.tmp" "$local_env"
 
-echo "Secrets written to $HOST:$DIR/.env (4 values) and the service token to engine/.env. Nothing printed."
+# The platform's Node server reads the repo's .env: give it the engine's address and service token.
+DOMAIN="$(. "$(dirname "$0")/settings.env" && echo "$DOMAIN")"
+root_env="$REPO/.env"
+grep -vE '^(ENGINE_URL|ENGINE_SERVICE_TOKEN)=' "$root_env" > "$root_env.tmp" || true
+printf 'ENGINE_URL=https://%s\nENGINE_SERVICE_TOKEN=%s\n' "$DOMAIN" "$service" >> "$root_env.tmp" && mv "$root_env.tmp" "$root_env"
+
+echo "Secrets written to $HOST:$DIR/.env (4 values); the service token to engine/.env, and the engine's URL"
+echo "and service token to the repo's .env for Node. Nothing printed."

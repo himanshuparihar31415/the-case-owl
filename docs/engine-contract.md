@@ -111,9 +111,10 @@ Target: p95 under 2.5 s (the spike measured 1.0–1.6 s for the OpenAI exchange 
 
 ### `POST /v1/calls/{callId}/reoffer` — reconnect audio after a WebRTC drop
 
-`{"sdpOffer": "…"}` → `200 {"sdpAnswer": "…"}`. Same interview state: the engine opens a new OpenAI
-call and rebuilds the interviewer's context from the transcript and stage. `410 call_ended` if the
-interview is over.
+`{"sdpOffer": "…"}` → `200 {"sdpAnswer": "…", "ui": {url, token, expiresAt}}`. Same interview state:
+the engine opens a new OpenAI call and rebuilds the interviewer's context from the transcript and
+stage. `ui` is a fresh UI-socket token (added 24 Oct): a page that reloaded has lost the first one,
+and Node answers its `POST /api/voice/call` with a re-offer. `410 call_ended` if the interview is over.
 
 ### `POST /v1/calls/{callId}/end` — end from outside the page
 
@@ -130,6 +131,14 @@ screen, and records it in the transcript as `[HINT] …`.
 ### `GET /v1/calls/{callId}` — status, for support and admin
 
 `200 {"state": "live", "stage": "case", "startedAt": "…", "elapsedSeconds": 412}`.
+
+### `GET /v1/calls/{callId}/settlement` — fetch the settle payload (added 24 Oct)
+
+The pull twin of the settle callback (section 2): `200` with the same payload once the interview
+has ended, `409 call_not_ended` while it is live, `404 call_not_found`. Node fetches it when it
+handles the page's end of session, so a Node the engine cannot call back (a laptop in development,
+or a callback still retrying) settles all the same. Settling twice is harmless: the handler is
+idempotent.
 
 ### `GET /healthz`, `GET /readyz`
 
@@ -248,14 +257,27 @@ The existing JWT applies. Nothing changes for sessions not on the engine.
 
 | Route | Purpose |
 |---|---|
-| `POST /api/voice/call` `{sessionId, sdpOffer}` | Checks the session belongs to the user and is active, and that the case and user are on the engine. Forwards to `POST /v1/calls`, stores the `callId`, returns `{sdpAnswer, ui}`. `409 not_engine_session` tells the page to use today's socket |
-| `POST /api/voice/call/:sessionId/reoffer` `{sdpOffer}` | Forwards to re-offer |
+| `POST /api/voice/call` `{sessionId, sdpOffer}` | Checks the session belongs to the user, is active and is on the engine (`Session.engine`, set when it was created). Forwards to `POST /v1/calls`, stores the `callId`, returns `{callId, sdpAnswer, ui}`. A session that already has a call (the page reloaded, or React mounted twice in development) gets a re-offer of the same interview instead. `409` for a session not on the engine |
+| `POST /api/voice/call/:sessionId/reoffer` `{sdpOffer}` | Forwards to re-offer; returns `{sdpAnswer, ui}` |
+| `PATCH /api/sessions/:id/end` `{scratchpad}` | For engine sessions: fetches the settlement (`GET /v1/calls/{id}/settlement`, waiting a few seconds for the call to finish ending, and ending it if it is still live), applies it, then saves the scratchpad. Engine sessions that ended without the page (a closed tab) are caught up the next time Node reads them |
 | `GET /api/sessions/:id/hint` | Unchanged for other sessions; forwarded to the engine for engine sessions (phase 3) |
 | `POST /internal/sessions/:id/settle` | The settle callback above. Service token only; not reachable with a user JWT |
 
-**Routing switch:** a session uses the engine only when `Case.engine === 'v2'` **and** the user is in
-`Setting.enginePilotUserIds`, editable through `PATCH /api/admin/settings` without a redeploy.
-Removing either one sends new sessions back to today's pipeline.
+**Routing switch:** decided when the session is created (`POST /api/sessions`). A consulting case
+goes to the engine only when the user is in `Setting.enginePilotUserIds` and Node has `ENGINE_URL`.
+The case runs as chosen if it has `Case.engine.caseId` (the engine's id for its fact tree); otherwise,
+during the one-case pilot, the session is created on `Setting.enginePilotCaseId` instead, so the
+report grades the case that was actually run. Both settings are editable through
+`PATCH /api/admin/settings` without a redeploy; emptying the list sends new sessions back to today's
+pipeline.
+
+**Hints** on engine sessions answer `409` until phase 3: the engine holds the live transcript, so a
+hint from Node's copy would be blind.
+
+**Answer material** (`plausibleSolution`, `answerKey`, `solutionTree`, `idealScript`, `exhibits`,
+`quant`, `privateMechanismNote`, `referenceTree`, `forbiddenTerms`, `commonWrongTurns`) is left out of
+every session and case response (`ANSWER_FIELDS` in `server/models/Case.ts`); the report hands out the
+solution from its own endpoint once the session is over.
 
 ---
 
@@ -273,9 +295,9 @@ Removing either one sends new sessions back to today's pipeline.
 
 | Model | Field |
 |---|---|
-| `Case` | `engine?: 'v2'` |
-| `Session` | `engine?: { callId, endedReason, summary }` |
-| `Setting` | `enginePilotUserIds: ObjectId[]` (default empty) |
+| `Case` | `engine?: { caseId }`: the engine's id for this case's fact tree |
+| `Session` | `engine?: { caseId, callId, endedReason, summary, settledAt }` (`settledAt` makes applying the settlement idempotent) |
+| `Setting` | `enginePilotUserIds: ObjectId[]` (default empty), `enginePilotCaseId: ObjectId \| null` (the one pilot case) |
 
 The case's `referenceTree` for reports is still `Case.referenceTree`. In phase 2, case generation
 writes it there and the fact tree to `engine_cases` together, so the interview and the report grade

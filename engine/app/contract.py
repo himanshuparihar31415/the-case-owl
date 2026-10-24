@@ -66,6 +66,7 @@ class ReofferRequest(Wire):
 
 class ReofferResponse(Wire):
     sdp_answer: str
+    ui: UiInfo | None = None  # a fresh UI token: a page that reloaded has lost the first one
 
 
 class EndRequest(Wire):

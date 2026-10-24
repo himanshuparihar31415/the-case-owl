@@ -44,6 +44,8 @@ export interface ICase extends Document {
   resumeBrief?: unknown;
   resumeRole?: string;
   resumeTopics?: string[];
+  // Set on cases the interview engine can run: the id of its fact tree in the engine's own database.
+  engine?: { caseId: string };
   isSeeded: boolean;
   generatedAt: Date;
   isCustom: boolean;
@@ -84,6 +86,7 @@ const CaseSchema = new Schema<ICase>(
     resumeBrief: { type: Schema.Types.Mixed },
     resumeRole: { type: String },
     resumeTopics: { type: [String], default: undefined },
+    engine: { type: new Schema({ caseId: { type: String, required: true } }, { _id: false }), default: undefined },
     isSeeded: { type: Boolean, default: false },
     generatedAt: { type: Date, default: Date.now },
     isCustom: { type: Boolean, default: false },
@@ -96,3 +99,9 @@ CaseSchema.index({ type: 1, industry: 1, difficulty: 1 });
 CaseSchema.index({ createdBy: 1 });
 
 export const Case = mongoose.model<ICase>('Case', CaseSchema);
+
+// A case's answer material, as a Mongoose projection that leaves it out. Never sent to the browser
+// while it could help a candidate: interviews run on the server, and the report hands out the
+// solution from its own endpoint once the session is over.
+export const ANSWER_FIELDS = '-plausibleSolution -answerKey -solutionTree -idealScript -exhibits -quant '
+  + '-privateMechanismNote -referenceTree -forbiddenTerms -commonWrongTurns';

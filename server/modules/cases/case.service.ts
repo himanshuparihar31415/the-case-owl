@@ -1,4 +1,4 @@
-import { Case, ICase, CaseType, Industry } from '../../models/Case.js';
+import { ANSWER_FIELDS, Case, ICase, CaseType, Industry } from '../../models/Case.js';
 import { AppError } from '../../middleware/errorHandler.js';
 import { generatePharmaProfitabilityCaseWithAI, generateExhibitCaseWithAI, generateProductCaseWithAI, generateGuesstimateWithAI, extractCaseFromTranscript, ExhibitCase, ExtractedCase } from '../../ai/client.js';
 import { PharmaTheme, ProductFormat } from '../../ai/prompts.js';
@@ -26,7 +26,7 @@ export async function listCases(filter: CaseFilter, userId?: string): Promise<{ 
   const skip = (page - 1) * limit;
 
   const [cases, total] = await Promise.all([
-    Case.find(query).sort({ createdAt: -1 }).skip(skip).limit(limit),
+    Case.find(query).select(ANSWER_FIELDS).sort({ createdAt: -1 }).skip(skip).limit(limit),
     Case.countDocuments(query),
   ]);
 
@@ -37,7 +37,7 @@ export async function listMyCases(userId: string, limit = 12, page = 1): Promise
   const skip = (page - 1) * limit;
   const filter = { isCustom: true, createdBy: userId };
   const [cases, total] = await Promise.all([
-    Case.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit),
+    Case.find(filter).select(ANSWER_FIELDS).sort({ createdAt: -1 }).skip(skip).limit(limit),
     Case.countDocuments(filter),
   ]);
   return { cases, total };
@@ -96,7 +96,7 @@ export async function createCustomCase(
 }
 
 export async function getCaseById(id: string): Promise<ICase> {
-  const c = await Case.findById(id);
+  const c = await Case.findById(id).select(ANSWER_FIELDS);
   if (!c) throw new AppError(404, 'Case not found');
   return c;
 }

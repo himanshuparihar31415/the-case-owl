@@ -8,6 +8,7 @@ import { cn } from '@/src/lib/utils';
 import { useNavigate, useParams } from 'react-router-dom';
 import { api, getWsUrl } from '@/src/lib/api';
 import { ExhibitCard } from '@/src/components/ExhibitCard';
+import { useEngineInterview } from '@/src/hooks/useEngineInterview';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -32,6 +33,8 @@ interface SessionData {
     interviewerStyle: string;
     caseType?: string;
   };
+  // Present when the interview engine runs this session (docs/engine-contract.md).
+  engine?: { caseId: string; callId?: string };
 }
 
 type WsStatus = 'connecting' | 'ready' | 'ended' | 'error';
@@ -152,9 +155,16 @@ export default function Session() {
     return () => clearTimeout(t);
   }, [recentId]);
 
+  const lastActivityRef = useRef(0);
+  const noteScratchpadActivity = useRef<() => void>(() => undefined);
   const updateScratchpad = useCallback((value: string) => {
     setScratchpad(value);
     if (sessionId) localStorage.setItem(`scratchpad_${sessionId}`, value);
+    const now = Date.now();
+    if (now - lastActivityRef.current > 5000) {
+      lastActivityRef.current = now;
+      noteScratchpadActivity.current();
+    }
   }, [sessionId]);
 
   // Auto-scroll transcript to bottom on new content — unless the candidate has
@@ -303,12 +313,11 @@ export default function Session() {
     });
   }, []);
 
-  // Load session data + connect WebSocket
+  // Load session data. It says which voice path runs the interview: the interview engine, or
+  // today's pipeline over the /api/voice socket.
   useEffect(() => {
     if (!sessionId) return;
-
     let cancelled = false;
-
     api.get<{ session: SessionData }>(`/sessions/${sessionId}`)
       .then((data) => {
         if (!cancelled) setSessionData(data.session);
@@ -316,6 +325,36 @@ export default function Session() {
       .catch(() => {
         if (!cancelled) setLoadError('Failed to load session data.');
       });
+    return () => { cancelled = true; };
+  }, [sessionId]);
+
+  const engineMode = Boolean(sessionData?.engine);
+  // The engine path: audio over WebRTC, the engine's own socket for everything else. Idle otherwise.
+  const engine = useEngineInterview(engineMode ? sessionId : undefined);
+
+  // The engine's state feeds the same page state the pipeline socket fills, so the page renders alike.
+  useEffect(() => {
+    if (!engineMode) return;
+    setTranscript(engine.transcript.map(({ role, text }) => ({ role, text })));
+  }, [engineMode, engine.transcript]);
+  useEffect(() => {
+    if (!engineMode) return;
+    setWsStatus(engine.status);
+    setWsError(engine.error);
+  }, [engineMode, engine.status, engine.error]);
+  useEffect(() => {
+    if (engineMode) setIsAiSpeaking(engine.aiSpeaking);
+  }, [engineMode, engine.aiSpeaking]);
+  // Typing in the scratchpad tells the engine the candidate is working, so she holds off checking in.
+  useEffect(() => {
+    noteScratchpadActivity.current = engineMode ? engine.noteActivity : () => undefined;
+  }, [engineMode, engine.noteActivity]);
+
+  // Connect today's pipeline socket, once the session is known not to be on the engine.
+  useEffect(() => {
+    if (!sessionId || !sessionData || engineMode) return;
+
+    let cancelled = false;
 
     const wsUrl = getWsUrl('/api/voice', { sessionId: sessionId! });
 
@@ -395,10 +434,12 @@ export default function Session() {
       playbackCtxRef.current?.close();
       playbackCtxRef.current = null;
     };
-  }, [sessionId, playPcm16Chunk, startMicCapture, stopMic, flushPlayback]);
+  }, [sessionId, sessionData, engineMode, playPcm16Chunk, startMicCapture, stopMic, flushPlayback]);
 
   const handleStopAndSubmit = async () => {
     setSubmitting(true);
+    // The engine ends the call and saves the transcript; Node then collects it in the PATCH below.
+    if (engineMode) engine.disconnect();
     wsRef.current?.send(JSON.stringify({ type: 'end_session' }));
     wsRef.current?.close();
     stopMic();
@@ -567,7 +608,9 @@ export default function Session() {
             <span className="text-[11px] text-secondary">Need help?</span>
             <button
               onClick={handleHint}
-              disabled={wsStatus !== 'ready' || hintLoading}
+              // Engine sessions get hints from the engine itself, in a later phase.
+              disabled={wsStatus !== 'ready' || hintLoading || engineMode}
+              title={engineMode ? 'Hints are not available in this interview yet' : undefined}
               className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-surface-container-high text-primary text-[11px] font-medium hover:bg-surface-container transition disabled:opacity-40 disabled:cursor-not-allowed"
             >
               {hintLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Lightbulb className="w-3 h-3" />}
@@ -830,7 +873,10 @@ export default function Session() {
       <div className="shrink-0 no-line-card flex items-center justify-between gap-3 px-4 py-2">
         <div className="flex items-center gap-3 min-w-0">
           <button
-            onClick={() => setMicMuted((m) => { micMutedRef.current = !m; return !m; })}
+            onClick={() => {
+              if (engineMode) engine.toggleMute();
+              setMicMuted((m) => { micMutedRef.current = !m; return !m; });
+            }}
             disabled={wsStatus !== 'ready'}
             title={micMuted ? 'Unmute microphone' : 'Mute microphone'}
             className={cn(
@@ -857,6 +903,8 @@ export default function Session() {
           </button>
           <button
             onClick={() => {
+              // On the engine, leaving ends the call; the session is settled when Node next reads it.
+              if (engineMode) engine.disconnect();
               wsRef.current?.close();
               stopMic();
               navigate('/dashboard');

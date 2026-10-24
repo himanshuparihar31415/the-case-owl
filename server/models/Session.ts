@@ -46,6 +46,14 @@ export interface ISession extends Document {
   startedAt: Date;
   endedAt?: Date;
   durationSeconds?: number;
+  // Set only for sessions the interview engine runs (see the schema).
+  engine?: {
+    caseId: string;
+    callId?: string;
+    endedReason?: string;
+    summary?: Record<string, unknown>;
+    settledAt?: Date;
+  };
 }
 
 const SessionSchema = new Schema<ISession>(
@@ -89,6 +97,20 @@ const SessionSchema = new Schema<ISession>(
     startedAt: { type: Date, default: Date.now },
     endedAt: { type: Date },
     durationSeconds: { type: Number },
+    // Sessions run by the interview engine (docs/engine-contract.md). Absent for every other session.
+    engine: {
+      type: new Schema(
+        {
+          caseId: { type: String, required: true },   // the engine's case id
+          callId: { type: String },                    // set once the engine has opened the call
+          endedReason: { type: String },
+          summary: { type: Schema.Types.Mixed },       // stageReached, factsReleased, hintsUsed, guardHits, costUsd
+          settledAt: { type: Date },                   // the engine's settlement was applied (idempotency)
+        },
+        { _id: false }
+      ),
+      default: undefined,
+    },
   },
   { timestamps: true }
 );

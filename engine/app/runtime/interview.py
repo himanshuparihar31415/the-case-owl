@@ -50,6 +50,21 @@ def utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def settlement_from_doc(doc: dict) -> SettlePayload:
+    """The settle payload of an ended interview, rebuilt from engine_sessions: what Node fetches from
+    GET /v1/calls/{id}/settlement when the callback could not reach it (a laptop in development)."""
+    started, ended = doc.get("startedAt"), doc.get("endedAt") or utcnow()
+    counts = doc.get("counts") or {}
+    return SettlePayload(
+        call_id=doc["callId"], ended_reason=doc.get("endedReason") or "engine_error",
+        started_at=started or doc.get("createdAt") or ended, ended_at=ended,
+        duration_seconds=max(0, round((ended - started).total_seconds())) if started else 0,
+        transcript=[TranscriptEntry(**e) for e in Ledger.load(doc.get("ledger") or []).transcript()],
+        summary=SettleSummary(stage_reached=doc.get("stage") or ("intro" if started else "none"),
+                              facts_released=sorted(doc.get("released") or []), hints_used=0,
+                              guard_hits=counts.get("guard_hit", 0), cost_usd=round(float(doc.get("costUsd") or 0), 4)))
+
+
 @dataclass
 class Services:
     settings: Settings

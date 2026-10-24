@@ -2,7 +2,15 @@ import { Response, NextFunction } from 'express';
 import * as caseService from './case.service.js';
 import { AuthRequest } from '../../middleware/auth.js';
 import { AppError } from '../../middleware/errorHandler.js';
-import { CaseType, Industry } from '../../models/Case.js';
+import { ANSWER_FIELDS, CaseType, Industry } from '../../models/Case.js';
+
+// What the browser may see of a case: everything except its answer material (models/Case.ts).
+const ANSWER_KEYS = ANSWER_FIELDS.split(' ').filter(Boolean).map((f) => f.slice(1));
+function publicCase(c: { toObject(): Record<string, unknown> }): Record<string, unknown> {
+  const doc = c.toObject();
+  for (const key of ANSWER_KEYS) delete doc[key];
+  return doc;
+}
 
 export async function listCases(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
   try {
@@ -63,7 +71,7 @@ export async function createCustomCase(req: AuthRequest, res: Response, next: Ne
       difficulty: req.body.difficulty ? Number(req.body.difficulty) : undefined,
     });
 
-    res.status(201).json({ case: c });
+    res.status(201).json({ case: publicCase(c) });
   } catch (err) {
     next(err);
   }
@@ -94,7 +102,7 @@ export async function generateCase(req: AuthRequest, res: Response, next: NextFu
       if (!type || !industry) throw new AppError(400, 'type and industry are required for a consulting case');
       c = await caseService.generateCase(type as CaseType, industry as Industry, diff);
     }
-    res.status(201).json({ case: c });
+    res.status(201).json({ case: publicCase(c) });
   } catch (err) {
     next(err);
   }

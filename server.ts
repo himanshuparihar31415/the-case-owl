@@ -25,6 +25,7 @@ import coachingRoutes from './server/modules/coaching/coaching.routes.js';
 import billingRoutes from './server/modules/billing/billing.routes.js';
 import adminRoutes from './server/modules/admin/admin.routes.js';
 import resumeRoutes from './server/modules/resume/resume.routes.js';
+import { internalRouter, voiceCallRouter } from './server/modules/engine/engine.routes.js';
 import { webhook as razorpayWebhook } from './server/modules/billing/billing.controller.js';
 import { seedPlans } from './server/modules/billing/plans.service.js';
 import { setupVoiceWebSocket } from './server/modules/voice/voice.ws.js';
@@ -63,6 +64,10 @@ app.use('/api/coaching', coachingRoutes);
 app.use('/api/billing', billingRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/resume-interviews', resumeRoutes);
+// Interview engine (docs/engine-contract.md): the page's call brokering, and the engine's settle callback.
+// HTTP only; the /api/voice WebSocket of today's pipelines is handled by the upgrade handler below.
+app.use('/api/voice', voiceCallRouter);
+app.use('/internal', internalRouter);
 
 app.use(errorHandler);
 

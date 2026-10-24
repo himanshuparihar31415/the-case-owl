@@ -138,6 +138,11 @@ async def test_a_dropped_call_is_reoffered_with_its_history(engine):
                                       headers={"authorization": f"Bearer {DEV_SECRET}"})).json()
     assert status["state"] == "live"
 
+    # A page that reloaded lost its UI token: the re-offer's fresh one opens the socket and catches it up.
+    page = await engine.ui({"ui": r.json()["ui"]})
+    snapshot = await page.next("snapshot")
+    assert [e["text"] for e in snapshot["transcript"]] == ["Hi, I'm Maya. How are you?", "Doing well."]
+
 
 async def test_no_reoffer_in_time_ends_as_disconnected(engine):
     engine.app.state.settings.reoffer_window_s = 1.0  # 1 ms at the test time scale
@@ -160,3 +165,29 @@ async def test_settle_is_retried_until_node_answers(engine):
 def call_offer() -> str:
     from tests.conftest import OFFER
     return OFFER
+
+
+async def test_node_can_fetch_the_settlement_once_the_interview_ends(engine):
+    """The pull twin of the settle callback, for a Node the engine cannot reach (a laptop)."""
+    from app.config import DEV_SECRET
+    auth = {"authorization": f"Bearer {DEV_SECRET}"}
+    call, sb, ui = await started(engine)
+    url = f"{engine.base}/v1/calls/{call['callId']}/settlement"
+    r = await engine.client.get(url, headers=auth)
+    assert r.status_code == 409 and r.json()["error"]["code"] == "call_not_ended"
+    assert (await engine.client.get(url)).status_code == 401
+
+    sb.push(*reply("resp_1", "item_g", "Hi, I'm Maya. How are you?"))
+    await ui.next("transcript")
+    await ui.send({"type": "end_session"})
+    pushed = await engine.wait_settled()
+    pulled = (await engine.client.get(url, headers=auth)).json()
+    assert pulled["callId"] == call["callId"] and pulled["endedReason"] == "candidate_ended"
+    assert pulled["transcript"] == pushed["transcript"] and pulled["summary"] == pushed["summary"]
+
+    engine.registry.calls.clear()  # long after: only engine_sessions has it
+    from_db = (await engine.client.get(url, headers=auth)).json()
+    assert [e["text"] for e in from_db["transcript"]] == ["Hi, I'm Maya. How are you?"]
+    assert from_db["durationSeconds"] == pushed["durationSeconds"]
+    r = await engine.client.get(f"{engine.base}/v1/calls/rtc_nope/settlement", headers=auth)
+    assert r.status_code == 404

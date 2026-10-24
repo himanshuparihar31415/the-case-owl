@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import { Response, NextFunction } from 'express';
 import { AuthRequest } from '../../middleware/auth.js';
 import { AppError } from '../../middleware/errorHandler.js';
@@ -88,10 +89,25 @@ export async function getSettingsCtrl(_req: AuthRequest, res: Response, next: Ne
 }
 export async function updateSettingsCtrl(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
   try {
-    const { signupPromoCredits, promoEnabled } = req.body as { signupPromoCredits?: number; promoEnabled?: boolean };
+    const { signupPromoCredits, promoEnabled, enginePilotUserIds, enginePilotCaseId } = req.body as {
+      signupPromoCredits?: number; promoEnabled?: boolean; enginePilotUserIds?: unknown; enginePilotCaseId?: unknown;
+    };
     const update: Record<string, unknown> = {};
     if (typeof signupPromoCredits === 'number') update.signupPromoCredits = signupPromoCredits;
     if (typeof promoEnabled === 'boolean') update.promoEnabled = promoEnabled;
+    // The interview engine pilot: who gets it, and which case it runs. An empty list turns it off.
+    if (enginePilotUserIds !== undefined) {
+      if (!Array.isArray(enginePilotUserIds) || !enginePilotUserIds.every((id) => mongoose.isValidObjectId(id))) {
+        throw new AppError(400, 'enginePilotUserIds must be a list of user ids');
+      }
+      update.enginePilotUserIds = enginePilotUserIds;
+    }
+    if (enginePilotCaseId !== undefined) {
+      if (enginePilotCaseId !== null && !mongoose.isValidObjectId(enginePilotCaseId)) {
+        throw new AppError(400, 'enginePilotCaseId must be a case id or null');
+      }
+      update.enginePilotCaseId = enginePilotCaseId;
+    }
     const settings = await Setting.findOneAndUpdate({ key: 'global' }, update, { new: true, upsert: true });
     await audit(req.userId!, 'edit_settings', undefined, update);
     res.json({ settings });

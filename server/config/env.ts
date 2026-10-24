@@ -19,6 +19,10 @@ const envSchema = z.object({
   // Speech rate (0.7 slow … 1.2 fast; 1.0 = default). Slightly slow by default
   // so the interviewer doesn't sound rushed.
   ELEVENLABS_SPEED: z.coerce.number().min(0.7).max(1.2).default(0.92),
+  // Interview engine (engine/, docs/engine-contract.md). Unset: no session is routed to it.
+  ENGINE_URL: z.string().url().optional(),                 // e.g. https://srv2011824.hstgr.cloud
+  ENGINE_SERVICE_TOKEN: z.string().min(16).optional(),     // Node → engine
+  NODE_INTERNAL_TOKEN: z.string().min(16).optional(),      // engine → Node settle callback
   APP_URL: z.string().default('http://localhost:5050'),
   FRONTEND_URL: z.string().default('http://localhost:5173'),
   // Razorpay — set in local .env (untracked) and Railway dashboard vars. Never commit.

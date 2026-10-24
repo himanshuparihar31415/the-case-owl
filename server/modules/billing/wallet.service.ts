@@ -82,9 +82,11 @@ export async function reserve(userId: string, capMinutes: number): Promise<numbe
 // Release a held reservation (clamped at 0).
 export async function release(userId: string, minutes: number): Promise<void> {
   if (minutes <= 0) return;
+  // An update pipeline (to clamp at 0): Mongoose 9 refuses one unless `updatePipeline` is set, and
+  // without it every settle threw here and the hold was never released.
   await Wallet.findOneAndUpdate({ userId }, [
     { $set: { reserved: { $max: [0, { $subtract: ['$reserved', minutes] }] } } },
-  ]);
+  ], { updatePipeline: true });
 }
 
 // Actually spend minutes (at settle). Deducts subscription first, then top-up.
