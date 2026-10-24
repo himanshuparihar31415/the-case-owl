@@ -1,7 +1,7 @@
 import WebSocket from 'ws';
 
 const KEY = process.env.OPENAI_API_KEY || 'YOUR_KEY';
-const MODEL = process.env.MODEL || 'gpt-realtime';
+const MODEL = process.env.MODEL || 'gpt-realtime-2';
 const url = `wss://api.openai.com/v1/realtime?model=${MODEL}`;
 
 console.log('Connecting to', url);

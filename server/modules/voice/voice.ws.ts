@@ -7,6 +7,7 @@ import { Case } from '../../models/Case.js';
 import { handlePmPipeline } from './pm/pm.pipeline.js';
 import { handleConsultingPipeline } from './pm/consulting.pipeline.js';
 import { handleGuesstimatePipeline } from './pm/guesstimate.pipeline.js';
+import { handleResumeRealtime } from './realtime/resume.realtime.js';
 
 // Every module now runs on the STT→LLM→TTS pipeline (OpenAI transcription +
 // gpt-4o + ElevenLabs). The all-in-one Realtime voice model was retired here in
@@ -59,11 +60,6 @@ async function handleConnection(clientWs: WebSocket, req: IncomingMessage): Prom
     clientWs.close();
     return;
   }
-  if (!env.ELEVENLABS_API_KEY) {
-    sendToClient(clientWs, { type: 'error', message: 'ELEVENLABS_API_KEY is not configured on the server' });
-    clientWs.close();
-    return;
-  }
 
   const minutes = session.reservedMinutes && session.reservedMinutes > 0
     ? session.reservedMinutes
@@ -72,6 +68,17 @@ async function handleConnection(clientWs: WebSocket, req: IncomingMessage): Prom
 
   // ── Route to the module's pipeline ──
   const args = { clientWs, session, caseDoc, sessionId, minutes, style };
+  // Resume interviews run on the OpenAI Realtime API (no ElevenLabs).
+  if (caseDoc.module === 'resume') {
+    handleResumeRealtime(args);
+    return;
+  }
+  // The pipeline modules below voice the interviewer with ElevenLabs.
+  if (!env.ELEVENLABS_API_KEY) {
+    sendToClient(clientWs, { type: 'error', message: 'ELEVENLABS_API_KEY is not configured on the server' });
+    clientWs.close();
+    return;
+  }
   if (caseDoc.module === 'product') {
     handlePmPipeline(args);
   } else if (caseDoc.module === 'guesstimate') {

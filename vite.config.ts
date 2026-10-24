@@ -22,7 +22,21 @@ export default defineConfig(({mode}) => {
       proxy: {
         // Port 5000 is taken by macOS AirPlay Receiver; backend runs on 5050.
         // ws:true so the voice WebSocket (/api/voice) is proxied too.
-        '/api': { target: 'http://localhost:5050', ws: true },
+        // Set API_PROXY_TARGET in .env.local to use a hosted backend instead.
+        // Resume interviews (REST + their voice socket) always run on the local backend,
+        // so they can be developed while every other API stays on API_PROXY_TARGET.
+        // Must stay ABOVE '/api' (first match wins). Override with RESUME_API_PROXY_TARGET.
+        '/api/resume-interviews': {
+          target: env.RESUME_API_PROXY_TARGET || 'http://localhost:8000',
+          ws: true,
+          changeOrigin: true,
+        },
+        '/api': {
+          target: env.API_PROXY_TARGET || 'http://localhost:5050',
+          ws: true,
+          changeOrigin: true,
+          secure: true,
+        },
       },
     },
   };
