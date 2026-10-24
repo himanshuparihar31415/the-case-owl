@@ -94,94 +94,74 @@ acknowledgement adds a second short sentence about 1 run in 10 ("Sure, take your
 when you're ready."). That is natural, so the eval allows up to 20 words rather than the
 instruction being tightened.
 
-## Deploy (Hostinger VPS, with Openship)
+## Deploy (Hostinger VPS)
 
-The engine runs on a Hostinger KVM 2 in Mumbai (2 vCPU, 8 GB, Ubuntu 26.04), added to the Openship
-desktop app as "Dev-Server". Openship builds the image on the server from the GitHub repo, runs it
-behind its OpenResty proxy and issues the TLS certificate. `openship.json` (here, beside the
-Dockerfile) tells it the rest: a Dockerfile build, port 8080, and a readiness check on `/readyz`.
+The engine runs on a Hostinger KVM 2 in Mumbai (2 vCPU, 8 GB, Ubuntu 26.04) at
+**https://srv2011824.hstgr.cloud**, with Docker Compose: the engine, and Caddy in front of it for
+HTTPS (Let's Encrypt, renewed by Caddy). Files on the server live in `/opt/case-owl-engine`.
+Deployed and verified on 24 Oct (below).
 
-Mumbai is fine for latency. The engine adds one engine ⇄ OpenAI round trip to each turn, the same
+Mumbai is fine for latency: the engine adds one engine ⇄ OpenAI round trip to each turn, the same
 as everything measured so far from India; a US server would save about 0.2 s per reply.
 
-### Once
+```bash
+engine/deploy/deploy.sh
+```
 
-1. **Openship 0.9.3 or later** on the laptop. 0.8.1 made a deploy stop the old container
-   gracefully and run readiness checks on SSH servers. On 0.8.0 the old container may be killed
-   outright: interviews still recover, after the 30 s lease rather than at once.
-2. **Docker on the server**: Openship → Dev-Server → Components (its build needs Docker and Buildx).
-3. **Git access**: Dev-Server → Git auth, read access to the repository.
-4. **MongoDB Atlas**: the platform's cluster, the engine's own `engine` database. In Network Access,
-   allow `187.126.115.114` unless the cluster already accepts any address. Better than reusing the
-   platform's user: a user with `readWrite` on `engine` only.
-5. **A project** from the GitHub repo: the branch to deploy, root directory `engine`, server
-   Dev-Server. Check that it shows Docker, port 8080, readiness on `/readyz` (from `openship.json`;
-   Openship copies readiness into the project when it is created, so change it there afterwards).
-6. **Environment**, in the project's settings (mark secrets as secret; Openship sets `PORT`):
+builds the image here (the one the tests ran against), copies it over SSH, and restarts the engine.
+Live interviews survive a deploy: the old container releases them without hanging up, the new one
+reattaches to the same OpenAI calls at startup, and Caddy holds requests during the few-second
+restart (`lb_try_duration`) instead of answering 502. The candidate hears at most that pause.
 
-   | Variable | Value |
-   |---|---|
-   | `ENVIRONMENT` | `prod` (refuses to start with development secrets) |
-   | `OPENAI_API_KEY` | secret |
-   | `ENGINE_SERVICE_TOKEN` | secret, generated (Node and the stub send it) |
-   | `ENGINE_UI_SECRET` | secret, generated, 32+ bytes (signs the page's tokens) |
-   | `MONGO_URI` | secret: the Atlas connection string |
-   | `MONGO_DB` | `engine` |
-   | `NODE_URL` | leave out until stage 2: interviews are kept in `engine_sessions`, not settled |
-   | `NODE_INTERNAL_TOKEN` | stage 2, with `NODE_URL` |
-   | `PUBLIC_WS_URL` | `wss://` + the domain below |
-   | `ALLOWED_ORIGINS` | `http://localhost:5051` for the test page; the app's domains in stage 2 |
+| File (`engine/deploy/`) | What it is |
+|---|---|
+| `deploy.sh` | Build, copy, `docker compose up`, wait for ready, check `https://…/healthz`, keep the five newest images |
+| `push-secrets.sh` | Writes the server's `.env` from the repo's `.env` (OpenAI key, Mongo URI) plus two generated engine tokens; prints nothing. Run once, or to rotate the Mongo URI or OpenAI key (the tokens are kept) |
+| `compose.yaml`, `Caddyfile` | The engine (port 8080 inside, health check on `/readyz`, 15 s stop grace) and Caddy (80/443) |
+| `settings.env` | Non-secret settings: the domain and `ALLOWED_ORIGINS` |
+| `env.example` | The secrets the server's `.env` holds |
 
-   Generate each secret with:
-   ```bash
-   python3 -c "import secrets; print(secrets.token_urlsafe(32))"
-   ```
-7. **Domain**: `srv2011824.hstgr.cloud`, Hostinger's name for the server, already points at it.
-   A subdomain of the app's domain works too (an A record to `187.126.115.114`). Openship issues
-   the certificate; ports 80 and 443 must be open.
-8. Optional: project → Routing → proxy read timeout `1h`. Not needed: uvicorn pings the page's
-   socket every 20 s, inside nginx's 60 s default.
+Access: SSH as root with `~/.ssh/case_owl_engine_deploy` (a deploy key made for this; remove it under
+hPanel → VPS → SSH keys to revoke). Hostinger's Docker Manager does not support Ubuntu 26.04, so
+deploys go over SSH; the Hostinger MCP is useful for the VM's state, snapshots and metrics.
+
+On the server, from `/opt/case-owl-engine`:
+
+```bash
+docker compose --env-file settings.env logs -f engine
+```
+```bash
+docker tag case-owl-engine:<older tag> case-owl-engine:current && docker compose --env-file settings.env up -d
+```
+
+(the second one rolls back; `docker images case-owl-engine` lists the tags, which are git commits).
+
+Secrets stay out of the repo and the image: the server's `.env` is `chmod 600`, and the service token
+is also in `engine/.env` on the laptop (gitignored) so the local Node stub can call the server:
+
+```bash
+ENGINE_URL=https://srv2011824.hstgr.cloud uv run python tools/node_stub.py
+```
+
+then http://localhost:5051. Until stage 2 `NODE_URL` is unset: interviews are kept in
+`engine_sessions` (`settle.status: "skipped"`), not settled with the platform.
+
+Caddy keeps no access log, so the page's UI token, which travels in the socket URL, is logged nowhere.
 
 ### Which case runs
 
 For the first pilot, every engine interview runs one prepared case, `cases/coffee.json`, whatever
-the user picks (decided 24 Oct). Generating cases in the engine's format comes later (phase 2). In
-stage 2, Node starts pilot sessions on a platform `Case` that mirrors this one, so the report grades
-the case that was actually run.
-
-### Each deploy
-
-Push, then Deploy in Openship. `autoDeployPaths` limits automatic deploys to engine code (`app/`,
-`cases/`, the lockfile, the Dockerfile). Openship builds from the repo root with
-`-f engine/Dockerfile` (hence the repo-root paths in the Dockerfile and
-`Dockerfile.dockerignore`), stops the old container, starts the new one, waits for `/readyz`, then
-routes to it.
-
-Live interviews survive a deploy. On SIGTERM the engine releases them without hanging up (0.4 s,
-measured on this image), and the new container claims them at startup and reattaches to the same
-OpenAI calls. The candidate hears a pause the length of the restart, a few seconds; the page
-reconnects by itself. Openship's default routing stops the old container before starting the new
-one; its "Container IP" routing would overlap them and shorten that pause.
-
-Checked-in cases (`cases/*.json`) are published into `engine_cases` at startup: a changed file
-becomes a new version, and a version made any other way (phase 2) is never overwritten.
-
-Check a deploy, then try it from the laptop through the stub:
-
-```bash
-curl https://srv2011824.hstgr.cloud/healthz
-```
-```bash
-ENGINE_URL=https://srv2011824.hstgr.cloud ENGINE_SERVICE_TOKEN=<the token> uv run python tools/node_stub.py
-```
-
-Then open http://localhost:5051. Settled interviews are in `engine_sessions` (no `NODE_URL` yet).
+the user picks (decided 24 Oct). Checked-in cases are published into `engine_cases` at startup: a
+changed file becomes a new version, and a version made any other way (phase 2) is never overwritten.
+In stage 2, Node starts pilot sessions on a platform `Case` that mirrors this one, so the report
+grades the case that was actually run.
 
 ### Stage 2, on the platform side
 
 The Node service on Railway redeploys on every commit, including engine commits, and a Node
 deploy drops the current pipeline's live voice sockets. Its `railway.toml` needs watch patterns
-that skip `/engine/**`.
+that skip `/engine/**`. Node then gets `ENGINE_URL=https://srv2011824.hstgr.cloud` and the service
+token, the engine gets `NODE_URL`, `NODE_INTERNAL_TOKEN` and the app's domains in `ALLOWED_ORIGINS`.
 
 After changing `app/contract.py`, regenerate the schemas Node's tests read:
 `uv run python tools/export_schemas.py`.
@@ -201,7 +181,8 @@ After changing `app/contract.py`, regenerate the schemas Node's tests read:
 | `cases/` | Case data (fact trees). Phase 2 generates these into `engine_cases` |
 | `tools/node_stub.py`, `web/test.html` | Node's part of the contract, and a page that speaks it |
 | `tools/evals.py`, `tools/bench.py` | Behaviour evals and small-model benchmark against the real models |
-| `Dockerfile`, `Dockerfile.dockerignore`, `openship.json` | The image (built from the repo root) and its Openship project |
+| `Dockerfile`, `Dockerfile.dockerignore` | The image, built from the repo root |
+| `deploy/` | The Hostinger deployment: compose, Caddy, deploy and secrets scripts |
 
 ## Configuration
 
@@ -233,17 +214,21 @@ Verified on 23 Oct:
   process took the interview over at startup and reattached to the same OpenAI call, and the page
   reconnected with its transcript. The third process spoke on the original call ("Take your time.
   Are you still with me?"), then ended it and settled it with both lines (184 s).
-- The production image (Python 3.12, built from the repo root as Openship builds it) in production
-  mode: startup checks, case publishing, `/healthz`, `/readyz`, no API docs, the service token, and
-  a `docker stop` in 0.4 s.
+- The production image (Python 3.12, built from the repo root) in production mode: startup checks,
+  case publishing, `/healthz`, `/readyz`, no API docs, the service token, and a `docker stop` in 0.4 s.
+- The deployment on the Hostinger VPS (24 Oct): HTTPS certificate issued, `/healthz` over HTTPS, 401
+  without the service token, and a real call through the local Node stub. OpenAI accepted the call,
+  the page's socket connected through Caddy over `wss://`, her greeting and the 25 s check-in arrived,
+  ending hung up (200), and the session landed in Atlas (`engine` database) with its transcript and
+  cost ($0.017).
 
 Not verified yet:
-- The Openship deploy itself (the steps above).
-- A full voice interview on the service, and re-offer after a real WebRTC drop.
+- A full voice interview on the deployed service, and re-offer after a real WebRTC drop.
+- A deploy during a live interview on the server (the hand-off was verified locally on 23 Oct).
 - A candidate who finishes speaking during a restart's pause. OpenAI's turn detection should still
   add that turn to the call, so the model has it, but the engine does not see it: she answers only
   when they speak again or at the 25 s check-in, and the turn is missing from the settled transcript.
 
 Run one replica until page sockets can reach any instance.
 
-Next: the Openship deploy, and a voice interview on it. Then phase 2, case generation.
+Next: a voice interview on the deployed engine, then stage 2 (platform integration) or phase 2 (case generation).

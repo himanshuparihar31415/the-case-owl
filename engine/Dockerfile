@@ -1,14 +1,16 @@
-# The interview engine. The build context is the repo root, as Openship builds a Dockerfile that lives
-# in a subfolder (-f engine/Dockerfile); engine/Dockerfile.dockerignore keeps that context to the engine.
+# The interview engine. The build context is the repo root (deploy/deploy.sh builds it this way);
+# engine/Dockerfile.dockerignore keeps that context to the engine.
 #   docker build -f engine/Dockerfile -t case-owl-engine .        (from the repo root)
 FROM python:3.12-slim
 COPY --from=ghcr.io/astral-sh/uv:0.11 /uv /uvx /bin/
 
 WORKDIR /srv
-ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy PYTHONUNBUFFERED=1 PATH="/srv/.venv/bin:$PATH"
+# UV_HTTP_TIMEOUT: a slow link timed a wheel download out at uv's default 30 s (24 Oct).
+ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy UV_HTTP_TIMEOUT=180 PYTHONUNBUFFERED=1 PATH="/srv/.venv/bin:$PATH"
 
 COPY engine/pyproject.toml engine/uv.lock ./
-RUN uv sync --frozen --no-dev --no-install-project
+# The cache mount keeps downloaded wheels between builds, so a dependency change refetches only what changed.
+RUN --mount=type=cache,target=/root/.cache/uv uv sync --frozen --no-dev --no-install-project
 COPY engine/app ./app
 COPY engine/cases ./cases
 

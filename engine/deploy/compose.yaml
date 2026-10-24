@@ -1,0 +1,46 @@
+# The interview engine on the Hostinger VPS: the engine, behind Caddy for HTTPS.
+# deploy.sh copies this folder's compose.yaml, Caddyfile and settings.env to /opt/case-owl-engine on
+# the server. Secrets live only in /opt/case-owl-engine/.env there (see env.example).
+name: case-owl-engine
+
+x-logs: &logs
+  driver: json-file
+  options: { max-size: "20m", max-file: "5" }
+
+services:
+  engine:
+    image: case-owl-engine:current      # deploy.sh tags each release `current`; rollback = re-tag an older one
+    env_file: .env                      # OPENAI_API_KEY, ENGINE_SERVICE_TOKEN, ENGINE_UI_SECRET, MONGO_URI
+    environment:                        # these win over .env
+      ENVIRONMENT: prod
+      PORT: "8080"
+      MONGO_DB: engine
+      PUBLIC_WS_URL: wss://${DOMAIN}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS}
+    expose: ["8080"]
+    restart: unless-stopped
+    # A stop hands live interviews to the next container in under a second (app/registry.py).
+    stop_grace_period: 15s
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/readyz', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    logging: *logs
+
+  caddy:
+    image: caddy:2
+    ports: ["80:80", "443:443", "443:443/udp"]
+    environment:
+      DOMAIN: ${DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data                # the certificate; keep it across restarts (Let's Encrypt rate limits)
+      - caddy_config:/config
+    restart: unless-stopped
+    logging: *logs
+
+volumes:
+  caddy_data: {}
+  caddy_config: {}

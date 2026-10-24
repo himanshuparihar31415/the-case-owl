@@ -1,7 +1,8 @@
 # Interview engine ⇄ platform contract (v1)
 
 How the interview engine (`engine/`, a separate Python service) connects to the Case Owl platform
-(Node API on Railway, React app on Vercel; the engine on a Hostinger VPS, deployed with Openship).
+(Node API on Railway, React app on Vercel; the engine on a Hostinger VPS at `https://srv2011824.hstgr.cloud`,
+behind Caddy).
 The engine is built and tested on its own first
 (stage 1), then plugged in behind a switch (stage 2). This document is the boundary both sides
 build against, so integration is wiring, not redesign.
@@ -201,8 +202,8 @@ sessions Node saves the scratchpad even if the status is already `completed`; to
 cap plus 5 minutes). Close codes: `4001` bad or expired token, or an origin not allowed; `4004` call
 ended (do not reconnect); `1012` the engine is restarting and `1013` the interview is moving to the
 next instance (both: reconnect with backoff, from 0.5 s, for about 30 s). The engine keeps the token
-out of its logs. The proxy in front of it may not (Openship's nginx keeps a default access log), so
-the token is short-lived and good for one call only.
+out of its logs, and its proxy (Caddy) keeps no access log. The token is short-lived and good for one
+call only all the same.
 
 The interview starts (her greeting, and the clock) when the page sends `audio_live`. A call whose
 page never does within 60 s ends as `candidate_disconnected`.
@@ -309,7 +310,7 @@ States: `connecting` → `live` (stages `intro` → `case` → `wrap_up`) → `e
 | Time cap | `time` at 5 and 2 minutes left, a wrap-up line, then `ended` with `time_cap` |
 | WebRTC drops | `reoffer_required` to the page. No re-offer within 60 s ends the call with `candidate_disconnected` |
 | UI socket drops | The interview continues; the page reconnects with the same token and gets a `snapshot` |
-| Engine deploy or restart | Hand-off, not drain. The audio runs browser ⇄ OpenAI, never through the engine, so on SIGTERM the engine stops taking calls (`/readyz` 503), gives interviews already ending up to 5 s, then releases every interview it holds: it closes only its control socket, leaves the OpenAI call up, and saves the interview with no lease. The next instance claims each one at startup, reattaches to the same OpenAI call and carries on. Interviews owed a settle are resumed the same way. The candidate hears at most a pause, the length of the restart (a few seconds with Openship, which stops the old container before starting the new one), and the page reconnects (`1012`). Verified live on 23 Oct: two restarts in one call, the third process spoke on the original call and settled it |
+| Engine deploy or restart | Hand-off, not drain. The audio runs browser ⇄ OpenAI, never through the engine, so on SIGTERM the engine stops taking calls (`/readyz` 503), gives interviews already ending up to 5 s, then releases every interview it holds: it closes only its control socket, leaves the OpenAI call up, and saves the interview with no lease. The next instance claims each one at startup, reattaches to the same OpenAI call and carries on. Interviews owed a settle are resumed the same way. The candidate hears at most a pause, the length of the restart (a few seconds: Docker Compose stops the old container before starting the new one, and Caddy holds requests meanwhile), and the page reconnects (`1012`). Verified live on 23 Oct: two restarts in one call, the third process spoke on the original call and settled it |
 | Engine crash | Each instance renews a 30 s lease on its interviews every 10 s. Another instance takes one over only once its lease was released (hand-off) or has lapsed (crash), through an atomic claim, so two instances never steer one call. The new owner reattaches to the same OpenAI call, or asks the page to re-offer if it is gone; no re-offer within 60 s ends the call and settles it. A page or Node request that arrives mid-hand-off gets `1013` or `503 call_moving` and retries. Run one replica: a page's socket must land on the instance that owns its interview |
 | OpenAI error | One reconnect; otherwise apologise, end with `upstream_error`, settle the time used |
 | Node unreachable at settle | Retries for 24 h (section 2); the transcript is safe in `engine_sessions` |
