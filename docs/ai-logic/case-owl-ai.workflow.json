@@ -1,0 +1,296 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "The Case Owl AI Logic",
+    "quality_profile": "showcase",
+    "output": "docs/ai-logic/case-owl-ai-logic.html"
+  },
+  "lanes": [
+    {
+      "id": "gen",
+      "label": "1 \u00c2\u00b7 Case Generation"
+    },
+    {
+      "id": "live",
+      "label": "2 \u00c2\u00b7 Live Interview"
+    },
+    {
+      "id": "guard",
+      "label": "Guardrails & Tools",
+      "variant": "exception"
+    },
+    {
+      "id": "report",
+      "label": "3 \u00c2\u00b7 Evaluation & Report"
+    }
+  ],
+  "mainPath": [
+    "core",
+    "render",
+    "casedoc",
+    "alex",
+    "tts"
+  ],
+  "nodes": [
+    {
+      "id": "core",
+      "lane": "gen",
+      "col": 0,
+      "type": "backend",
+      "label": "Case Core Call",
+      "sublabel": "crux + dataset + plan",
+      "tag": "RICH_CASE_CORE",
+      "width": 132
+    },
+    {
+      "id": "render",
+      "lane": "gen",
+      "col": 1,
+      "type": "backend",
+      "label": "Exhibit Render",
+      "sublabel": "1 call per exhibit",
+      "tag": "from dataset",
+      "width": 132
+    },
+    {
+      "id": "casedoc",
+      "lane": "gen",
+      "col": 2,
+      "type": "database",
+      "label": "Case Document",
+      "sublabel": "private answer key",
+      "tag": "forbiddenTerms",
+      "width": 132
+    },
+    {
+      "id": "voice",
+      "lane": "live",
+      "col": 0,
+      "type": "external",
+      "label": "Candidate Voice",
+      "sublabel": "mic PCM16",
+      "width": 132
+    },
+    {
+      "id": "stt",
+      "lane": "live",
+      "col": 1,
+      "type": "cloud",
+      "label": "Speech to Text",
+      "sublabel": "gpt-4o-transcribe",
+      "tag": "server VAD",
+      "width": 132
+    },
+    {
+      "id": "alex",
+      "lane": "live",
+      "col": 2,
+      "type": "backend",
+      "label": "Alex Interviewer",
+      "sublabel": "gpt-4o turn",
+      "tag": "INTERVIEWER_SYSTEM",
+      "width": 132
+    },
+    {
+      "id": "tts",
+      "lane": "live",
+      "col": 3,
+      "type": "cloud",
+      "label": "Text to Speech",
+      "sublabel": "ElevenLabs stream",
+      "width": 132
+    },
+    {
+      "id": "super",
+      "lane": "guard",
+      "col": 3,
+      "type": "security",
+      "label": "Supervisor",
+      "sublabel": "LED / FED_DATA check",
+      "tag": "deterministic",
+      "width": 132
+    },
+    {
+      "id": "exhibit",
+      "lane": "guard",
+      "col": 4,
+      "type": "messagebus",
+      "label": "show_exhibit",
+      "sublabel": "function call",
+      "tag": "when earned",
+      "width": 132
+    },
+    {
+      "id": "transcript",
+      "lane": "report",
+      "col": 0,
+      "type": "database",
+      "label": "Session Transcript",
+      "sublabel": "timestamped turns",
+      "width": 132
+    },
+    {
+      "id": "reftree",
+      "lane": "report",
+      "col": 1,
+      "type": "backend",
+      "label": "Reference Tree",
+      "sublabel": "MECE tree from case",
+      "tag": "skeleton + branches",
+      "width": 132
+    },
+    {
+      "id": "evaltree",
+      "lane": "report",
+      "col": 2,
+      "type": "backend",
+      "label": "Journey Overlay",
+      "sublabel": "nodes you hit",
+      "tag": "POST_INTERVIEW_TREE",
+      "width": 132
+    },
+    {
+      "id": "evalprompt",
+      "lane": "report",
+      "col": 3,
+      "type": "backend",
+      "label": "Evaluator",
+      "sublabel": "scorecard + coaching",
+      "tag": "EVALUATION_PROMPT",
+      "width": 132
+    },
+    {
+      "id": "pillar",
+      "lane": "report",
+      "col": 4,
+      "type": "security",
+      "label": "Pillar Score",
+      "sublabel": "40 / 30 / 30 in code",
+      "width": 132
+    },
+    {
+      "id": "report",
+      "lane": "report",
+      "col": 5,
+      "type": "frontend",
+      "label": "Report",
+      "sublabel": "P0 fix + habits",
+      "width": 132
+    }
+  ],
+  "edges": [
+    {
+      "id": "e2",
+      "from": "core",
+      "to": "render",
+      "label": "plan",
+      "variant": "emphasis"
+    },
+    {
+      "id": "e3",
+      "from": "render",
+      "to": "casedoc",
+      "variant": "default"
+    },
+    {
+      "id": "e4",
+      "from": "casedoc",
+      "to": "alex",
+      "label": "scenario + key",
+      "variant": "emphasis"
+    },
+    {
+      "id": "e5",
+      "from": "voice",
+      "to": "stt",
+      "variant": "default"
+    },
+    {
+      "id": "e6",
+      "from": "stt",
+      "to": "alex",
+      "label": "final text",
+      "variant": "emphasis"
+    },
+    {
+      "id": "e7",
+      "from": "alex",
+      "to": "tts",
+      "label": "reply",
+      "variant": "default"
+    },
+    {
+      "id": "e8",
+      "from": "alex",
+      "to": "super",
+      "label": "check",
+      "variant": "security"
+    },
+    {
+      "id": "e9",
+      "from": "alex",
+      "to": "exhibit",
+      "variant": "dashed",
+      "role": "branch"
+    },
+    {
+      "id": "e13",
+      "from": "reftree",
+      "to": "evaltree",
+      "variant": "emphasis"
+    },
+    {
+      "id": "e14",
+      "from": "evaltree",
+      "to": "evalprompt",
+      "variant": "default"
+    },
+    {
+      "id": "e15",
+      "from": "evalprompt",
+      "to": "pillar",
+      "variant": "default"
+    },
+    {
+      "id": "e16",
+      "from": "pillar",
+      "to": "report",
+      "variant": "emphasis"
+    },
+    {
+      "id": "e10",
+      "from": "alex",
+      "to": "transcript",
+      "label": "turns saved",
+      "variant": "default"
+    },
+    {
+      "id": "e12",
+      "from": "transcript",
+      "to": "evaltree",
+      "variant": "default",
+      "fromSide": "bottom",
+      "toSide": "bottom",
+      "route": "bottom-channel"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Answer key stays private",
+      "items": [
+        "Crux, answer key and forbidden terms never reach the candidate",
+        "Supervisor logs any turn that names them first"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Scores are not all LLM",
+      "items": [
+        "Navigation comes from the traversal order in code",
+        "Fluency metrics are measured, not guessed"
+      ]
+    }
+  ]
+}

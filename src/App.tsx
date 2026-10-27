@@ -12,7 +12,12 @@ import Billing from './pages/Billing';
 import Landing from './pages/Landing';
 import Home from './pages/Home';
 import Companies from './pages/companies/Companies';
-import CompanyDetail from './pages/companies/CompanyDetail';
+import CompanyLayout from './pages/companies/CompanyLayout';
+import CompanyOverview from './pages/companies/CompanyOverview';
+import CompanyKnow from './pages/companies/CompanyKnow';
+import CompanyLearn from './pages/companies/CompanyLearn';
+import CompanyLesson from './pages/companies/CompanyLesson';
+import CompanyMock from './pages/companies/CompanyMock';
 import GroupDiscussion from './pages/interview/GroupDiscussion';
 import ResumeInterview from './pages/interview/ResumeInterview';
 import ResumeSession from './pages/interview/ResumeSession';
@@ -98,7 +103,13 @@ function AppContent() {
           <Route path="/interview/resume" element={<ResumeInterview />} />
           <Route path="/interview/general" element={<GeneralInterview />} />
           <Route path="/companies" element={<Companies />} />
-          <Route path="/companies/:companyId" element={<CompanyDetail />} />
+          <Route path="/companies/:companyId" element={<CompanyLayout />}>
+            <Route index element={<CompanyOverview />} />
+            <Route path="know" element={<CompanyKnow />} />
+            <Route path="learn" element={<CompanyLearn />} />
+            <Route path="learn/:lessonId" element={<CompanyLesson />} />
+            <Route path="mock" element={<CompanyMock />} />
+          </Route>
           <Route path="/settings" element={<div className="py-20 text-center text-secondary">Settings module coming soon.</div>} />
         </Route>
 
