@@ -1,2 +1,7 @@
 [variables]
 NIXPACKS_NODE_VERSION = "20"
+
+# npm install, not the default npm ci: ci aborts when package-lock.json is out of
+# sync with package.json (e.g. gcp-metadata@7.0.1 missing from the lock file).
+[phases.install]
+cmds = ["npm install"]
