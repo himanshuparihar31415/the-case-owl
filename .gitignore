@@ -6,3 +6,9 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# Claude Code: the shared setup in .claude/ is committed; personal files stay local
+.claude/settings.local.json
+.claude/agent-memory-local/
+.claude/worktrees/
+CLAUDE.local.md

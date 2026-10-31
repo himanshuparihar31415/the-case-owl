@@ -1,0 +1,5 @@
+# Gitignored files Claude Code copies into a new worktree, so a session there can run the app.
+# Secrets stay on this machine either way; hooks stop Claude from reading them.
+.env
+.env.local
+engine/.env

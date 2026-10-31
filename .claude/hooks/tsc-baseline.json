@@ -1,0 +1,27 @@
+{
+  "scripts/test_eval.ts": {
+    "TS2739": 1
+  },
+  "server/modules/auth/auth.service.ts": {
+    "TS2353": 1,
+    "TS2339": 1
+  },
+  "server/modules/cases/case.controller.ts": {
+    "TS2339": 1
+  },
+  "src/components/ui/magnetic-dock.tsx": {
+    "TS2322": 1
+  },
+  "src/features/dashboard/CoachDashboard.tsx": {
+    "TS2322": 3
+  },
+  "src/features/dashboard/Onboarding.tsx": {
+    "TS2322": 1
+  },
+  "src/pages/companies/CompanyLayout.tsx": {
+    "TS2322": 1
+  },
+  "src/pages/companies/CompanyLearn.tsx": {
+    "TS2322": 1
+  }
+}
