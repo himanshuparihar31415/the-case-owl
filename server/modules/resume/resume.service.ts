@@ -73,6 +73,7 @@ export async function buildResumeBrief(resumeText: string): Promise<ResumeBrief>
   return {
     candidateName: String(raw.candidateName ?? '').trim().slice(0, 40),
     headline: String(raw.headline ?? '').trim().slice(0, 200),
+    domain: String(raw.domain ?? '').trim().slice(0, 120),
     sections,
   };
 }
@@ -143,6 +144,35 @@ async function resolveBrief(userId: string, file?: UploadedFile, resumeId?: stri
   const stale = all.slice(MAX_SAVED_RESUMES).map((r) => r._id);
   if (stale.length) await SavedResume.deleteMany({ _id: { $in: stale } });
   return brief;
+}
+
+/**
+ * Parse a fresh upload into a saved resume ahead of the interview, so the setup page can show
+ * what was read before the user commits. A duplicate file returns the existing entry. When the
+ * user already holds the maximum, the caller must say which one to replace (409 RESUME_LIMIT),
+ * checked before any LLM spend.
+ */
+export async function saveUploadedResume(userId: string, file: UploadedFile, replaceId?: string): Promise<SavedResumeView> {
+  const fileHash = createHash('sha256').update(file.buffer).digest('hex');
+  const existing = await SavedResume.findOneAndUpdate({ userId, fileHash }, { $set: { lastUsedAt: new Date(), fileName: file.originalname } }, { new: true });
+  if (existing) return toView(existing);
+
+  let replaceTarget: InstanceType<typeof SavedResume> | null = null;
+  if (replaceId) {
+    if (!mongoose.isValidObjectId(replaceId)) throw new AppError(404, 'The resume you chose to replace no longer exists.');
+    replaceTarget = await SavedResume.findOne({ _id: replaceId, userId });
+    if (!replaceTarget) throw new AppError(404, 'The resume you chose to replace no longer exists.');
+  } else if (await SavedResume.countDocuments({ userId }) >= MAX_SAVED_RESUMES) {
+    throw new AppError(409, `You can keep ${MAX_SAVED_RESUMES} resumes. Choose one to replace.`, 'RESUME_LIMIT');
+  }
+
+  const brief = await buildResumeBrief(await extractResumeText(file));
+  if (brief.sections.length === 0) {
+    throw new AppError(422, 'That does not look like a resume. We could not find any experience to interview you on.');
+  }
+  if (replaceTarget) await SavedResume.deleteOne({ _id: replaceTarget._id });
+  const row = await SavedResume.create({ userId, fileName: file.originalname, fileSize: file.size ?? file.buffer.length, fileHash, brief });
+  return toView(row);
 }
 
 interface StartInput {

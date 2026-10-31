@@ -308,6 +308,70 @@ export default function Report() {
                 </div>
               )}
 
+              {/* Resume interview: score composition, coverage and whole-interview feedback */}
+              {isResume && a.resumeScore && (() => {
+                const rs = a.resumeScore;
+                const fb = a.endFeedback;
+                const PARTS: [string, string][] = [['content', 'Content & substance'], ['confidence', 'Confidence'], ['voice', 'Voice & delivery'], ['roleFit', 'Role fit']];
+                return (
+                  <div className="no-line-card p-6 space-y-5">
+                    <div>
+                      <div className="label-blueprint mb-3">How your score was built</div>
+                      <div className="space-y-2.5">
+                        {PARTS.map(([key, label]) => {
+                          const p = rs.parts?.[key];
+                          if (!p) return null;
+                          return (
+                            <div key={key}>
+                              <div className="flex items-baseline justify-between text-sm">
+                                <span className="font-semibold text-primary">{label} <span className="text-secondary font-normal">· {p.weight}%</span></span>
+                                <span className="font-bold text-primary tabular-nums">{p.score10 == null ? 'Not assessed' : `${p.score10}/10`}</span>
+                              </div>
+                              <div className="mt-1 h-1.5 rounded-full bg-surface-container overflow-hidden">
+                                <div className="h-full rounded-full bg-on-tertiary-container" style={{ width: `${p.score10 == null ? 0 : Math.round(p.score10 * 10)}%` }} />
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    <div className="grid sm:grid-cols-2 gap-3 text-sm">
+                      <div className="rounded-lg bg-surface-container-low px-3.5 py-2.5">
+                        <div className="label-blueprint">Resume covered</div>
+                        <div className="font-headline font-extrabold text-primary text-lg">{Math.round((rs.coverage?.pct ?? 0) * 100)}%
+                          <span className="ml-2 text-xs font-semibold text-secondary">{rs.coverage?.covered}/{rs.coverage?.total} entries · target {Math.round((rs.coverage?.target ?? 0.7) * 100)}%</span>
+                        </div>
+                      </div>
+                      <div className="rounded-lg bg-surface-container-low px-3.5 py-2.5">
+                        <div className="label-blueprint">Role questions</div>
+                        <div className="font-headline font-extrabold text-primary text-lg">{rs.roleBlock?.complete ? 'Completed' : 'Not completed'}</div>
+                      </div>
+                    </div>
+                    {fb && (fb.keyProblems?.length > 0 || fb.improvements?.length > 0) && (
+                      <div className="grid sm:grid-cols-2 gap-5">
+                        <div>
+                          <div className="label-blueprint mb-2 text-error">Key problems</div>
+                          <ul className="space-y-1.5 text-sm text-on-surface-variant">
+                            {(fb.keyProblems ?? []).map((s: string, i: number) => <li key={i} className="flex gap-2"><AlertTriangle className="w-4 h-4 text-error shrink-0 mt-0.5" />{s}</li>)}
+                          </ul>
+                        </div>
+                        <div>
+                          <div className="label-blueprint mb-2 text-green-700">What to improve</div>
+                          <ul className="space-y-1.5 text-sm text-on-surface-variant">
+                            {(fb.improvements ?? []).map((s: string, i: number) => <li key={i} className="flex gap-2"><CheckCircle className="w-4 h-4 text-green-600 shrink-0 mt-0.5" />{s}</li>)}
+                          </ul>
+                        </div>
+                      </div>
+                    )}
+                    {(rs.caveats ?? []).length > 0 && (
+                      <ul className="space-y-1 text-[12px] text-secondary">
+                        {rs.caveats.map((c: string, i: number) => <li key={i}>• {c}</li>)}
+                      </ul>
+                    )}
+                  </div>
+                );
+              })()}
+
               {/* Summary + competency pills */}
               <div className="no-line-card p-6 space-y-4">
                 {verdictLine && <p className="text-on-surface-variant leading-relaxed">{verdictLine}</p>}

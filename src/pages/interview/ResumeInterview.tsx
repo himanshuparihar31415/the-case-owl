@@ -30,9 +30,8 @@ const DURATIONS = ['15 min', '25 min', '40 min'];
 const DURATION_MINUTES = [15, 25, 40];
 const STYLES = ['Supportive', 'Neutral', 'Stress'];
 
-// What the user sees while the server reads the resume and briefs the interviewer.
-const PREP_STEPS = ['Reading your resume…', 'Picking what to probe…', 'Briefing your interviewer…'];
-const PREP_STEPS_SAVED = ['Loading your resume…', 'Briefing your interviewer…'];
+// Shown while an uploaded resume is parsed into the interviewer's brief.
+const PARSE_STEPS = ['Reading your resume…', 'Picking what to probe…', 'Briefing your interviewer…'];
 
 const fmtSize = (b: number) => (b < 1024 * 1024 ? `${Math.max(1, Math.round(b / 1024))} KB` : `${(b / (1024 * 1024)).toFixed(1)} MB`);
 
@@ -67,15 +66,16 @@ const choiceCls = (on: boolean) => cn(
 export default function ResumeInterview() {
   const navigate = useNavigate();
   const inputRef = useRef<HTMLInputElement>(null);
-  const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState('');
   const [dragging, setDragging] = useState(false);
   const [topics, setTopics] = useState<Set<number>>(new Set([0, 1, 2]));
-  const [role, setRole] = useState(0);
+  const [role, setRole] = useState<number | null>(null); // no default: a deliberate choice
   const [dur, setDur] = useState(1);
   const [style, setStyle] = useState(1);
   const [starting, setStarting] = useState(false);
-  const [prepStep, setPrepStep] = useState(0);
+  const [parsing, setParsing] = useState<File | null>(null); // upload being read into a brief
+  const [parseStep, setParseStep] = useState(0);
+  const [replaceFor, setReplaceFor] = useState<File | null>(null); // upload waiting on "which one to replace"
   const [startError, setStartError] = useState('');
   // Resumes uploaded on earlier interviews: the latest is preselected so a returning user just continues.
   const [saved, setSaved] = useState<SavedResume[] | null>(null); // null = still loading
@@ -108,24 +108,43 @@ export default function ResumeInterview() {
     }
   };
 
-  // Advance the status line while the request is in flight (never past the last step).
+  // Advance the status line while the upload is being read (never past the last step).
   useEffect(() => {
-    if (!starting) return;
-    setPrepStep(0);
-    const t = setInterval(() => setPrepStep((n) => Math.min(n + 1, PREP_STEPS.length - 1)), 2500);
+    if (!parsing) return;
+    setParseStep(0);
+    const t = setInterval(() => setParseStep((n) => Math.min(n + 1, PARSE_STEPS.length - 1)), 2500);
     return () => clearInterval(t);
-  }, [starting]);
+  }, [parsing]);
 
   const pick = () => inputRef.current?.click();
 
-  const accept = (f: File | undefined | null) => {
-    if (!f) return;
-    if (!isAllowed(f)) { setError('That file type won\'t work. Upload a PDF or DOCX.'); return; }
-    if (f.size > MAX_BYTES) { setError('That file is over the 5 MB limit. Try a smaller one.'); return; }
+  // Upload now, so the brief is ready (and any problem with the file is known) before "Begin".
+  const upload = async (f: File, replaceId?: string) => {
     setError('');
     setStartError('');
-    setFile(f);
-    setSelectedId(null); // a fresh upload replaces the saved choice
+    setReplaceFor(null);
+    setParsing(f);
+    try {
+      const fd = new FormData();
+      fd.append('resume', f);
+      if (replaceId) fd.append('replaceId', replaceId);
+      const { resume } = await api.postForm<{ resume: SavedResume }>('/resume-interviews/resumes', fd);
+      setSaved((prev) => [resume, ...(prev ?? []).filter((r) => r.id !== resume.id && r.id !== replaceId)]);
+      setSelectedId(resume.id);
+      setShowUpload(false);
+    } catch (e) {
+      if ((e as { code?: string }).code === 'RESUME_LIMIT') setReplaceFor(f);
+      else setError(e instanceof Error ? e.message : 'Could not read that resume. Please try again.');
+    } finally {
+      setParsing(null);
+    }
+  };
+
+  const accept = (f: File | undefined | null) => {
+    if (!f || parsing) return;
+    if (!isAllowed(f)) { setError('That file type won\'t work. Upload a PDF or DOCX.'); return; }
+    if (f.size > MAX_BYTES) { setError('That file is over the 5 MB limit. Try a smaller one.'); return; }
+    void upload(f);
   };
 
   const onDrop = (e: DragEvent) => {
@@ -143,17 +162,16 @@ export default function ResumeInterview() {
     setTopics((prev) => { const n = new Set(prev); if (n.has(i)) n.delete(i); else n.add(i); return n; });
   };
 
-  const hasResume = !!file || !!selectedId;
-  const ready = hasResume && topics.size > 0 && !starting;
+  const hasResume = !!selectedId;
+  const ready = hasResume && topics.size > 0 && role !== null && !starting && !parsing;
 
   const begin = async () => {
-    if (!hasResume || topics.size === 0 || starting) return;
+    if (!ready || !selectedId || role === null) return;
     setStartError('');
     setStarting(true);
     try {
       const fd = new FormData();
-      if (file) fd.append('resume', file);
-      else if (selectedId) fd.append('resumeId', selectedId);
+      fd.append('resumeId', selectedId);
       fd.append('role', ROLES[role].title);
       fd.append('topics', JSON.stringify([...topics].sort()));
       fd.append('durationMinutes', String(DURATION_MINUTES[dur]));
@@ -165,11 +183,15 @@ export default function ResumeInterview() {
       setStarting(false);
     }
   };
-  const summary = !hasResume
-    ? 'Choose or upload a resume to continue'
-    : topics.size === 0
-      ? 'Pick at least one topic'
-      : `~${DURATIONS[dur]} · spoken interview · ${topics.size} of ${TOPICS.length} topics`;
+  const summary = parsing
+    ? 'Reading your resume…'
+    : !hasResume
+      ? 'Choose or upload a resume to continue'
+      : topics.size === 0
+        ? 'Pick at least one topic'
+        : role === null
+          ? 'Pick a target role'
+          : `~${DURATIONS[dur]} · spoken interview · ${topics.size} of ${TOPICS.length} topics`;
 
   return (
     <div className="max-w-3xl mx-auto py-1">
@@ -197,7 +219,7 @@ export default function ResumeInterview() {
           <div className="mt-2.5 h-[68px] rounded-xl bg-surface-container-low animate-pulse" aria-hidden="true" />
         )}
 
-        {saved !== null && saved.length > 0 && !file && (
+        {saved !== null && saved.length > 0 && !parsing && !replaceFor && (
           <div role="radiogroup" aria-label="Your saved resumes" className="mt-2.5 space-y-2">
             {saved.map((r) => {
               const on = selectedId === r.id;
@@ -254,7 +276,7 @@ export default function ResumeInterview() {
           </div>
         )}
 
-        {saved !== null && !file && (saved.length === 0 || showUpload) && (
+        {saved !== null && !parsing && !replaceFor && (saved.length === 0 || showUpload) && (
           <div
             role="button"
             tabIndex={0}
@@ -282,29 +304,36 @@ export default function ResumeInterview() {
           </div>
         )}
 
-        {file && (
-          <motion.div
-            initial={{ opacity: 0, y: 6 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.2 }}
-            className="mt-2.5 rounded-xl border border-on-tertiary-container/40 bg-on-tertiary-container/10 px-4 py-3.5 flex items-center gap-3.5"
-          >
+        {parsing && (
+          <div role="status" aria-live="polite" className="mt-2.5 rounded-xl border border-on-tertiary-container/40 bg-on-tertiary-container/10 px-4 py-3.5 flex items-center gap-3.5">
             <span className="w-10 h-10 rounded-lg bg-surface-container-lowest text-on-tertiary-container flex items-center justify-center shrink-0">
-              <FileText className="w-5 h-5" />
+              <Loader2 className="w-5 h-5 animate-spin" />
             </span>
             <div className="flex-1 min-w-0">
-              <div className="font-headline font-bold text-[14.5px] text-primary truncate">{file.name}</div>
-              <div className="text-[12.5px] text-secondary">{fmtSize(file.size)} · {/\.pdf$/i.test(file.name) ? 'PDF' : 'DOCX'}</div>
+              <div className="font-headline font-bold text-[14.5px] text-primary truncate">{parsing.name}</div>
+              <div className="text-[12.5px] text-secondary">{fmtSize(parsing.size)} · {PARSE_STEPS[parseStep]}</div>
             </div>
-            <button type="button" onClick={pick} className="text-[13px] font-semibold text-on-tertiary-container hover:underline shrink-0">
-              Replace
-            </button>
-            {(saved?.length ?? 0) > 0 && (
-              <button type="button" onClick={() => { setFile(null); setSelectedId(saved![0].id); setShowUpload(false); }} className="text-[13px] font-semibold text-secondary hover:text-primary shrink-0">
-                Use saved
-              </button>
-            )}
-          </motion.div>
+          </div>
+        )}
+
+        {replaceFor && (
+          <div role="alert" className="mt-2.5 rounded-xl border border-outline-variant/25 bg-surface-container-lowest p-4">
+            <div className="text-[13.5px] font-semibold text-primary">You can keep {saved?.length ?? 3} resumes. Replace one with {replaceFor.name}?</div>
+            <div className="mt-2.5 space-y-2">
+              {(saved ?? []).map((r) => (
+                <button
+                  key={r.id}
+                  type="button"
+                  onClick={() => void upload(replaceFor, r.id)}
+                  className="w-full text-left rounded-lg border border-outline-variant/25 hover:border-error px-3.5 py-2.5 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-on-tertiary-container/50"
+                >
+                  <span className="block text-[13.5px] font-semibold text-primary truncate">Replace {r.fileName}</span>
+                  <span className="block text-[12px] text-secondary truncate">{r.headline || 'Resume'} · last used {ago(r.lastUsedAt)}</span>
+                </button>
+              ))}
+            </div>
+            <button type="button" onClick={() => setReplaceFor(null)} className="mt-2.5 text-[13px] font-semibold text-secondary hover:text-primary">Cancel</button>
+          </div>
         )}
 
         {error && (
@@ -447,7 +476,7 @@ export default function ResumeInterview() {
               <span className="mx-auto w-12 h-12 rounded-xl bg-on-tertiary-container/10 text-on-tertiary-container flex items-center justify-center">
                 <Loader2 className="w-6 h-6 animate-spin" />
               </span>
-              <div className="mt-4 font-headline font-bold text-primary text-[16px]">{(file ? PREP_STEPS : PREP_STEPS_SAVED)[Math.min(prepStep, (file ? PREP_STEPS : PREP_STEPS_SAVED).length - 1)]}</div>
+              <div className="mt-4 font-headline font-bold text-primary text-[16px]">Starting your interview…</div>
               <div className="mt-1 text-[12.5px] text-secondary">This takes a few seconds.</div>
               <p className="mt-5 flex items-start gap-2 text-left text-[12px] text-secondary bg-surface-container-low rounded-lg px-3 py-2">
                 <Headphones className="w-4 h-4 shrink-0 mt-0.5 text-on-tertiary-container" />
