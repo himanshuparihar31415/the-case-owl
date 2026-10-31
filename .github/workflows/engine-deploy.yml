@@ -1,0 +1,115 @@
+# Deploys the interview engine to the Hostinger VPS with engine/deploy/deploy.sh, the same script as a
+# deploy by hand. A merge to main that changes engine/** runs the tests and the preflight only. The
+# deploy is a deliberate click: Actions → Engine deploy → Run workflow, on main. On a private repo GitHub
+# has no environment reviewers below Enterprise, so that click is the approval (decided 31 Oct).
+# Spec: docs/specs/0001-develop-branch-and-ci.md. Runbook: .claude/skills/engine-deploy/SKILL.md.
+name: Engine deploy
+
+on:
+  push:
+    branches: [main]
+    paths: ["engine/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  ENGINE_URL: https://srv2011824.hstgr.cloud
+  # deploy.sh's default ENGINE_HOST; the pinned host key must be for this address.
+  ENGINE_SSH_HOST: 187.126.115.114
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: engine
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          python-version: "3.12"
+          working-directory: engine
+          cache-dependency-glob: uv.lock   # relative to working-directory
+      - run: uv sync --locked
+      - run: uv run --locked pytest -q
+
+  # What is deployed now, what would ship, and how many interviews are live (they survive a deploy by
+  # design, but that is not yet verified on the server), in the run summary for whoever clicks deploy.
+  preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - run: |
+          health="$(curl -fsS -m 15 "$ENGINE_URL/healthz" || echo 'no answer')"
+          ready="$(curl -sS -m 15 "$ENGINE_URL/readyz" || echo 'no answer')"
+          {
+            echo "### Engine: ${GITHUB_REF_NAME} at ${GITHUB_SHA::7}"
+            echo "- Deployed now (/healthz): \`$health\`"
+            echo "- Live interviews (/readyz): \`$ready\`"
+            if [ "$GITHUB_EVENT_NAME" = push ]; then
+              echo "- **Not deployed yet.** To ship it: Actions → Engine deploy → Run workflow, on main."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  deploy:
+    needs: [test, preflight]
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    concurrency:
+      group: engine-production
+      cancel-in-progress: false
+    steps:
+      # deploy.sh prints engine log lines (ids, with tokens redacted). They are fit for a private repo's
+      # Actions log, not a public one.
+      - name: Refuse to deploy from a public repo
+        if: ${{ !github.event.repository.private }}
+        run: |
+          echo "::error::The repo is public, so this run's log would be too. Make it private first (spec 0001)."
+          exit 1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # The key goes to a file that deploy.sh is pointed at. The host key is pinned: with an entry for
+      # the server, a server answering with a different key is refused. Without one, deploy.sh's
+      # accept-new would trust any key, so a missing or mistyped entry stops the deploy here.
+      - name: SSH key and the server's host key
+        env:
+          DEPLOY_KEY: ${{ secrets.ENGINE_SSH_KEY }}
+          KNOWN_HOSTS: ${{ vars.ENGINE_KNOWN_HOSTS }}
+        run: |
+          [ -n "$DEPLOY_KEY" ] || { echo "::error::The ENGINE_SSH_KEY secret is not set (engine/README.md, Deploy)"; exit 1; }
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_KEY" > "$RUNNER_TEMP/engine_deploy_key"
+          chmod 600 "$RUNNER_TEMP/engine_deploy_key"
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          ssh-keygen -F "$ENGINE_SSH_HOST" -f ~/.ssh/known_hosts > /dev/null || {
+            echo "::error::The ENGINE_KNOWN_HOSTS variable has no known_hosts line for $ENGINE_SSH_HOST (engine/README.md, Deploy)"
+            exit 1
+          }
+      - name: Deploy
+        env:
+          ENGINE_SSH_KEY: ${{ runner.temp }}/engine_deploy_key
+        run: engine/deploy/deploy.sh
+      # deploy.sh reports a failed start but still exits 0, so check here that the new engine answers.
+      - name: The new engine is up, and still refuses calls without a token
+        run: |
+          want="$(git rev-parse --short HEAD)"
+          got=""
+          for _ in $(seq 1 30); do
+            got="$(curl -fsS -m 10 "$ENGINE_URL/healthz" | jq -r '.version // empty' 2>/dev/null || true)"
+            [ "$got" = "$want" ] && break
+            sleep 4
+          done
+          [ "$got" = "$want" ] || {
+            echo "::error::/healthz reports version '${got:-no answer}', not $want. Roll back: .claude/skills/engine-deploy/SKILL.md, step 4"
+            exit 1
+          }
+          code="$(curl -s -o /dev/null -w '%{http_code}' -m 10 -X POST "$ENGINE_URL/v1/calls")"
+          [ "$code" = 401 ] || { echo "::error::POST /v1/calls without a token answered $code, not 401"; exit 1; }
+          echo "- Deployed \`$want\`: /healthz reports it, and /v1/calls refuses a call without a token" >> "$GITHUB_STEP_SUMMARY"

@@ -212,11 +212,12 @@ The platform API has no automated test suite yet.
 
 | Service | Host | Deploys |
 |---|---|---|
-| Web app | Vercel ([thecaseowl.com](https://thecaseowl.com)) | Builds from `main` |
-| Platform API | Railway | Builds from `main` (Nixpacks). A deploy drops live voice interviews |
-| Interview engine | Hostinger VPS, Mumbai | By hand with `engine/deploy/deploy.sh`: Docker Compose behind Caddy. Live interviews survive a deploy |
+| Web app | Vercel ([thecaseowl.com](https://thecaseowl.com)) | Builds every push to `main` |
+| Platform API | Railway | Builds from `main` (Nixpacks, `npm ci`), only when its own files change. A deploy drops live voice interviews |
+| Interview engine | Hostinger VPS, Mumbai | From `main`, on a click: Actions → Engine deploy → Run workflow (runs `engine/deploy/deploy.sh`: Docker Compose behind Caddy). Live interviews survive a deploy |
 
-`main` is production. Secrets are set in each host's dashboard or, for the engine, with
+`main` is production; work comes together on `develop` first. CI (`.github/workflows/ci.yml`) runs
+the type check, the build and the engine tests on every pull request. Secrets are set in each host's dashboard or, for the engine, with
 `engine/deploy/push-secrets.sh`; none are in the repository.
 
 ### Documentation
@@ -247,8 +248,10 @@ Start with the [playbook](docs/PLAYBOOK.md). Every command, agent and hook is de
 
 ### Contributing
 
-- Work on your own branch or a feature branch off it. `main` is production.
-- Bring your branch up to date with `main` before starting and before shipping.
+- Work on a `<scope>/<slug>` branch off `develop` and open a pull request into `develop`; CI runs on it.
+  A release is a pull request from `develop` to `main` (production). A hotfix is a `hotfix/<slug>`
+  branch off `main`. The full model is in the [playbook](docs/PLAYBOOK.md), section 9.
+- Bring your branch up to date with `develop` before starting and before shipping.
 - Commits follow [Conventional Commits](https://www.conventionalcommits.org/) with a scope:
   `feat(engine): …`, `fix(ui): …`, `chore(dev): …`.
 - Significant changes start with a spec in `docs/specs/`. Docs are updated in the same change as the

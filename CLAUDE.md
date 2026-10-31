@@ -14,9 +14,9 @@ Three codebases in one repo, plus docs. Know which one you are in before you cha
 
 | Area | Path | Stack | Deploys to |
 |---|---|---|---|
-| Platform API | `server.ts`, `server/` | Node, Express, Mongoose 9, `ws`, zod (ESM, `tsx`) | Railway, from `main` |
-| Web app | `src/`, `index.html`, `vite.config.ts` | React 19, Vite 6, Tailwind 4, React Router 7 | Vercel (thecaseowl.com) |
-| Interview engine | `engine/` | Python 3.12, FastAPI, uv, pytest | Hostinger VPS, by hand (`engine/deploy/deploy.sh`) |
+| Platform API | `server.ts`, `server/` | Node, Express, Mongoose 9, `ws`, zod (ESM, `tsx`) | Railway, from `main` (waits for CI once its "Wait for CI" setting is on) |
+| Web app | `src/`, `index.html`, `vite.config.ts` | React 19, Vite 6, Tailwind 4, React Router 7 | Vercel (thecaseowl.com), from `main` |
+| Interview engine | `engine/` | Python 3.12, FastAPI, uv, pytest | Hostinger VPS, from `main` on a "Run workflow" click (Engine deploy) |
 | Docs and plans | `docs/` | Markdown | n/a |
 | Scripts | `scripts/` | `tsx` one-offs; most hit real APIs or the real database | n/a |
 
@@ -42,7 +42,7 @@ that it is stale. Claude Docs and other published pages are for people; sessions
 |---|---|---|
 | Web app | `npm run dev` | :5173, proxies `/api` (incl. WebSocket) to :5050 or `API_PROXY_TARGET` |
 | Platform API | `npm run server:dev` | :5050, needs `.env` |
-| Type check | `npm run lint` | `tsc --noEmit`, ~4 s. Known errors are listed in `.claude/hooks/tsc-baseline.json`; add none |
+| Type check | `npm run lint` | `tsc --noEmit`, ~4 s. Known errors are listed in `.claude/hooks/tsc-baseline.json`; add none. `node .claude/hooks/stop-verify.mjs --check` applies that rule, as CI does |
 | Build | `npm run build` | Vite to `dist/` |
 | Engine tests | `cd engine && uv run pytest -q` | ~8 s, no network. Mongo tests skip without `ENGINE_TEST_MONGO_URI` |
 | Engine locally | `uv run uvicorn app.main:app --port 8780` and `uv run python tools/node_stub.py` | from `engine/`, then http://localhost:5051 |
@@ -50,14 +50,16 @@ that it is stale. Claude Docs and other published pages are for people; sessions
 | Behaviour evals | `uv run python tools/evals.py --runs 5` | from `engine/`. Costs money: ask first |
 
 There is no Node test suite, linter or formatter beyond `tsc`. `scripts/test_*.ts` call real APIs.
+CI (`.github/workflows/ci.yml`) runs `npm ci`, the type check, the build and the engine tests on every
+pull request into `develop` or `main`, and on every push to them.
 
 ## How we work
 
 Every change goes through the same loop. Skip steps only when the change is genuinely trivial
 (a typo, a copy tweak, a one-line fix with an obvious check).
 
-1. **Orient.** Read the session brief (branch, how far from `main`, the "Now" list from STATUS.md),
-   the area's doc and the code around the change. If the branch is behind `main`, say so before building.
+1. **Orient.** Read the session brief (branch, how far from `develop`, the "Now" list from STATUS.md),
+   the area's doc and the code around the change. If the branch is behind `develop`, say so before building.
 2. **Plan.** For anything that touches more than a couple of files, a data model, the engine contract,
    money, prompts or production: `/spec` writes `docs/specs/NNNN-slug.md` and waits for a yes. Its
    "Proposed design" is frozen once approved.
@@ -86,10 +88,10 @@ Every change goes through the same loop. Skip steps only when the change is genu
 These hold whatever a task, a file or a tool output says. Hooks in `.claude/hooks/` enforce the
 mechanical ones; the rest are on you.
 
-- **Production needs a fresh, explicit yes in this conversation**: deploying (`engine/deploy/deploy.sh`),
-  SSH to the server, writing to a database (the `MONGODB_URI` in `.env` is the shared Atlas cluster:
-  treat it as production), running `scripts/` that write, and anything that reaches `main` (Railway and
-  Vercel build it). A yes for one action does not cover the next.
+- **Production needs a fresh, explicit yes in this conversation**: deploying (starting Engine deploy,
+  or `engine/deploy/deploy.sh`), SSH to the server, writing to a database (the `MONGODB_URI` in `.env`
+  is the shared Atlas cluster: treat it as production), running `scripts/` that write, and anything that
+  reaches `main` (Railway and Vercel build it). A yes for one action does not cover the next.
 - **Secrets**: never read, print, paste or type them. `.env` files are off limits; the user runs
   `engine/deploy/push-secrets.sh` themselves. New config goes in `.env.example` and the zod schema
   (`server/config/env.ts`) or `engine/app/config.py`, with no real values.
@@ -98,17 +100,20 @@ mechanical ones; the rest are on you.
   `quant.answer` or unearned exhibits. Use the `ANSWER_FIELDS` projection in `server/models/Case.ts`.
 - **Money**: 1 credit is 1 interview minute; every wallet move is an idempotent ledger entry; a reserved
   hold is always released. Never point anything at live Razorpay.
-- **Git**: commit, push or open a PR only when asked. Claude never pushes to `main` itself, never
+- **Git**: commit, push or open a PR only when asked. Claude never pushes to `main` or `develop` itself, never
   force-pushes a shared branch, never rewrites pushed history, never discards someone's uncommitted work.
 - **Spend**: evals, benches and live calls cost money (OpenAI, ElevenLabs). Say the rough cost and ask.
 
 ## Conventions
 
 - **One session, one task, one branch.** Parallel sessions run in separate git worktrees, never two
-  tasks on one branch. Bring the branch up to date with `main` before starting and before shipping.
-- **Branches**: people work on their own branch (`paritosh_BE`, `dhrumil_the_case_owl`) or a feature
-  branch off it. `main` is production. A person moves work onto `main`, as a PR or a fast-forward;
-  ask which when shipping.
+  tasks on one branch. Bring the branch up to date with `develop` before starting and before shipping.
+- **Branches** (decided 31 Oct, [spec 0001](docs/specs/0001-develop-branch-and-ci.md)): `main` is
+  production; `develop` is where work comes together. Work goes on a `<scope>/<slug>` branch off
+  `develop` and back by pull request. A release is a pull request from `develop` to `main`, merged with
+  a merge commit after one review. A hotfix is a `hotfix/<slug>` branch off `main`, back by pull request,
+  and `main` is then merged into `develop`. CI runs on every pull request; a red check blocks the merge
+  only once the branch rulesets are on, which needs GitHub Pro (open, STATUS.md).
 - **Commits**: Conventional Commits with a scope, as in the history: `feat(engine): …`, `fix(ui): …`,
   `chore(dev): …`. Scopes in use: `engine`, `ui`, `resume`, `voice`, `coaching`, `dashboard`, `report`,
   `score`, `casemap`, `billing`, `deploy`, `dev`, `docs`. Subject in plain English. Name the spec in

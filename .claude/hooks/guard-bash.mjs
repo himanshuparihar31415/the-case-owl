@@ -25,8 +25,18 @@ function commandWord(seg) {
   return { word: (words[i] ?? '').replace(/^.*\//, ''), args: words.slice(i + 1) };
 }
 
+// git's global options come before the subcommand: `git -C dir push …` is still a push.
+function gitSubcommand(args) {
+  let i = 0;
+  while (i < args.length && args[i].startsWith('-')) {
+    i += ['-C', '-c', '--git-dir', '--work-tree', '--namespace'].includes(args[i]) ? 2 : 1;
+  }
+  return args.slice(i);
+}
+
 for (const seg of segments) {
-  const { word, args } = commandWord(seg);
+  const { word, args: words } = commandWord(seg);
+  const args = word === 'git' ? gitSubcommand(words) : words;
 
   if (/\bpush-secrets\.sh\b/.test(seg)) {
     deny.push('Secrets are written by the user, not Claude. Ask them to run engine/deploy/push-secrets.sh themselves.');
@@ -34,10 +44,11 @@ for (const seg of segments) {
 
   if (word === 'git' && args[0] === 'push') {
     const force = args.some((a) => a === '-f' || a === '--force' || a.startsWith('--force-with-lease') || /^\+/.test(a));
-    const toMain = args.some((a) => /(^|:|\+)(main|master)$/.test(a));
-    if (force && toMain) deny.push('Force-pushing main is never allowed.');
+    // main is production and develop is where everyone's work comes together: both change by pull request.
+    const shared = args.map((a) => a.match(/(?:^|:|\+)(?:refs\/heads\/)?(main|master|develop)$/)?.[1]).find(Boolean);
+    if (force && shared) deny.push(`Force-pushing ${shared} is never allowed.`);
     else if (force) ask.push('Force-push rewrites history that teammates may have pulled.');
-    else if (toMain) ask.push('Pushing straight to main: the team ships to main through pull requests.');
+    else if (shared) ask.push(`Pushing straight to ${shared}: the team changes ${shared} through pull requests.`);
     else ask.push('git push publishes commits (and can trigger Vercel/Railway builds).');
   }
 
@@ -61,6 +72,28 @@ for (const seg of segments) {
 
   if (/\bdeploy\/deploy\.sh\b/.test(seg)) {
     ask.push('This deploys the interview engine to production (srv2011824.hstgr.cloud).');
+  }
+  // gh commands that reach main or production without a git push. Starting or re-running a workflow is
+  // how the engine deploys (.github/workflows/engine-deploy.yml); a re-run deploys the commit it first ran on.
+  if (word === 'gh') {
+    const [cmd, sub] = args;
+    if (cmd === 'workflow' && sub === 'run') {
+      ask.push('This starts a GitHub Actions workflow; Engine deploy ships the engine to production.');
+    }
+    if (cmd === 'run' && sub === 'rerun') {
+      ask.push('This re-runs a workflow run; an Engine deploy run redeploys the commit it ran on to production.');
+    }
+    if (cmd === 'pr' && sub === 'merge') {
+      ask.push('Merging a pull request: into main it ships to production (Railway, Vercel); into develop it changes the shared branch.');
+    }
+    if (cmd === 'api') {
+      // gh api sends a POST when given fields, unless a method is named.
+      const named = args.find((a, i) => /^(-X|--method)$/.test(args[i - 1] ?? '')) ?? args.find((a) => a.startsWith('--method='))?.slice(9);
+      const fields = args.some((a) => /^(-f|-F|--field|--raw-field|--input)$/.test(a) || /^--(raw-)?field=/.test(a));
+      if ((named ? named.toUpperCase() !== 'GET' : fields) || args.some((a) => /\/(dispatches|merges|rerun)\b/.test(a))) {
+        ask.push('This gh api call changes something on GitHub (a workflow dispatch deploys the engine to production).');
+      }
+    }
   }
 
   if (['ssh', 'scp', 'rsync', 'sftp'].includes(word)) {

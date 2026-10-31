@@ -19,3 +19,4 @@ The engine's design predates this folder and lives in
 
 | # | Title | Status | Owner |
 |---|---|---|---|
+| [0001](0001-develop-branch-and-ci.md) | A develop branch, CI on every change, and engine deploys from CI | building | Paritosh Sharma |
