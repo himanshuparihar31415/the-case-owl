@@ -13,11 +13,15 @@ Last updated: 31 Oct 2026
   TTS pipeline. Pilot list: `npx tsx scripts/engine-pilot.ts status` (reads production).
 - **Engine, not verified yet**: a full voice interview on the deployed engine, a deploy during a live
   interview on the server, re-offer after a real WebRTC drop (`engine/README.md`).
-- **Branch model and CI being set up** ([spec 0001](specs/0001-develop-branch-and-ci.md), decided 31 Oct;
-  branch `dev/develop-and-ci`, not merged). It adds a `develop` branch, CI on every pull request, the
-  engine deploying from `main` on a "Run workflow" click, and Railway watch patterns. Until its first
-  release and Himanshu's settings, nothing is checked before `main`, and Railway still redeploys on
-  engine-only commits, which drops live voice sockets. The repo is to be made private.
+- **Branch model and CI are in `develop`, not yet in production** ([spec 0001](specs/0001-develop-branch-and-ci.md),
+  decided 31 Oct).
+  - `develop` exists (renamed from `dhrumil_the_case_owl`), and work goes on branches off it by pull request.
+  - PR #6 merged into `develop` on 31 Oct. CI (`platform` and `engine`) passed on GitHub on the pull
+    request (run 41212761370) and on the push to `develop` (run 41213539188).
+  - Until the first release to `main`, Railway still redeploys on engine-only commits (dropping live
+    voice sockets), and the engine still deploys by hand.
+  - Waiting on Himanshu (spec 0001, Rollout): making the repo private, the CI key, branch protection
+    (needs GitHub Pro), and Railway's "Wait for CI".
 - **Dashboard runs on mock data** unless `VITE_DASHBOARD_SOURCE=api`; the `/api/dashboard/*` endpoints
   it expects (`src/features/dashboard/README.md`) do not exist yet. Checked in code 31 Oct.
 - **Billing has open bugs**, from a code-reading audit on 31 Oct (nothing run or fixed yet): credit holds
