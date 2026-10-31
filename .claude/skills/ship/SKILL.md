@@ -1,6 +1,6 @@
 ---
 name: ship
-description: Commit the current work on a branch with a Conventional Commit message, bring it up to date with main, push it, and (if the team wants one for this change) open a pull request into main with summary, verification and rollout notes. Only when the user asks to ship, commit or open a PR.
+description: Commit the current work on a branch with a Conventional Commit message, bring it up to date with develop, push it, and open a pull request into develop with summary, verification and rollout notes; or open the release pull request from develop to main. Only when the user asks to ship, commit, open a PR or release.
 argument-hint: "[optional: what this change is, in a few words]"
 disable-model-invocation: true
 ---
@@ -15,11 +15,14 @@ What is being shipped: $ARGUMENTS
 
 ## 1. Preconditions (stop and say so if one fails)
 
-- Not on `main`. If on `main`, propose a branch name (`<scope>/<short-slug>`, e.g. `engine/reoffer-timeout`)
-  and ask before creating it.
-- Up to date with `main`: `git fetch origin`, then if `origin/main` has commits this branch lacks, say
-  so and ask before merging it in (in an app-made worktree, use the app's sync-with-base tool). Resolve
-  conflicts with the user, never by discarding their side.
+- Not on `main` or `develop`: both change only through pull requests. If on one, propose a branch name
+  (`<scope>/<short-slug>`, e.g. `engine/reoffer-timeout`) off `develop` and ask before creating it.
+  A hotfix for production is the exception: it branches off `main` and is named `hotfix/<short-slug>`
+  (the session brief then compares it with `main`).
+- Up to date with its base, `develop` (`main` for a hotfix; never merge `develop` into a hotfix, it
+  would carry unreleased work to production): `git fetch origin`, then if the base has
+  commits this branch lacks, say so and ask before merging it in (in an app-made worktree, use the
+  app's sync-with-base tool). Resolve conflicts with the user, never by discarding their side.
 - Run `/check`. New type errors or failing tests stop the ship unless the user says otherwise.
 - If the change is non-trivial and `/review-diff` has not run on it in this conversation, run it first
   and show the findings.
@@ -37,12 +40,21 @@ What is being shipped: $ARGUMENTS
 - Show the user the files and the message, and wait for a yes before committing.
 - End the message with the attribution lines this session's instructions specify, if any.
 
-## 3. Push, and how it reaches main
+## 3. Push, and the pull request
+
+The branch model (spec 0001): work branches go into `develop` by pull request; a release is a pull
+request from `develop` to `main`; a hotfix goes into `main`, then `main` is merged into `develop`.
+CI (`.github/workflows/ci.yml`) must pass on each. Claude never pushes to `develop` or `main`.
 
 - `git push -u origin <branch>` (the push asks for confirmation).
-- Ask how this change should reach `main` (production): a pull request for review, or the person
-  moves it themselves. Claude never pushes to `main`.
-- For a PR, `gh pr create --base main`, body:
+- `gh pr create --base develop` (`--base main` for a hotfix), body below.
+- **A release**, only when the user asks for one: `gh pr create --base main --head develop`, listing
+  the changes since the last release (`git log --oneline origin/main..origin/develop`) and the rollout.
+  A person merges it with a merge commit, never squash, after one approving review.
+- **After a hotfix is merged**, open a pull request from `main` into `develop` so the fix is not lost
+  at the next release.
+
+PR body:
 
 ```
 ## What
@@ -58,5 +70,9 @@ What is being shipped: $ARGUMENTS
 
 ## Remember
 
-`main` is production: Railway and Vercel build it, and a Railway deploy drops live voice sockets
-(including on engine-only changes, until Railway has watch patterns). Say so when it applies.
+`main` is production. Vercel builds every push to it whatever CI says; Railway builds it too, waiting
+for CI once its "Wait for CI" setting is on. A Railway deploy drops the older pipeline's live voice
+sockets; its watch patterns should skip engine-only and docs-only changes (not verified until the first
+such release). Until the rulesets are on, nothing stops a merge with red CI: check it first. The
+engine does not deploy on merge: someone clicks Actions → Engine deploy → Run workflow
+(`/engine-deploy`). Say which of these a release sets off.

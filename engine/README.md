@@ -104,11 +104,22 @@ Deployed and verified on 24 Oct (below).
 Mumbai is fine for latency: the engine adds one engine ⇄ OpenAI round trip to each turn, the same
 as everything measured so far from India; a US server would save about 0.2 s per reply.
 
+**How a deploy happens** (decided 31 Oct, [spec 0001](../docs/specs/0001-develop-branch-and-ci.md)).
+A merge to `main` that changes `engine/**` runs the tests and a preflight in GitHub Actions
+(`.github/workflows/engine-deploy.yml`), but does not deploy. The deploy is a click: Actions → Engine
+deploy → Run workflow, on `main` (or `gh workflow run engine-deploy.yml --ref main`). That run tests
+the commit again, puts the deployed version and the live-interview count in its summary, then runs
+`deploy.sh`. The repo is private, and GitHub gives private repos no deploy reviewers below Enterprise,
+so the click is the approval. The button appears once the workflow file is on `main`.
+
+By hand, as the fallback, from a clean checkout of `main`:
+
 ```bash
 engine/deploy/deploy.sh
 ```
 
-builds the image here (the one the tests ran against), copies it over SSH, and restarts the engine.
+Either way, `deploy.sh` builds the image (from the commit the tests ran on), copies it over SSH, and
+restarts the engine.
 Live interviews survive a deploy: the old container releases them without hanging up, the new one
 reattaches to the same OpenAI calls at startup, and Caddy holds requests during the few-second
 restart (`lb_try_duration`) instead of answering 502. The candidate hears at most that pause.
@@ -124,6 +135,13 @@ restart (`lb_try_duration`) instead of answering 502. The candidate hears at mos
 Access: SSH as root with `~/.ssh/case_owl_engine_deploy` (a deploy key made for this; remove it under
 hPanel → VPS → SSH keys to revoke). Hostinger's Docker Manager does not support Ubuntu 26.04, so
 deploys go over SSH; the Hostinger MCP is useful for the VM's state, snapshots and metrics.
+
+CI has its own key, so it can be revoked without touching the laptop's. The private half is the repo
+secret `ENGINE_SSH_KEY`. The repo variable `ENGINE_KNOWN_HOSTS` pins the server's host key: the
+`known_hosts` line for `187.126.115.114`. From a machine that has deployed before,
+`ssh-keygen -F 187.126.115.114` prints it; otherwise use `ssh-keyscan -t ed25519 187.126.115.114`,
+after checking its fingerprint against one you trust. On a personal repo only the owner can set
+secrets, so Himanshu makes the key pair, sets both, and sends the public half to be added in hPanel.
 
 On the server, from `/opt/case-owl-engine`:
 
@@ -158,9 +176,9 @@ grades the case that was actually run.
 
 ### Stage 2, on the platform side
 
-The Node service on Railway redeploys on every commit, including engine commits, and a Node
-deploy drops the current pipeline's live voice sockets. Its `railway.toml` needs watch patterns
-that skip `/engine/**`. Node then gets `ENGINE_URL=https://srv2011824.hstgr.cloud` and the service
+A Node deploy on Railway drops the current pipeline's live voice sockets. `railway.toml` now lists
+the paths the Node service builds from (`watchPatterns`, spec 0001), so engine-only commits should
+no longer redeploy it; not verified until the first engine-only release. Node then gets `ENGINE_URL=https://srv2011824.hstgr.cloud` and the service
 token, the engine gets `NODE_URL`, `NODE_INTERNAL_TOKEN` and the app's domains in `ALLOWED_ORIGINS`.
 
 After changing `app/contract.py`, regenerate the schemas Node's tests read:
@@ -225,6 +243,8 @@ Verified on 23 Oct:
 Not verified yet:
 - A full voice interview on the deployed service, and re-offer after a real WebRTC drop.
 - A deploy during a live interview on the server (the hand-off was verified locally on 23 Oct).
+- A deploy through the Engine deploy workflow (written 31 Oct, not run yet: it needs the CI key and
+  the workflow on `main`).
 - A candidate who finishes speaking during a restart's pause. OpenAI's turn detection should still
   add that turn to the call, so the model has it, but the engine does not see it: she answers only
   when they speak again or at the 25 s check-in, and the turn is missing from the settled transcript.

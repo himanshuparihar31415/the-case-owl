@@ -13,8 +13,11 @@ Last updated: 31 Oct 2026
   TTS pipeline. Pilot list: `npx tsx scripts/engine-pilot.ts status` (reads production).
 - **Engine, not verified yet**: a full voice interview on the deployed engine, a deploy during a live
   interview on the server, re-offer after a real WebRTC drop (`engine/README.md`).
-- **Railway redeploys on engine-only commits.** `railway.toml` has no watch patterns, so any push to
-  `main`, including engine changes, restarts the Node service and drops live voice sockets. Open.
+- **Branch model and CI being set up** ([spec 0001](specs/0001-develop-branch-and-ci.md), decided 31 Oct;
+  branch `dev/develop-and-ci`, not merged). It adds a `develop` branch, CI on every pull request, the
+  engine deploying from `main` on a "Run workflow" click, and Railway watch patterns. Until its first
+  release and Himanshu's settings, nothing is checked before `main`, and Railway still redeploys on
+  engine-only commits, which drops live voice sockets. The repo is to be made private.
 - **Dashboard runs on mock data** unless `VITE_DASHBOARD_SOURCE=api`; the `/api/dashboard/*` endpoints
   it expects (`src/features/dashboard/README.md`) do not exist yet. Checked in code 31 Oct.
 - **Billing has open bugs**, from a code-reading audit on 31 Oct (nothing run or fixed yet): credit holds
@@ -30,7 +33,7 @@ Last updated: 31 Oct 2026
 |---|---|---|
 | Web app | Vercel, thecaseowl.com; `/api/*` rewritten to Railway (`vercel.json`) | `main` |
 | Platform API | Railway, `casecoachaiv1-production.up.railway.app` | `main` (`railway.toml`, Nixpacks) |
-| Interview engine | Hostinger VPS, `https://srv2011824.hstgr.cloud` | `engine/deploy/deploy.sh`, by hand |
+| Interview engine | Hostinger VPS, `https://srv2011824.hstgr.cloud` | `engine/deploy/deploy.sh`, by hand; after spec 0001's first release, Actions → Engine deploy → Run workflow, on `main` |
 | Databases | MongoDB Atlas: the platform's database, and `engine` for the engine | n/a |
 
 ## Fixed recently
@@ -43,13 +46,16 @@ Last updated: 31 Oct 2026
 
 ## Decisions to make
 
-- How work reaches `main`: pull requests, or fast-forwards from a working branch (both happen today).
-- Railway watch patterns that skip `engine/**`, so engine work stops dropping live interviews.
 - Engine-owned voice detection, so the interviewer can talk through a cough (open since the spike,
   `engine/spike/README.md`).
 - Repairing wallets with a stuck `reserved` balance: count them with a read-only query first, then a
   production write only after a yes.
 - Which billing bugs to fix first, and how plans should expire and renew.
+- GitHub Pro on Himanshu's account, so the repo keeps enforced branch protection once it is private
+  (spec 0001). Without it, the branch rules hold only by convention.
+- Two Railway projects (`appealing-abundance`, `inspiring-nurturing`) and two Vercel projects
+  (`casecoachai-v1`, `casecoachai-v1-tbvb`) all deploy `main` to production (GitHub deployments,
+  31 Oct). Which are live, and remove the rest (Himanshu).
 
 ## Next
 

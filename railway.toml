@@ -1,6 +1,24 @@
 [build]
 builder = "nixpacks"
-buildCommand = "rm -f package-lock.json && npm install && npm run build"
+# Dependencies come from package-lock.json with `npm ci` (nixpacks.toml), the same versions CI checked.
+buildCommand = "npm run build"
+# Deploy only when something this service builds from changes. Engine, docs and scripts commits would
+# otherwise restart it and drop live voice sockets. A list of what to include, because Railway's docs
+# don't document negated patterns (docs/specs/0001-develop-branch-and-ci.md).
+watchPatterns = [
+  "/server.ts",
+  "/server/**",
+  "/src/**",
+  "/index.html",
+  "/vite.config.ts",
+  "/tsconfig.json",
+  "/package.json",
+  "/package-lock.json",
+  "/components.json",
+  "/metadata.json",
+  "/railway.toml",
+  "/nixpacks.toml",
+]
 
 [deploy]
 startCommand = "npm start"

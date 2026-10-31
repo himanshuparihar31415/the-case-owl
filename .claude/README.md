@@ -69,7 +69,7 @@ carry their own files and run in a fork). "You only" means Claude cannot start i
 | `/check [scope]` | you or Claude | Run the gates for what changed in a forked `verifier`, get a pass/fail table |
 | `/review-diff [target]` | you or Claude | Run `code-reviewer`, plus `security-reviewer` and `contract-keeper` when they apply, in parallel; verify and merge findings |
 | `/close-spec [n]` | you or Claude | Compare the spec's design with the code, draft "As built", have you mark each deviation deliberate or bug |
-| `/ship [what]` | you only | Sync with `main`, check, review, conventional commit, push, and a PR into `main` if you want one |
+| `/ship [what]` | you only | Sync with `develop`, check, review, conventional commit, push, and a PR into `develop`; or the release PR from `develop` to `main` |
 | `/engine-evals [runs] [only]` | you or Claude (asks before spending) | Run the interviewer's behaviour evals and compare with the last run |
 | `/engine-deploy` | you only | Deploy the engine to production with preconditions, health checks and rollback steps |
 | `/contract-change [change]` | you or Claude | Change the engine ⇄ platform contract on all three sides in the right order |
@@ -112,8 +112,8 @@ and tells Claude why, so it can take the right route.
 
 | Hook | When | What it does |
 |---|---|---|
-| [session-brief.mjs](hooks/session-brief.mjs) | session start | Prints the branch, commits behind/ahead of `origin/main` (as of the last fetch; no network), uncommitted changes, and the "Now" list from `docs/STATUS.md`. Warns when on `main` or behind it |
-| [guard-bash.mjs](hooks/guard-bash.mjs) | before any shell command | **Deny**: `push-secrets.sh`, force-push to `main`, `rm -r` of the repo or a top-level folder, reading private SSH keys. **Ask**: any `git push`, history-destroying git (`reset --hard`, `clean -f`, `checkout .`, `branch -D`), `deploy.sh`, `ssh`/`scp`, pilot scripts that write the database, `mongosh`, evals and benches (they cost money), printing a `.env` file or a secret variable |
+| [session-brief.mjs](hooks/session-brief.mjs) | session start | Prints the branch, commits behind/ahead of `origin/develop` (`origin/main` on `main`, or until `develop` exists; as of the last fetch, no network), uncommitted changes, and the "Now" list from `docs/STATUS.md`. Warns when on `main` or `develop`, or behind |
+| [guard-bash.mjs](hooks/guard-bash.mjs) | before any shell command | **Deny**: `push-secrets.sh`, force-push to `main` or `develop`, `rm -r` of the repo or a top-level folder, reading private SSH keys. **Ask**: any `git push`, history-destroying git (`reset --hard`, `clean -f`, `checkout .`, `branch -D`), `deploy.sh`, `gh workflow run` (the engine deploy), `ssh`/`scp`, pilot scripts that write the database, `mongosh`, evals and benches (they cost money), printing a `.env` file or a secret variable |
 | [guard-files.mjs](hooks/guard-files.mjs) | before any file write | **Deny**: `.env` files, generated `engine/contract/*.json`, lockfiles, `dist/`, `node_modules/`, `.git/`, and any content holding an API key, private key, token or a Mongo URI with a real password. **Ask**: changes to `.claude/settings.json` or `.claude/hooks/` (the guardrails themselves) |
 | [after-edit.mjs](hooks/after-edit.mjs) | after any file write | Rejects JSON that does not parse and Python that does not compile. Once per session per area, reminds Claude of that area's obligations: contract (export schemas, update the doc), interviewer behaviour (evals), platform prompts (live users), case data (answer fields), money, new env settings |
 | [stop-verify.mjs](hooks/stop-verify.mjs) | when Claude is about to finish a turn | If code changed: `tsc` must add no errors beyond [tsc-baseline.json](hooks/tsc-baseline.json), and if the engine changed `uv run pytest` must pass. On failure Claude is sent back once to fix it or say plainly why not. A tree that already passed is not re-checked. Adds about 4 s (types), 8 s (engine) or 12 s (both) |
@@ -122,6 +122,8 @@ and tells Claude why, so it can take the right route.
 `key` props on typed components). They are recorded per file and error code so that new errors fail
 and old ones do not. When you fix some, lower the baseline:
 `node .claude/hooks/stop-verify.mjs --write-baseline`. Never raise it to make new errors pass.
+CI applies the same rule on every pull request with `node .claude/hooks/stop-verify.mjs --check`
+(`.github/workflows/ci.yml`), so switching the hook off locally does not switch the rule off.
 
 **Switching things off.** Personal, in `.claude/settings.local.json` (gitignored):
 `{"env": {"CASE_OWL_SKIP_STOP_CHECKS": "1"}}` turns off the Stop check; `"disableAllHooks": true`

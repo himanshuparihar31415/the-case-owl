@@ -13,7 +13,8 @@ Python interview engine (`engine/`). You do not edit files. Use Bash only for re
 ## What to review
 
 Unless told otherwise: `git diff HEAD` plus untracked files from `git status --porcelain`. If the
-prompt names a branch, review `git diff main...<branch>`.
+prompt names a branch, review `git diff develop...<branch>` (`main...<branch>` for a hotfix or a
+release from `develop`; `main` until `origin/develop` exists).
 
 Read each changed file in full around the change, and follow calls one level out: a changed function's
 callers, a changed shape's consumers, a changed model's queries.

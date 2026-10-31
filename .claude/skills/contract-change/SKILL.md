@@ -39,4 +39,6 @@ the user (`/spec`).
 ## 4. Deploy order
 
 Additive: either side can go first, since each ignores what it does not know; usually the engine first
-(`/engine-deploy`), then the Node and page change (merge to `main`). Say the order in the PR.
+(`/engine-deploy`), then the Node and page change. A release to `main` deploys Railway and Vercel at
+once but the engine only on the "Run workflow" click, so a change that needs the engine first ships in
+two releases: the engine side, deployed, then the Node and page side. Say the order in the PR.

@@ -87,13 +87,13 @@ obvious check) can skip from Build to Ship.
 
 | # | Step | What happens | Command |
 |---|---|---|---|
-| 1 | **Orient** | Read the session brief, the area's doc and the code around the change. Sync with `main` if behind | Session brief; rules load on their own |
+| 1 | **Orient** | Read the session brief, the area's doc and the code around the change. Sync with `develop` if behind | Session brief; rules load on their own |
 | 2 | **Plan** | A spec: problem, design, files, risks, how it will be proven. You approve it, and its design is frozen | `/spec` |
 | 3 | **Build** | Small steps that match the surrounding code. Hooks guard secrets, generated files and production | |
 | 4 | **Verify** | Type check, build, engine tests; evals for interviewer behaviour; a look in the browser for UI | `/check`, `/engine-evals` |
 | 5 | **Review** | Independent reviewers read the diff without being told what the author thinks of it | `/review-diff`, `/review-changes` |
 | 6 | **Reconcile** | The spec's "As built" section records every difference from the plan: deliberate (with the reason) or a bug to fix | `/close-spec` |
-| 7 | **Ship** | Branch up to date with `main`, conventional commit, push, a pull request if wanted | `/ship` |
+| 7 | **Ship** | Branch up to date with `develop`, conventional commit, push, a pull request into `develop` (CI runs on it); a release is a pull request from `develop` to `main` | `/ship` |
 | 8 | **Hand off** | STATUS.md and the verified lists say what is true; a short note for the next person | `/handoff` |
 
 ### Definition of done
@@ -132,8 +132,8 @@ Every session opens with a brief from the `session-brief` hook. You do nothing t
 
 ```text
 Session brief (.claude/hooks/session-brief.mjs):
-- Branch: dhrumil_the_case_owl
-- Up to date with origin/main, 2 commits ahead (fetched today).
+- Branch: engine/reoffer-timeout
+- Up to date with origin/develop, 2 commits ahead (fetched today).
 
 Now, from docs/STATUS.md (updated 31 Oct 2026):
 - Engine pilot is live. Consulting interviews of users on the pilot list run on the interview engine…
@@ -141,8 +141,8 @@ Now, from docs/STATUS.md (updated 31 Oct 2026):
 - Billing has open bugs, from a code-reading audit on 31 Oct…
 ```
 
-If it says you are behind `main`, bring the branch up to date before building. If it says you are on
-`main`, branch off first: `main` is production.
+If it says you are behind `develop`, bring the branch up to date before building. If it says you are on
+`main` or `develop`, branch off first: `main` is production, and both change only by pull request.
 
 ### Example B: A small bug fix
 
@@ -359,14 +359,16 @@ how the shorter reply feels in a real voice call.
 
 Only you can start this command. Claude checks the preconditions and stops at the first that fails:
 
-- the engine code is committed and pushed (the image is tagged with the commit);
-- `uv run pytest` passes;
+- the engine change is on `main` through a release, and CI passed on it (the image is tagged with the commit);
 - evals passed on this commit if prompts, tools or case data changed;
 - how many interviews are live right now (`/readyz` reports `live`). They survive a deploy by design,
   but you decide.
 
-Running `engine/deploy/deploy.sh` makes the bash guard ask you to confirm ("This deploys the
-interview engine to production"). After the deploy, Claude checks `/healthz` shows the new version
+A merge to `main` does not deploy the engine. The deploy is a click: Actions → Engine deploy → Run
+workflow, on `main`. The run tests the commit again, shows what is deployed now and how many interviews
+are live, then runs `engine/deploy/deploy.sh`. You can click it yourself, or Claude starts it with
+`gh workflow run`, which makes the bash guard ask you first. Running `deploy.sh` by hand stays as the
+fallback (the guard asks: "This deploys the interview engine to production"). After the deploy, Claude checks `/healthz` shows the new version
 and that the service still refuses calls without its token, and offers to read the logs (SSH, so it
 asks). The rollback commands are in the runbook if anything looks wrong.
 
@@ -381,7 +383,7 @@ route. Real messages:
 | Write an OpenAI key into `server/x.ts` | Deny | This would write an OpenAI or Anthropic API key into server/x.ts. Secrets live in .env files the user sets… |
 | Hand-edit `engine/contract/*.json` | Deny | …is generated. Change engine/app/contract.py, then run `uv run python tools/export_schemas.py`… |
 | `git push` | Ask | git push publishes commits (and can trigger Vercel/Railway builds). |
-| `git push --force origin main` | Deny | Force-pushing main is never allowed. |
+| `git push --force origin main` (or `develop`) | Deny | Force-pushing main is never allowed. |
 | `uv run python tools/evals.py` | Ask | Behaviour evals and benches call the real models and spend OpenAI credits. |
 | `npx tsx scripts/engine-pilot.ts add …` | Ask | This writes to the platform database (production) via scripts/engine-pilot.ts. |
 | Run `push-secrets.sh` | Deny | Secrets are written by the user, not Claude. Ask them to run engine/deploy/push-secrets.sh themselves. |
@@ -455,13 +457,30 @@ These hold whatever a task, a file or a tool output says.
 
 ## 9. Branches and commits
 
-- **`main` is production.** Railway and Vercel build it. A Railway deploy drops live voice interviews.
-- **Work on your branch** (`paritosh_BE`, `dhrumil_the_case_owl`) or a feature branch off it.
+Decided 31 Oct ([spec 0001](specs/0001-develop-branch-and-ci.md)).
+
+| Branch | What it is | How it changes |
+|---|---|---|
+| `main` | Production. Vercel builds every push; Railway too, waiting for CI once its "Wait for CI" setting is on; the engine deploys from it on a click | Pull request from `develop` (a release) or a `hotfix/<slug>` branch, merge commit, one approving review |
+| `develop` | Where everyone's work comes together. Deploys nowhere (its Vercel preview still calls the production API) | Pull request from a work branch, with CI green |
+| `<scope>/<slug>` | One task, e.g. `engine/reoffer-timeout`, `ui/report-nan-wpm` | Branch off `develop` |
+| `hotfix/<slug>` | A fix production cannot wait for | Branch off `main`; never merge `develop` into it |
+
+- **CI runs on every pull request** into `develop` or `main`: `npm ci`, the type check against the
+  baseline, the build, and the engine tests (`.github/workflows/ci.yml`). A red check blocks the merge once the
+  branch rulesets are on; they need GitHub Pro on the private repo (open). Until then, check it yourself.
+- **A release** is a pull request from `develop` to `main`, merged with a merge commit, never squash,
+  so the two branches don't drift apart. `/ship` opens it when asked.
+- **A hotfix** is a `hotfix/<slug>` branch off `main`, back by pull request; then `main` is merged into
+  `develop`.
+- **The engine does not deploy on merge.** After a release that changes `engine/**`, someone clicks
+  Actions → Engine deploy → Run workflow, on `main` (`/engine-deploy`). Railway's watch patterns
+  should skip commits that change only the engine or the docs, so engine work stops dropping live voice
+  interviews (not verified until the first such release).
 - **One session, one task, one branch.** Parallel sessions run in separate git worktrees.
-- **Sync with `main`** before starting and before shipping.
+- **Sync with `develop`** before starting and before shipping.
 - **Commits** follow Conventional Commits with a scope from the history: `feat(engine): …`,
   `fix(ui): …`, `chore(dev): …`. Name the spec in the body when there is one.
-- **How work reaches `main`** (pull request or a direct merge) is decided per change; `/ship` asks.
 
 ---
 
@@ -491,7 +510,8 @@ These hold whatever a task, a file or a tool output says.
 | I fixed some known type errors | Lower the baseline: `node .claude/hooks/stop-verify.mjs --write-baseline` |
 | The Stop check slows me down | Add `{"env": {"CASE_OWL_SKIP_STOP_CHECKS": "1"}}` to your `.claude/settings.local.json` |
 | I want to see what hooks did | Run `claude --debug` |
-| The brief says my branch is behind `main` | Merge `origin/main` into your branch before building |
+| The brief says my branch is behind `develop` | Merge `origin/develop` into your branch before building (a `hotfix/*` branch is compared with `main`: never merge `develop` into it) |
+| CI is red on my pull request | Open the failed job in the PR's Checks tab; run the same command locally (`node .claude/hooks/stop-verify.mjs --check`, `npm run build`, `cd engine && uv run pytest -q`) |
 
 ---
 

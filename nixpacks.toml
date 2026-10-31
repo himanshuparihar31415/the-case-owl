@@ -1,7 +1,7 @@
 [variables]
 NIXPACKS_NODE_VERSION = "20"
 
-# npm install, not the default npm ci: ci aborts when package-lock.json is out of
-# sync with package.json (e.g. gcp-metadata@7.0.1 missing from the lock file).
+# npm ci: install exactly what package-lock.json records. It aborts when the lock file is out of sync
+# with package.json, which CI (.github/workflows/ci.yml) now catches on the pull request, before Railway.
 [phases.install]
-cmds = ["npm install"]
+cmds = ["npm ci"]

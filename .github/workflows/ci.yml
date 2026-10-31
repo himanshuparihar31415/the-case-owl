@@ -1,0 +1,58 @@
+# The checks every pull request into develop or main must pass, and every push to them.
+# Railway's "Wait for CI" watches the push runs, so a main commit deploys only after this passes.
+# Both jobs always run: a required check that a path filter skips would block the pull request for good.
+# Spec: docs/specs/0001-develop-branch-and-ci.md
+name: CI
+
+on:
+  pull_request:
+    branches: [develop, main]
+  push:
+    branches: [develop, main]
+
+permissions:
+  contents: read
+
+concurrency:
+  # A newer push to a pull request replaces its older run; every push to develop or main gets its own.
+  group: ci-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  platform:
+    name: platform
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      # No type errors beyond the known ones in .claude/hooks/tsc-baseline.json (the Stop hook's rule).
+      - run: node .claude/hooks/stop-verify.mjs --check
+      - run: npm run build
+
+  engine:
+    name: engine
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: engine
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          python-version: "3.12"
+          working-directory: engine
+          cache-dependency-glob: uv.lock   # relative to working-directory
+      # --locked fails when uv.lock is behind pyproject.toml, so the tests run on what the image installs.
+      - run: uv sync --locked
+      # Includes tests/test_contract.py, which fails when contract/*.json falls behind app/contract.py.
+      - run: uv run --locked pytest -q

@@ -26,6 +26,11 @@ if (/^\.claude\/(settings\.json|hooks\/)/.test(file)) {
   decide('ask', `${file} is one of the team's guardrails (hooks, permissions, the type-error baseline). Confirm this change.`);
 }
 
+// A workflow pushed on any branch runs with the repo's secrets, including the engine server's root key.
+if (/^\.github\//.test(file)) {
+  decide('ask', `${file} is a GitHub Actions file: workflows can read the repo's secrets, including the engine server's deploy key (ENGINE_SSH_KEY). Confirm this change.`);
+}
+
 const written = [ti.content, ti.new_string, ti.new_source, ...(ti.edits ?? []).map((e) => e.new_string)]
   .filter((s) => typeof s === 'string')
   .join('\n');
