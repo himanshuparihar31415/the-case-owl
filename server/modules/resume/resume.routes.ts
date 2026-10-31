@@ -4,28 +4,42 @@ import { requireAuth, AuthRequest } from '../../middleware/auth.js';
 import { aiLimiter } from '../../middleware/rateLimiter.js';
 import { AppError } from '../../middleware/errorHandler.js';
 import { resumeUpload, RESUME_MAX_BYTES } from '../../middleware/resumeUpload.js';
-import { deleteSavedResume, listSavedResumes, parseSetup, startResumeInterview } from './resume.service.js';
+import { deleteSavedResume, listSavedResumes, parseSetup, saveUploadedResume, startResumeInterview } from './resume.service.js';
 import { generalLimiter } from '../../middleware/rateLimiter.js';
 import * as sessionController from '../sessions/session.controller.js';
 import * as reportController from '../reports/report.controller.js';
 
 const router = Router();
 
-// POST /api/resume-interviews  (multipart: resume, role, topics, durationMinutes, style)
-// Reads the resume, builds the interviewer brief, creates the case + session.
+const uploadResume = (req: AuthRequest, res: Response, next: NextFunction) => {
+  resumeUpload.single('resume')(req, res, (err: unknown) => {
+    if (!err) return next();
+    if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') {
+      return next(new AppError(413, `That file is over the ${RESUME_MAX_BYTES / 1024 / 1024} MB limit.`));
+    }
+    next(new AppError(400, err instanceof Error ? err.message : 'Upload failed'));
+  });
+};
+
+// POST /api/resume-interviews/resumes  (multipart: resume, optional replaceId)
+// Parses an upload into a saved resume before the interview starts; returns the card to show.
+router.post('/resumes', requireAuth, aiLimiter, uploadResume, async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    if (!req.file) throw new AppError(400, 'Upload your resume (PDF or DOCX)');
+    const replaceId = typeof req.body?.replaceId === 'string' && req.body.replaceId ? req.body.replaceId : undefined;
+    res.status(201).json({ resume: await saveUploadedResume(req.userId!, req.file, replaceId) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/resume-interviews  (multipart: resume | resumeId, role, topics, durationMinutes, style)
+// Reads the resume if needed, builds the interviewer brief, creates the case + session.
 router.post(
   '/',
   requireAuth,
   aiLimiter,
-  (req, res, next) => {
-    resumeUpload.single('resume')(req, res, (err: unknown) => {
-      if (!err) return next();
-      if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') {
-        return next(new AppError(413, `That file is over the ${RESUME_MAX_BYTES / 1024 / 1024} MB limit.`));
-      }
-      next(new AppError(400, err instanceof Error ? err.message : 'Upload failed'));
-    });
-  },
+  uploadResume,
   async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
       const resumeId = typeof req.body?.resumeId === 'string' && req.body.resumeId ? req.body.resumeId : undefined;

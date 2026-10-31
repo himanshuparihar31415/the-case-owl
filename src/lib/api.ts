@@ -42,7 +42,7 @@ export const api = {
     const res = await fetch(`${API_BASE}${path}`, { method: 'POST', headers, body: data });
     if (!res.ok) {
       const body = await res.json().catch(() => ({ error: 'Unknown error' }));
-      throw new Error(body.error ?? `HTTP ${res.status}`);
+      throw Object.assign(new Error(body.error ?? `HTTP ${res.status}`), { code: body.code as string | undefined });
     }
     return res.json() as Promise<T>;
   },

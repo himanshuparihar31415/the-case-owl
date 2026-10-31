@@ -7,6 +7,9 @@ import { scoreTraversal } from './treeScore.js';
 import { computePillarScore } from './pillarScore.js';
 import { EvaluationContext } from '../../ai/prompts.js';
 import { invalidateLessonCache } from '../coaching/coaching.service.js';
+import type { StoredInterviewContext } from '../interviewContext/context.store.js';
+import { composeScore, StoredEval } from '../resume/resume.scoring.js';
+import type { DirectorState } from '../resume/resume.director.js';
 
 const DIFFICULTY_LABELS: Record<number, string> = {
   1: 'Beginner', 2: 'Intermediate', 3: 'Advanced', 4: 'Expert',
@@ -493,6 +496,27 @@ export async function generateReport(sessionId: string, userId: string): Promise
       analysis.pillarScore = computePillarScore({ treeScore: trees.treeScore, scorecard: analysis.scorecard });
     } catch (e) {
       console.error('pillar composite failed (non-fatal):', e);
+    }
+  }
+
+  // Resume interviews (RESUME-001): the score is the agreed composition over the silent
+  // per-answer evaluations (content / confidence / voice / role fit), with the measured
+  // resume coverage and the whole-interview feedback attached. Best-effort: without
+  // evaluations (an older session) the model's own scoring stands.
+  if ((caseDoc.module ?? 'case') === 'resume') {
+    try {
+      const ctx = (session as unknown as { interviewContext?: StoredInterviewContext }).interviewContext;
+      const evals = (ctx?.evals as StoredEval[] | undefined) ?? [];
+      if (evals.length > 0) {
+        const resumeScore = composeScore(evals, ctx?.director as DirectorState | undefined);
+        if (resumeScore.answers > 0) {
+          analysis.resumeScore = resumeScore;
+          analysis.endFeedback = ctx?.endFeedback ?? null;
+          analysis.overall = { ...(analysis.overall ?? {}), score: Math.round(resumeScore.total) / 10 };
+        }
+      }
+    } catch (e) {
+      console.error('resume score composition failed (non-fatal):', e);
     }
   }
 

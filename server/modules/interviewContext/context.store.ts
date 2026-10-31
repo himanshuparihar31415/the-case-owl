@@ -38,6 +38,11 @@ export interface StoredInterviewContext {
   snapshot?: InterviewContextSnapshot;
   turns?: ContextTurn[];
   events?: ContextEvent[];
+  // Resume interview v2: silent per-answer evaluations, the director's coverage/follow-up
+  // ledger (restored on reconnect), and the closing feedback. Opaque to this store.
+  evals?: unknown[];
+  director?: unknown;
+  endFeedback?: unknown;
   endedAt?: string;
   endReason?: string;
 }
@@ -47,6 +52,9 @@ export interface InterviewContextStore {
   init(sessionId: string, snapshot: InterviewContextSnapshot): Promise<void>;
   appendTurn(sessionId: string, turn: ContextTurn): Promise<void>;
   appendEvent(sessionId: string, event: ContextEvent): Promise<void>;
+  appendEval(sessionId: string, evaluation: unknown): Promise<void>;
+  saveDirector(sessionId: string, director: unknown): Promise<void>;
+  saveEndFeedback(sessionId: string, feedback: unknown): Promise<void>;
   load(sessionId: string): Promise<StoredInterviewContext | null>;
   finalize(sessionId: string, endReason: string): Promise<void>;
 }
@@ -68,6 +76,18 @@ class MongoSessionContextStore implements InterviewContextStore {
 
   async appendEvent(sessionId: string, event: ContextEvent): Promise<void> {
     await Session.updateOne({ _id: sessionId }, { $push: { 'interviewContext.events': event } });
+  }
+
+  async appendEval(sessionId: string, evaluation: unknown): Promise<void> {
+    await Session.updateOne({ _id: sessionId }, { $push: { 'interviewContext.evals': evaluation } });
+  }
+
+  async saveDirector(sessionId: string, director: unknown): Promise<void> {
+    await Session.updateOne({ _id: sessionId }, { $set: { 'interviewContext.director': director } });
+  }
+
+  async saveEndFeedback(sessionId: string, feedback: unknown): Promise<void> {
+    await Session.updateOne({ _id: sessionId }, { $set: { 'interviewContext.endFeedback': feedback } });
   }
 
   async load(sessionId: string): Promise<StoredInterviewContext | null> {
