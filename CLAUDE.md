@@ -4,8 +4,9 @@ A voice-based AI case-interview practice platform: a candidate talks to an AI in
 blunt, timestamped report. Product, pricing and stack in full: [docs/the-case-owl-context.md](docs/the-case-owl-context.md).
 
 This file is the team's shared working model for Claude. It loads in every session. Rules for one part
-of the code live in `.claude/rules/` and load when Claude works in that part. The human-facing guide
-to the whole setup (commands, agents, hooks, recipes) is [.claude/README.md](.claude/README.md).
+of the code live in `.claude/rules/` and load when Claude works in that part. For people: the
+[playbook](docs/PLAYBOOK.md) (how we work, with worked examples) and the
+[setup reference](.claude/README.md) (every command, agent and hook).
 
 ## The map
 

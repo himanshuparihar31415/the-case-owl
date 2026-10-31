@@ -1,89 +1,22 @@
-# The Case Owl: how we work with Claude Code
+# Claude Code setup: reference
 
-This is the human-facing guide to the team's Claude Code setup: the rules Claude follows, the commands
-we run, the reviewers it can call, and the guardrails that stop mistakes before they happen. Everyone
-who opens this repo in Claude Code gets the same setup. Set up 31 Oct 2026.
+What each part of the team's Claude Code setup is and does: the rules, commands, agents, workflows,
+hooks and settings in this folder. For how we work with it (the loop, worked examples, recipes and
+first-time setup), read the playbook: [docs/PLAYBOOK.md](../docs/PLAYBOOK.md).
 
-If you read one thing, read [the loop](#the-loop) and [recipes](#recipes).
-
-## First-time setup
-
-```bash
-npm install
-```
-```bash
-cd engine && uv sync
-```
-```bash
-claude --version
-```
-
-Then open the repo in Claude Code (CLI, desktop or IDE) and accept the workspace-trust prompt: until you
-do, the shared hooks and allow rules stay off. You need Node 20+ (the hooks run on it) and `uv` (the
-engine's tests). Type `/` to see the commands. The first message of every session is a short brief:
-your branch, how far it is from `main`, and the "Now" list from `docs/STATUS.md`.
-
-## The idea
-
-Four layers, each doing something the others cannot.
-
-| Layer | What it is | Where |
-|---|---|---|
-| Knowledge | What Claude must know: the map, where the truth lives, the loop, the hard rules | [CLAUDE.md](../CLAUDE.md) (always), [rules/](rules/) (by path), [docs/STATUS.md](../docs/STATUS.md) |
-| Procedures | How recurring jobs are done, the same way every time | [skills/](skills/) (slash commands), [workflows/](workflows/) |
-| Specialists | Independent second opinions in their own context | [agents/](agents/) |
-| Guardrails | What must happen every time, enforced by the harness, not by memory | [hooks/](hooks/), [settings.json](settings.json) |
-
-**Never let a doc lie.** Code is the truth for what the software does. When a doc disagrees, the doc
-is fixed in the same change. Sessions share no memory, so the repo is the handoff.
-
-## The loop
-
-Every change goes through the same steps. Small, obvious fixes can skip the middle ones.
-
-| Step | What happens | Use |
-|---|---|---|
-| 1. Orient | Read the session brief, the area's doc and the code; sync with `main` if behind | Session brief; rules load on their own |
-| 2. Plan | A spec: problem, design, files, risks, how it will be proven. Get a yes; the design is then frozen | `/spec` |
-| 3. Build | Small steps that match the surrounding code | Hooks guard secrets, generated files and production |
-| 4. Verify | Type check, build, engine tests; evals for interviewer behaviour; look at UI changes | `/check`, `/engine-evals`; the Stop hook checks automatically |
-| 5. Review | Independent reviewers read the diff | `/review-diff`, or `/review-changes` for big or risky changes |
-| 6. Reconcile | The spec's "As built": every difference from the plan, marked deliberate (with reason) or fixed as a bug | `/close-spec` |
-| 7. Ship | Branch up to date with `main`, conventional commit, push, PR if wanted | `/ship` (you start it, Claude never does) |
-| 8. Hand off | STATUS.md and the verified lists say what is true; a note for the next person | `/handoff` |
-
-"Done" means the gates pass, behaviour changes have measured pass rates, the docs, spec and STATUS.md
-are updated in the same change, and the final message says exactly what was run and what was not
-verified.
-
-## Recipes
-
-| I want to… | Do this |
-|---|---|
-| Know where things stand | Read the session brief, or `docs/STATUS.md` |
-| Build a feature or a non-trivial change | `/spec <problem>`, approve it, build, `/check`, `/review-diff`, `/close-spec`, `/ship` |
-| Fix a small bug | Ask for the fix; `/check`; `/ship` when you want it committed |
-| Close out code already written | `/close-spec <n>` if it had a spec, then `/review-diff` and `/ship` |
-| Add an API route | `/new-endpoint <METHOD path - what it does>` |
-| Change what the engine and platform exchange | `/contract-change <the change>` |
-| Fix something the interviewer did | `/debug-interview <what she did, call id>` |
-| Prove an interviewer change works | `/engine-evals [runs] [only=…]` (asks before spending) |
-| Deploy the engine | `/engine-deploy` |
-| Review a big or risky change thoroughly | `/review-changes` |
-| Check nothing leaks the answer key | `/answer-key-audit` |
-| Find where something lives, or how it works | Ask; Claude uses its built-in Explore agent |
-| See why a gate failed | `/check` (the verifier reports the exact lines) |
-| Stop for the day | `/handoff` |
+Set up 31 Oct 2026. What Claude loads in every session is [CLAUDE.md](../CLAUDE.md) at the repo root;
+this file is for people and Claude does not load it.
 
 ## What is in here
 
 ```
 CLAUDE.md                     always loaded: map, where the truth lives, commands, the loop, hard rules
+docs/PLAYBOOK.md              how the team works: the loop, worked examples, recipes, setup
 docs/STATUS.md                what is live, moving and open; its "Now" list opens every session
 docs/specs/                   one spec per non-trivial change: design, then "As built"
 .worktreeinclude              .env files copied into Claude's worktrees so the app runs there
 .claude/
-├── README.md                 this guide (for people; Claude does not load it)
+├── README.md                 this reference (for people; Claude does not load it)
 ├── settings.json             permissions and hook wiring (shared)
 ├── rules/                    loaded by path, when Claude works in that part of the code
 ├── skills/<name>/SKILL.md    slash commands: /spec, /check, /review-diff, /close-spec, /ship, …
@@ -228,19 +161,6 @@ Personal notes Claude should know about only on your machine go in `CLAUDE.local
 
 If something matters to the next person, it goes in the repo, not in anyone's private memory. If the
 same correction comes up twice, it becomes a line in the right rule file.
-
-## Habits that keep this honest
-
-- **Spec before code** for anything non-trivial. It is cheap, and it is what ties intent to reality.
-- **Reconcile, don't rewrite.** The approved design is frozen; reality goes in "As built". A
-  difference found at close is a decision: deliberate (record why) or a bug (fix the code).
-- **Trust the code over the docs**, then fix the docs.
-- **One session, one task, one branch.** Parallel sessions in separate worktrees (the desktop app
-  makes one per session). Sync with `main` before starting and before shipping.
-- **No one-off summary files.** Status goes in STATUS.md, designs in specs, everything else in the doc
-  that owns the topic.
-- **Ask in plain language.** "Review my changes", "why does this fail?", "where is X handled?": Claude
-  picks the right command or agent.
 
 ## Changing this setup
 
