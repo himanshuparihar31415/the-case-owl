@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-labelledby="title">
+  <title id="title">The Case Owl</title>
+  <!-- The owl from the landing page (src/pages/Landing.tsx), on a cyan-wash tile so it reads on light and dark backgrounds. -->
+  <rect width="256" height="256" rx="58" fill="#E6F5FC"/>
+  <g transform="translate(128 132) scale(0.86) translate(-130 -139)">
+    <ellipse cx="130" cy="150" rx="92" ry="98" fill="#13294A"/>
+    <path d="M58 70 q6 -34 30 -40 q-8 26 -8 46z" fill="#13294A"/>
+    <path d="M202 70 q-6 -34 -30 -40 q8 26 8 46z" fill="#13294A"/>
+    <circle cx="130" cy="118" r="78" fill="#1C3354"/>
+    <circle cx="98" cy="110" r="34" fill="#F4F6FA"/>
+    <circle cx="162" cy="110" r="34" fill="#F4F6FA"/>
+    <circle cx="98" cy="110" r="17" fill="#1BA6E1"/>
+    <circle cx="162" cy="110" r="17" fill="#1BA6E1"/>
+    <circle cx="98" cy="110" r="8" fill="#0B1B33"/>
+    <circle cx="162" cy="110" r="8" fill="#0B1B33"/>
+    <circle cx="93" cy="105" r="3" fill="#FFFFFF" opacity="0.9"/>
+    <circle cx="157" cy="105" r="3" fill="#FFFFFF" opacity="0.9"/>
+    <path d="M130 132 l-11 16 h22 z" fill="#1BA6E1"/>
+  </g>
+</svg>

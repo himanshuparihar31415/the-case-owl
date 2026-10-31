@@ -18,6 +18,7 @@ docs/specs/                   one spec per non-trivial change: design, then "As 
 .claude/
 ├── README.md                 this reference (for people; Claude does not load it)
 ├── settings.json             permissions and hook wiring (shared)
+├── launch.json               dev servers (web, api) for the desktop app's preview pane
 ├── rules/                    loaded by path, when Claude works in that part of the code
 ├── skills/<name>/SKILL.md    slash commands: /spec, /check, /review-diff, /close-spec, /ship, …
 ├── agents/<name>.md          specialist subagents: reviewers, verifier, interview analyst

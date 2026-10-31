@@ -1,23 +1,81 @@
+<div align="center">
+
+<img src="docs/assets/case-owl-icon.svg" alt="The Case Owl" width="112" height="112">
+
 # The Case Owl
 
-**Voice-based case interview practice.** A candidate talks out loud with an AI interviewer that runs a
-realistic consulting, product or market-sizing interview, then gets a blunt, timestamped report showing
-where they lost the room and the one thing to fix first.
+**Sit across from a partner. As many times as it takes.**
 
-Built for MBA and pre-MBA candidates preparing for consulting and product interviews, with India as the
-primary market. Live at [thecaseowl.com](https://thecaseowl.com).
+Voice-based case interview practice. An AI interviewer runs the real interview out loud,<br>
+then shows you, to the second, where you lost the room.
 
-| | |
-|---|---|
-| **Status** | Live; interview engine in pilot. Current state: [docs/STATUS.md](docs/STATUS.md) |
-| **How we work** | [docs/PLAYBOOK.md](docs/PLAYBOOK.md): the working loop, worked examples, recipes |
-| **Product context** | [docs/the-case-owl-context.md](docs/the-case-owl-context.md) |
+[**thecaseowl.com**](https://thecaseowl.com) · [Playbook](docs/PLAYBOOK.md) · [Status](docs/STATUS.md) · [Product context](docs/the-case-owl-context.md)
+
+![React 19](https://img.shields.io/badge/React-19-1BA6E1?logo=react&logoColor=white)
+![Vite 6](https://img.shields.io/badge/Vite-6-1BA6E1?logo=vite&logoColor=white)
+![Tailwind CSS 4](https://img.shields.io/badge/Tailwind_CSS-4-1BA6E1?logo=tailwindcss&logoColor=white)
+![Node.js 20](https://img.shields.io/badge/Node.js-20-13294A?logo=nodedotjs&logoColor=white)
+![Python 3.12](https://img.shields.io/badge/Python-3.12-13294A?logo=python&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-engine-13294A?logo=fastapi&logoColor=white)
+![MongoDB](https://img.shields.io/badge/MongoDB-Atlas-13294A?logo=mongodb&logoColor=white)
+![OpenAI Realtime](https://img.shields.io/badge/OpenAI-Realtime-13294A?logo=openai&logoColor=white)
+
+<br>
+
+<img src="docs/assets/landing.png" alt="The Case Owl landing page: 'Sit across from a partner. As many times as it takes.' beside the watching owl" width="880">
+
+</div>
 
 ---
 
-## Contents
+## Why The Case Owl
 
-- [What it does](#what-it-does)
+A handful of interviews decide years of a consulting or product career, and there are no second takes.
+
+| ~1% | 3–4 | 0 |
+|:---:|:---:|:---:|
+| acceptance rate at the top firms | interviews, total | do-overs |
+
+Real case practice is scarce and expensive, and friends are too polite to help: "that was great". The
+Case Owl gives candidates unlimited realistic reps with an interviewer who leads like a real one, and
+feedback that names the exact thing holding them back.
+
+Built for MBA and pre-MBA candidates preparing for consulting, product and market-sizing interviews,
+with India as the primary market.
+
+## How it works
+
+| | Step | What happens |
+|:---:|---|---|
+| **1** | **Pick the interview** | A consulting case (profitability, market entry, M&A, pricing and more), a product interview, a guesstimate, or one built from your own resume. Set the difficulty and the interviewer's style |
+| **2** | **Take the chair** | Talk it through out loud, in the browser. The interviewer presents the case, answers what you ask, probes weak spots and reveals exhibits when you earn them. Capped at 30 minutes |
+| **3** | **See where you lost the room** | A report with your grade, a case map of what you found and missed, timestamped moments the owl caught, and the one thing to fix first |
+| **4** | **Close the gap** | Micro-lessons tied to your recurring mistakes, company-specific preparation, and a dashboard that tracks your readiness |
+
+## What the owl catches
+
+Nothing you say gets past the owl. Every report points at moments like these:
+
+> `02:08` load-bearing assumption never validated · `05:41` no hypothesis before the math ·
+> `11:20` recommendation without a number · "like" × 9 · 116 wpm
+
+It looks for missed structure, weak frames, unvalidated numbers, rushed math, vague recommendations,
+filler words and the pauses that cost you, and scores each interview on three pillars: **navigation**
+(how well you worked through the case map), **structure** and **communication**.
+
+## Features
+
+| Area | What the candidate gets |
+|---|---|
+| **Live interviews** | Consulting cases with exhibits and quant tasks, product interviews (design, strategy, root cause, prioritisation), guesstimates, and resume-based interviews. Supportive, neutral or stress-test interviewers |
+| **Reports** | Overall grade and percentile, a three-pillar score, a case map, timestamped "caught" moments, pace and filler stats, strengths, and an ideal transcript of the same case |
+| **Preparation** | Micro-lessons tied to recurring mistakes, frameworks per case type, a company preparation hub, and a progress dashboard |
+| **Billing** | Plans and a credit wallet (1 credit = 1 interview minute), paid through Razorpay |
+
+---
+
+## For developers
+
 - [Architecture](#architecture)
 - [Repository layout](#repository-layout)
 - [Getting started](#getting-started)
@@ -27,16 +85,7 @@ primary market. Live at [thecaseowl.com](https://thecaseowl.com).
 - [Working with Claude Code](#working-with-claude-code)
 - [Contributing](#contributing)
 
-## What it does
-
-| Area | What the candidate gets |
-|---|---|
-| **Live interviews** | Consulting cases (profitability, market entry, M&A, pricing and more), product interviews (design, strategy, root cause, prioritisation), guesstimates, and interviews based on the candidate's own resume. Spoken, in the browser, capped at 30 minutes |
-| **Reports** | Overall grade and percentile, a three-pillar score (navigation, structure, communication), a case map of what was found and missed, timestamped "caught" moments, pace and filler stats, and an ideal transcript |
-| **Preparation** | Micro-lessons tied to recurring mistakes, frameworks per case type, a company preparation hub, and a dashboard of progress and readiness |
-| **Billing** | Plans and a credit wallet (1 credit = 1 interview minute), paid through Razorpay |
-
-## Architecture
+### Architecture
 
 Three services share one repository.
 
@@ -72,7 +121,7 @@ flowchart LR
   [docs/interview-engine-architecture.md](docs/interview-engine-architecture.md). Contract between the
   two services: [docs/engine-contract.md](docs/engine-contract.md).
 
-## Repository layout
+### Repository layout
 
 | Path | What it is |
 |---|---|
@@ -80,13 +129,13 @@ flowchart LR
 | `src/` | Web app: `pages/`, `components/`, `features/` (self-contained features such as the dashboard), `hooks/`, `lib/` |
 | `engine/` | Interview engine: `app/` (service), `cases/` (case fact trees), `tests/`, `tools/` (evals, benchmarks, schema export), `deploy/` |
 | `scripts/` | One-off operational scripts. Most reach real APIs or the production database |
-| `docs/` | Product context, engine design and contract, status, specs, the playbook |
+| `docs/` | Product context, engine design and contract, status, specs, the playbook, brand assets |
 | `CLAUDE.md`, `.claude/` | The team's shared Claude Code setup (see [Working with Claude Code](#working-with-claude-code)) |
 | `server 2 - dd/` | An experimental second backend; not part of the running product |
 
-## Getting started
+### Getting started
 
-### Prerequisites
+**Prerequisites**
 
 - Node.js 20 or later (`.nvmrc`), with npm
 - [uv](https://docs.astral.sh/uv/) and Python 3.12, for the interview engine
@@ -96,7 +145,7 @@ flowchart LR
 docker run -d -p 27017:27017 --name case-owl-mongo mongo:7
 ```
 
-### Install
+**Install**
 
 ```bash
 npm install
@@ -105,9 +154,7 @@ npm install
 cd engine && uv sync
 ```
 
-### Configure
-
-Copy `.env.example` to `.env` and fill in the values. Never commit `.env`.
+**Configure.** Copy `.env.example` to `.env` and fill in the values. Never commit `.env`.
 
 | Variable | Needed for |
 |---|---|
@@ -124,9 +171,7 @@ The full list, with defaults, is validated in `server/config/env.ts`. Frontend-o
 means real data and real payments), and `VITE_DASHBOARD_SOURCE=api` switches the dashboard from mock
 data to the API.
 
-### Run
-
-Platform API and web app, in two terminals:
+**Run** the platform API and the web app, in two terminals:
 
 ```bash
 npm run server:dev
@@ -139,7 +184,8 @@ The app is at http://localhost:5173; it forwards `/api`, including the voice soc
 port 5050. A new database starts with the plans seeded and no cases; add cases from the app (generate
 one, or upload your own).
 
-Interview engine, from `engine/`, in two terminals (it reads `OPENAI_API_KEY` from the repo's `.env`):
+The interview engine runs from `engine/`, in two terminals (it reads `OPENAI_API_KEY` from the repo's
+`.env`):
 
 ```bash
 uv run uvicorn app.main:app --port 8780
@@ -151,7 +197,7 @@ uv run python tools/node_stub.py
 Then open http://localhost:5051 in Chrome, with headphones. Without `MONGO_URI` the engine keeps
 everything in memory. More in [engine/README.md](engine/README.md).
 
-## Checks and tests
+### Checks and tests
 
 | Check | Command | Notes |
 |---|---|---|
@@ -162,7 +208,7 @@ everything in memory. More in [engine/README.md](engine/README.md).
 
 The platform API has no automated test suite yet.
 
-## Deployment
+### Deployment
 
 | Service | Host | Deploys |
 |---|---|---|
@@ -173,7 +219,7 @@ The platform API has no automated test suite yet.
 `main` is production. Secrets are set in each host's dashboard or, for the engine, with
 `engine/deploy/push-secrets.sh`; none are in the repository.
 
-## Documentation
+### Documentation
 
 | Document | Covers |
 |---|---|
@@ -186,7 +232,7 @@ The platform API has no automated test suite yet.
 | [docs/specs/](docs/specs/) | One design spec per significant change, with what was actually built |
 | [src/features/dashboard/README.md](src/features/dashboard/README.md) | The dashboard feature and its backend contract |
 
-## Working with Claude Code
+### Working with Claude Code
 
 The repository carries a shared [Claude Code](https://claude.com/claude-code) setup, so every session
 follows the same process and guardrails:
@@ -199,7 +245,7 @@ follows the same process and guardrails:
 Start with the [playbook](docs/PLAYBOOK.md). Every command, agent and hook is described in the
 [setup reference](.claude/README.md).
 
-## Contributing
+### Contributing
 
 - Work on your own branch or a feature branch off it. `main` is production.
 - Bring your branch up to date with `main` before starting and before shipping.
@@ -209,4 +255,14 @@ Start with the [playbook](docs/PLAYBOOK.md). Every command, agent and hook is de
   code they describe.
 - Never commit secrets, and never expose case answers to the browser during an interview.
 
-Maintained by Himanshu Parihar, Dhrumil Daftary and Paritosh Sharma.
+---
+
+<div align="center">
+
+<img src="docs/assets/case-owl-icon.svg" alt="" width="40" height="40">
+
+**Nothing you say gets past the owl.**
+
+Built by Himanshu Parihar, Dhrumil Daftary and Paritosh Sharma.
+
+</div>
